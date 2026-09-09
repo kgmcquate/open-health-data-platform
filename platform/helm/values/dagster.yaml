@@ -75,7 +75,12 @@ runLauncher:
   type: K8sRunLauncher
   config:
     k8sRunLauncher:
-      imagePullPolicy: IfNotPresent
+      # Each run executes the pipeline code — same image as the user deployment
+      # below. `make dagster TAG=` sets the tag on both.
+      image:
+        repository: "ghcr.io/kgmcquate/ohdp-pipeline"
+        tag: ""
+        pullPolicy: IfNotPresent
       loadInclusterConfig: true
       envSecrets:
         # Spaces credentials, source API keys, OpenMetadata JWT. Referenced by
