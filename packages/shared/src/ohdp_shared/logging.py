@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 import structlog
+from structlog.types import EventDict, WrappedLogger
 
 # Substring match on the *key* of a structured field -> value replaced wholesale.
 _SENSITIVE_KEY_PARTS = (
@@ -69,7 +70,9 @@ def _redact_event_value(key: str, value: Any) -> Any:
     return _redact_value(value)
 
 
-def redaction_processor(_logger: Any, _method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def redaction_processor(
+    _logger: WrappedLogger, _method: str, event_dict: EventDict
+) -> dict[str, Any]:
     """structlog processor: redact sensitive keys and value patterns."""
     return {k: _redact_event_value(k, v) for k, v in event_dict.items()}
 

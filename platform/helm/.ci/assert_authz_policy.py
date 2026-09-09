@@ -81,7 +81,8 @@ def main() -> int:
         env.get("HOST") == "0.0.0.0",
         "HOST must be 0.0.0.0 or gunicorn binds to loopback and the Service cannot reach it",
     )
-    check("memory" in container.get("resources", {}).get("limits", {}), "proxy needs a memory limit")
+    limits = container.get("resources", {}).get("limits", {})
+    check("memory" in limits, "proxy needs a memory limit")
 
     if FAILURES:
         print("authz policy assertions FAILED:", file=sys.stderr)

@@ -70,7 +70,7 @@ jobs:
       - name: Assert the authz allowlist stays default-deny
         working-directory: platform/helm
         run: |
-          pip install --quiet pyyaml
+          pip install --quiet --break-system-packages pyyaml
           python3 .ci/assert_authz_policy.py
 
   terraform:

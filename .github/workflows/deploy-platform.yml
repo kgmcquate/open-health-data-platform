@@ -66,13 +66,13 @@ jobs:
       - name: Assert the Dagster authz policy is still default-deny
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
+          python3 -m pip install --quiet --break-system-packages pyyaml
           cd platform/helm && python3 .ci/assert_authz_policy.py
 
       - name: Validate upstream values files parse
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pyyaml
+          python3 -m pip install --quiet --break-system-packages pyyaml
           for f in "$HELM_VALUES"/*.yaml; do
             python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$f"
             echo "ok: $f"

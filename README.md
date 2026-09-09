@@ -16,10 +16,10 @@ as a product.
 |---|---|
 | `apps/web` | Next.js hub — landing, chat UI, embedded dashboards |
 | `apps/api` | FastAPI — chat orchestration, entitlements, Stripe webhooks |
-| `data/ingestion` | One typed client per public source |
-| `data/dagster` | Orchestration: ingestion, dbt build, snapshot publish, alerts |
+| `data/src/ohdp_ingestion` | One typed client per public source |
+| `data/src/ohdp_orchestration` | Dagster: ingestion, dbt build, snapshot publish, alerts |
 | `data/dbt` | SQL transformation + tests against DuckDB (source of truth for models) |
-| `data/ml` | Anomaly detection and forecasting, classical baselines first |
+| `data/src/ohdp_ml` | Anomaly detection and forecasting, classical baselines first |
 | `semantic/cube` | Cube Core semantic layer — one definition per metric |
 | `catalog/openmetadata` | Catalog sync (Cube → metrics, dbt → lineage) and seed data |
 | `platform/terraform` | Hetzner VM, Cloudflare DNS + R2, k3s bootstrap |

@@ -29,12 +29,8 @@ ml = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# Folder names follow ARCHITECTURE.md §7. Import names are remapped so the
-# orchestration package does not shadow the `dagster` library on sys.path.
+# src layout, matching packages/shared and apps/api. Directory names are the
+# import names — `ohdp_orchestration`, not `dagster`, so nothing shadows the
+# `dagster` library on sys.path (ADR-0004).
 [tool.hatch.build.targets.wheel]
-only-include = ["ingestion", "dagster", "ml"]
-
-[tool.hatch.build.targets.wheel.sources]
-"ingestion" = "ohdp_ingestion"
-"dagster" = "ohdp_orchestration"
-"ml" = "ohdp_ml"
+packages = ["src/ohdp_ingestion", "src/ohdp_orchestration", "src/ohdp_ml"]

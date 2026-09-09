@@ -319,30 +319,31 @@ health-data-platform/
 │   └── api/                    # FastAPI: chat orchestration, entitlements, Stripe webhooks
 │
 ├── data/
-│   ├── ingestion/              # One module per source; typed clients, schema contracts
-│   │   ├── openaq/
-│   │   ├── cdc/
-│   │   ├── openfda/
-│   │   ├── cms/
-│   │   └── who/
-│   ├── dagster/
-│   │   ├── definitions.py      # Single Definitions object
-│   │   ├── assets/             # Grouped by domain
-│   │   ├── jobs/
-│   │   ├── schedules/
-│   │   ├── sensors/
-│   │   └── resources/          # R2, DuckDB, Cube, OpenMetadata, k8s clients
-│   ├── dbt/
-│   │   ├── models/
-│   │   │   ├── staging/
-│   │   │   ├── intermediate/
-│   │   │   └── marts/
-│   │   ├── tests/
-│   │   └── dbt_project.yml
-│   └── ml/
-│       ├── anomaly/            # EARS C1-C3, Farrington, STL + robust z-score
-│       ├── forecast/           # FluSight-style quantile forecasts, WIS scoring
-│       └── eval/               # Baselines must beat naive before shipping
+│   ├── src/                    # src layout — dir names are import names (ADR-0004)
+│   │   ├── ohdp_ingestion/     # One module per source; typed clients, schema contracts
+│   │   │   ├── openaq/
+│   │   │   ├── cdc/
+│   │   │   ├── openfda/
+│   │   │   ├── cms/
+│   │   │   └── who/
+│   │   ├── ohdp_orchestration/ # imported as ohdp_orchestration, not dagster
+│   │   │   ├── definitions.py  # Single Definitions object
+│   │   │   ├── assets/         # Grouped by domain
+│   │   │   ├── jobs/
+│   │   │   ├── schedules/
+│   │   │   ├── sensors/
+│   │   │   └── resources/      # R2, DuckDB, Cube, OpenMetadata, k8s clients
+│   │   └── ohdp_ml/
+│   │       ├── anomaly/        # EARS C1-C3, Farrington, STL + robust z-score
+│   │       ├── forecast/       # FluSight-style quantile forecasts, WIS scoring
+│   │       └── eval/           # Baselines must beat naive before shipping
+│   └── dbt/
+│       ├── models/
+│       │   ├── staging/
+│       │   ├── intermediate/
+│       │   └── marts/
+│       ├── tests/
+│       └── dbt_project.yml
 │
 ├── semantic/
 │   └── cube/

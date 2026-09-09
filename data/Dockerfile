@@ -25,9 +25,7 @@ COPY packages/shared/ packages/shared/
 COPY data/ data/
 
 # --no-editable is required: the default editable install leaves .pth files
-# pointing at /app/data/... , which do not exist in the runtime stage.
-# It is also what applies the ADR-0004 import remap (data/dagster ->
-# ohdp_orchestration) instead of leaving the folder name on sys.path.
+# pointing at /app/data/src/... , which do not exist in the runtime stage.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-editable --package ohdp-data
 
