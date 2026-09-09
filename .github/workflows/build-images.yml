@@ -1,15 +1,11 @@
 name: Build images
 
 on:
+  # Every merge to main, not just app/data changes: deploy-platform.yml deploys
+  # `sha-<12>` of the commit it runs on, so that tag must always exist. The gha
+  # cache keeps a no-op rebuild to a minute or two.
   push:
     branches: [main]
-    paths:
-      - "apps/api/**"
-      - "data/**"
-      - "packages/shared/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/build-images.yml"
   workflow_dispatch:
     inputs:
       push:

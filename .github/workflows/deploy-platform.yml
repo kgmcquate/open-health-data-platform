@@ -11,7 +11,7 @@ on:
         type: boolean
         default: false
       image_tag:
-        description: Immutable image tag for dagster + hub-api (sha-...). Blank = skip them.
+        description: Override the dagster + hub-api image tag (blank = the sha-<12> of the deployed commit).
         type: string
         default: ""
 
@@ -56,6 +56,14 @@ jobs:
       - uses: ./.github/actions/setup-kube
         with:
           kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
+
+      # dagster + hub-api run this tag. Defaults to the sha-<12> of the checked-
+      # out commit — the tag build-images.yml pushed for it. Never `latest`, so
+      # `helm rollback` and pod restarts stay pinned to a known build.
+      - name: Resolve image tag
+        run: echo "TAG=${IMAGE_TAG:-sha-${GITHUB_SHA::12}}" >> "$GITHUB_ENV"
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
 
       - name: Helm repos
         run: make -C platform/helm repos
@@ -103,12 +111,10 @@ jobs:
         run: make -C platform/helm verify-proxy
 
       - name: Dagster
-        if: ${{ inputs.image_tag != '' }}
-        run: make -C platform/helm dagster TAG=${{ inputs.image_tag }}
+        run: make -C platform/helm dagster TAG="$TAG"
 
       - name: hub-api
-        if: ${{ inputs.image_tag != '' }}
-        run: make -C platform/helm hub-api TAG=${{ inputs.image_tag }}
+        run: make -C platform/helm hub-api TAG="$TAG"
 
       - name: Pods
         if: always()

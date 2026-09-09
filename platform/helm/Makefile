@@ -6,6 +6,11 @@ KUBECTL ?= kubectl
 VALUES := values
 CHARTS := charts
 
+# Image tag for dagster + hub-api. Defaults to the current commit — the same
+# `sha-<12>` tag build-images.yml pushes on merge to main. Override to roll
+# back to an older build: `make dagster TAG=sha-0123456789ab`.
+TAG ?= $(shell git rev-parse HEAD 2>/dev/null | cut -c1-12 | grep . | sed 's/^/sha-/')
+
 # Pin every upstream chart. `helm upgrade --install` otherwise silently pulls
 # whatever is newest — OpenMetadata 2.0.x restructured its secret/config layout
 # and will not deploy against these values. Re-resolve deliberately after
@@ -75,8 +80,8 @@ openmetadata: ## Install OpenMetadata
 	$(HELM) upgrade --install openmetadata open-metadata/openmetadata --version $(OPENMETADATA_VERSION) \
 		-n meta --create-namespace -f $(VALUES)/openmetadata.yaml --wait --timeout 10m
 
-dagster: ## Install Dagster (pass TAG=<immutable tag> for the pipeline image)
-	@test -n "$(TAG)" || { echo "TAG is required, e.g. make dagster TAG=sha-abc123"; exit 1; }
+dagster: ## Install Dagster (TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
 	$(HELM) upgrade --install dagster dagster/dagster --version $(DAGSTER_VERSION) \
 		-n data --create-namespace -f $(VALUES)/dagster.yaml \
 		--set "dagster-user-deployments.deployments[0].image.tag=$(TAG)" \
@@ -87,12 +92,12 @@ proxy: ## Install the GraphQL authz proxy in front of Dagster
 	$(HELM) upgrade --install gqlproxy $(CHARTS)/graphql-authz-proxy \
 		-n data --create-namespace --wait
 
-hub-api: ## Install the FastAPI backend (pass TAG=<immutable tag>)
-	@test -n "$(TAG)" || { echo "TAG is required, e.g. make hub-api TAG=sha-abc123"; exit 1; }
+hub-api: ## Install the FastAPI backend (TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
 	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
 		-n app --create-namespace --set image.tag=$(TAG) --wait
 
-install: opensearch openmetadata proxy ## Data platform minus the tag-gated pieces (dagster, hub-api)
+install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)
 
 verify-proxy: ## Assert the allowlist denies mutations. Run after every Dagster upgrade.
 	@echo "port-forwarding gqlproxy..."

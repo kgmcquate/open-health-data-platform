@@ -80,13 +80,18 @@ and restart the consumers.
 make repos      # add + update upstream helm repos
 make infra      # platform-base, Traefik, cert-manager, ClusterIssuer
 # create the external secrets (above)
-make install    # opensearch, openmetadata, proxy
-make dagster TAG=sha-...     # needs a built pipeline image
-make hub-api  TAG=sha-...
+make install    # opensearch, openmetadata, proxy, dagster
+make hub-api    # deployed on its own for now
 ```
 
 Order matters — OpenSearch must be green before OpenMetadata starts or its
 migration job fails; `make install` sequences this for you.
+
+`dagster` and `hub-api` run `ghcr.io/kgmcquate/ohdp-{pipeline,hub-api}` at the
+`sha-<12>` tag of the current commit — `TAG` defaults to `git rev-parse HEAD`,
+which `build-images.yml` pushes on every merge to `main`. Pass `TAG=sha-…` to
+pin an older build. Never `latest`: the hub-api chart refuses it, so a pod
+restart or `helm rollback` always lands on a known image.
 
 ## Before trusting the proxy
 
