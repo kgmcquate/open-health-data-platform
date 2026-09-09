@@ -1,0 +1,14 @@
+{{- /*
+Non-secret pipeline env, consumed by the Dagster user deployment and the
+K8sRunLauncher (values/dagster.yaml -> envConfigMaps). Secret pipeline env is
+the ExternalSecret `ohdp-pipeline-secrets`.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ohdp-pipeline-config
+  namespace: data
+  labels:
+    {{- include "platform-base.labels" . | nindent 4 }}
+data:
+  {{- toYaml .Values.pipelineConfig | nindent 2 }}

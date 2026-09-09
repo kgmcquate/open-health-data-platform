@@ -1,0 +1,37 @@
+# The one bootstrap secret this whole scheme rests on: a Doppler service token,
+# scoped to a single Doppler project + config. Create it out of band (or from a
+# GitHub Actions secret in deploy-platform.yml):
+#
+#   kubectl -n external-secrets create secret generic doppler-token \
+#     --from-literal=dopplerToken=dp.st.xxxxxxxx
+#
+store:
+  name: doppler
+  # Namespace the bootstrap token lives in (== the ESO release namespace).
+  tokenNamespace: external-secrets
+  tokenSecretName: doppler-token
+  tokenSecretKey: dopplerToken
+
+# How often ESO re-reads Doppler and reconciles the k8s Secret.
+refreshInterval: 1h
+
+# Each entry becomes one ExternalSecret. `keys` maps the k8s Secret key (left)
+# to the Doppler secret name (right). Add a key here + in Doppler; nothing else
+# to touch.
+externalSecrets:
+  - name: ohdp-pipeline-secrets
+    namespace: data
+    keys:
+      OHDP_R2_ACCESS_KEY_ID: OHDP_R2_ACCESS_KEY_ID
+      OHDP_R2_SECRET_ACCESS_KEY: OHDP_R2_SECRET_ACCESS_KEY
+      OHDP_R2_ENDPOINT_URL: OHDP_R2_ENDPOINT_URL
+      OHDP_OPENAQ_API_KEY: OHDP_OPENAQ_API_KEY
+      OHDP_CDC_APP_TOKEN: OHDP_CDC_APP_TOKEN
+      OHDP_OPENMETADATA_JWT: OHDP_OPENMETADATA_JWT
+
+  - name: hub-api-secrets
+    namespace: app
+    keys:
+      OHDP_OPENMETADATA_JWT: OHDP_OPENMETADATA_JWT
+      STRIPE_SECRET_KEY: STRIPE_SECRET_KEY
+      OIDC_CLIENT_SECRET: OIDC_CLIENT_SECRET

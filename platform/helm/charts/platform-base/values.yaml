@@ -1,0 +1,54 @@
+# platform-base — the cluster foundation. No out-of-band values: everything is
+# static or generated on first install and preserved on every upgrade.
+
+# The platform namespaces (ARCHITECTURE.md). Each is created only if it does not
+# already exist, so `helm ... --create-namespace -n infra` does not collide with
+# the `infra` entry here.
+namespaces:
+  - app
+  - data
+  - bi
+  - meta
+  - infra
+
+# Let's Encrypt ClusterIssuer. Rendered only when cert-manager's CRDs are
+# already installed (see templates/cluster-issuer.yaml).
+clusterIssuer:
+  enabled: true
+  name: letsencrypt-prod
+  email: kgmcquate@gmail.com
+  ingressClass: traefik
+
+# Internally-generated secrets. Generated once with randAlphaNum, then read back
+# from the live cluster on every subsequent render so they never rotate
+# unexpectedly. Length is the generated password length in characters.
+generatedSecrets:
+  passwordLength: 32
+
+# Non-secret env for the Dagster pipeline image and its launched runs
+# (rendered into ConfigMap data/ohdp-pipeline-config).
+pipelineConfig:
+  OHDP_ENVIRONMENT: "prod"
+  OHDP_LOG_JSON: "true"
+  OHDP_R2_BUCKET: "ohdp-warehouse"
+
+postgres:
+  image: postgres:16.4-bookworm
+  # DOKS default StorageClass. k3s used local-path.
+  storageClass: do-block-storage
+  storageSize: 40Gi
+  # ARCHITECTURE.md §4 budgets 1 GB.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  # The four logical databases (ARCHITECTURE.md §2, §9 — one instance, do not
+  # split). Each gets an owner role with the matching generated password.
+  databases:
+    - dagster
+    - superset
+    - openmetadata
+    - app

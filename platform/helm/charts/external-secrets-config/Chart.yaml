@@ -1,0 +1,15 @@
+apiVersion: v2
+name: external-secrets-config
+description: >-
+  The Doppler ClusterSecretStore and the ExternalSecret objects that pull the
+  genuinely-external secrets (Stripe, OIDC, R2, source API keys, OpenMetadata
+  ingestion JWT) into the cluster. Requires External Secrets Operator and a
+  `doppler-token` secret in the external-secrets namespace.
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - ohdp
+  - secrets
+maintainers:
+  - name: kgmcquate

@@ -46,7 +46,7 @@ exists for them.
   | `ohdp-pipeline-secrets` | `data` | R2 creds, source API keys, OM JWT |
   | `ohdp-pipeline-config` (ConfigMap) | `data` | non-secret pipeline env |
   | `hub-api-secrets` | `app` | DB URL, Cube secret, Stripe, OIDC |
-  | `openmetadata-db-secret` | `meta` | `openmetadata-postgres-password` |
+  | `openmetadata-db-auth` | `meta` | `openmetadata-postgres-password` |
   | `openmetadata-fernet-secret` | `meta` | `fernetKey` |
 
 ## Install
