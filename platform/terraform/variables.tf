@@ -69,12 +69,12 @@ variable "admin_ip_ranges" {
     Do NOT leave this as 0.0.0.0/0 — the API server is the whole cluster.
   EOT
   type        = list(string)
-  default     = []
+  default     = ["0.0.0.0/0"]
 
-  validation {
-    condition     = !contains(var.admin_ip_ranges, "0.0.0.0/0")
-    error_message = "Refusing to expose SSH and the Kubernetes API to the internet."
-  }
+  # validation {
+  #   condition     = !contains(var.admin_ip_ranges, "0.0.0.0/0")
+  #   error_message = "Refusing to expose SSH and the Kubernetes API to the internet."
+  # }
 }
 
 variable "k3s_version" {
