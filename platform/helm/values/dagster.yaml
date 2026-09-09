@@ -1,0 +1,163 @@
+# Values for the upstream chart: dagster/dagster
+#
+#   helm repo add dagster https://dagster-io.github.io/helm
+#   helm upgrade --install dagster dagster/dagster -n data -f platform/helm/values/dagster.yaml
+#
+# We do NOT vendor a Dagster chart. Upstream owns the CRD-free but fiddly
+# webserver/daemon/run-launcher wiring, and reimplementing it means re-doing that
+# work on every upgrade. See ADR-0006.
+
+global:
+  # Managed out of band; must contain key `postgresql-password`.
+  postgresqlSecretName: "dagster-postgresql-secret"
+  dagsterHome: /opt/dagster/dagster_home
+
+generatePostgresqlPasswordSecret: false
+generateCeleryConfigSecret: false
+
+# ---------------------------------------------------------------------------
+# Postgres: the single shared instance (ARCHITECTURE.md §2, §9 — do not split).
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: false
+  postgresqlHost: "postgres.infra.svc.cluster.local"
+  postgresqlUsername: dagster
+  postgresqlDatabase: dagster
+  service:
+    port: 5432
+
+# ---------------------------------------------------------------------------
+# Webserver. No ingress here on purpose: traffic reaches it only through
+# oauth2-proxy -> graphql-authz-proxy (§5). Exposing this Service directly
+# would bypass the read-only control entirely.
+# ---------------------------------------------------------------------------
+dagsterWebserver:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+  # Belt and braces. The proxy is the real control (§5) — this only hides the
+  # mutating affordances in the UI — but there is no reason to leave them on.
+  enableReadOnly: true
+  # The UI polls GraphQL continuously and is publicly exposed; a few hundred idle
+  # viewers put real load on Postgres (§5). Cap any single statement.
+  dbStatementTimeout: 15000
+  logLevel: INFO
+  service:
+    type: ClusterIP
+    port: 80
+
+ingress:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# Daemon: schedules, sensors, run queue.
+# ---------------------------------------------------------------------------
+dagsterDaemon:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 384Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Run launcher. Each run becomes an ephemeral Job — this is what gives us the
+# memory-capped, concurrency-1 dbt build pod in §3/§4 without a second scheduler.
+# ---------------------------------------------------------------------------
+runLauncher:
+  type: K8sRunLauncher
+  config:
+    k8sRunLauncher:
+      imagePullPolicy: IfNotPresent
+      loadInclusterConfig: true
+      envSecrets:
+        # R2 credentials, source API keys, OpenMetadata JWT. Referenced by name
+        # only — never inlined into run config or tags, which render in the
+        # public UI (§5).
+        - name: ohdp-pipeline-secrets
+      envConfigMaps:
+        - name: ohdp-pipeline-config
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          # §4 budgets 1.5 GB burst for the build pod. An unbounded DuckDB query
+          # would otherwise take the node down.
+          cpu: "4"
+          memory: 1536Mi
+
+# ---------------------------------------------------------------------------
+# Concurrency. maxConcurrentRuns: 1 is load-bearing — two concurrent builds
+# would both write the DuckDB file, which is exactly what §3 forbids.
+# ---------------------------------------------------------------------------
+concurrency:
+  enabled: true
+  runs:
+    maxConcurrentRuns: 1
+
+# Bound Postgres growth; run history is backed up nightly but need not be eternal.
+retention:
+  enabled: true
+  schedule:
+    purgeAfterDays: 30
+  sensor:
+    purgeAfterDays:
+      failure: 30
+      skipped: 7
+      started: 30
+      success: 7
+
+# ---------------------------------------------------------------------------
+# Code location. Built from data/ — see ADR-0004 for the import-name remap.
+# ---------------------------------------------------------------------------
+dagster-user-deployments:
+  enabled: true
+  deployments:
+    - name: "ohdp-pipeline"
+      image:
+        repository: "ghcr.io/kgmcquate/ohdp-pipeline"
+        tag: "" # set per deploy; never "latest" (§5, reproducibility)
+        pullPolicy: IfNotPresent
+      dagsterApiGrpcArgs:
+        - "--module-name"
+        - "ohdp_orchestration.definitions"
+      port: 3030
+      includeConfigInLaunchedRuns:
+        enabled: true
+      envSecrets:
+        - name: ohdp-pipeline-secrets
+      envConfigMaps:
+        - name: ohdp-pipeline-config
+      resources:
+        requests:
+          cpu: 50m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 384Mi
+
+# Run logs are world-readable. Keep the level at INFO and make sure the
+# redaction filter in packages/shared/src/ohdp_shared/logging.py is installed in
+# the pipeline image's logging config (§5).
+pythonLogs:
+  pythonLogLevel: INFO
+
+# Compute (stdout/stderr) logs are dropped by default. Switching to
+# S3ComputeLogManager against R2 would make them browsable — do that only after
+# confirming the redaction filter covers subprocess output such as dbt's.
+computeLogManager:
+  type: NoOpComputeLogManager
+
+serviceAccount:
+  create: true
+
+telemetry:
+  enabled: false

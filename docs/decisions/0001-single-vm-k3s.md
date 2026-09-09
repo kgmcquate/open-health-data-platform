@@ -1,6 +1,12 @@
 # 0001 — Single VM with k3s, not managed Kubernetes
 
-**Status:** Accepted
+**Status:** Accepted — decision stands, reasoning amended by
+[ADR-0005](0005-hetzner-k3s-over-managed-kubernetes.md)
+
+> Two corrections from ADR-0005, left in place here rather than edited out:
+> the server type is **CX52** (no CX53 exists), and the objection to managed
+> Kubernetes is compute price, not control-plane price — free control planes
+> exist.
 
 ## Context
 

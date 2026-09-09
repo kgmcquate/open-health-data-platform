@@ -42,6 +42,24 @@ unbounded scan by design.
 ## Dagster GraphQL proxy
 
 If the Dagster UI shows errors after a Dagster upgrade, a query may use a new root
-field not on the allowlist. Add it to `ALLOWED_ROOT_FIELDS` in
-`platform/graphql-proxy/proxy/main.py` **only after** confirming it is read-only.
-Never switch the proxy to a denylist.
+field not on the allowlist. The proxy logs the rejected field name:
+
+```bash
+kubectl -n data logs deploy/gqlproxy-graphql-authz-proxy | grep denied
+```
+
+Confirm the field is read-only, then add it under
+`authz.groups[public-viewer].permissions.queries.fields` in
+`platform/helm/charts/graphql-authz-proxy/values.yaml` and redeploy. Never widen
+to `field_name: "*"`, and never switch to a denylist — a denylist silently
+reopens on every Dagster upgrade.
+
+Then re-assert the control still holds:
+
+```bash
+cd platform/helm && make verify-proxy
+```
+
+The config is read once at pod start. The chart puts a checksum annotation on the
+pod template so a values change rolls it; if you edit the ConfigMap by hand
+instead, restart the Deployment or the change does nothing.

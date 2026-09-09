@@ -1,0 +1,134 @@
+# Values for the upstream chart: open-metadata/openmetadata
+#
+#   helm repo add open-metadata https://helm.open-metadata.org
+#   helm upgrade --install openmetadata open-metadata/openmetadata -n meta \
+#     -f platform/helm/values/openmetadata.yaml
+#
+# NOTE: we deliberately do NOT install `openmetadata-dependencies`. That chart
+# bundles MySQL, Airflow and OpenSearch. We already have Postgres (§9: one
+# instance, four databases) and no Airflow (Dagster orchestrates), so it would
+# add ~2 GB of duplicate infrastructure to a node with no room for it.
+# OpenSearch is installed separately — see values/opensearch.yaml.
+
+replicaCount: 1
+
+image:
+  repository: docker.getcollate.io/openmetadata/server
+  pullPolicy: IfNotPresent
+
+openmetadata:
+  config:
+    logLevel: INFO
+    clusterName: ohdp
+
+    # ---------------------------------------------------------------------
+    # Postgres, not the chart's default MySQL.
+    # ---------------------------------------------------------------------
+    database:
+      enabled: true
+      host: postgres.infra.svc.cluster.local
+      port: 5432
+      driverClass: org.postgresql.Driver
+      dbScheme: postgresql
+      databaseName: openmetadata
+      dbParams: "sslmode=disable"
+      auth:
+        username: openmetadata
+        password:
+          secretRef: openmetadata-db-secret
+          secretKey: openmetadata-postgres-password
+      maxSize: 20
+      minSize: 5
+      initialSize: 5
+
+    # ---------------------------------------------------------------------
+    # Search. Single node, 1 shard, 0 replicas (§4).
+    # ---------------------------------------------------------------------
+    elasticsearch:
+      enabled: true
+      searchType: opensearch
+      host: opensearch-cluster-master.meta.svc.cluster.local
+      port: 9200
+      scheme: http
+      auth:
+        enabled: false
+
+    # ---------------------------------------------------------------------
+    # Auth. Every authenticated user is a viewer; the catalog is a read surface
+    # for the platform, not a place users edit (§5).
+    # Fill clientId/authority from the hosted IdP once it exists (M2).
+    # ---------------------------------------------------------------------
+    authorizer:
+      enabled: true
+      className: "org.openmetadata.service.security.DefaultAuthorizer"
+      containerRequestFilter: "org.openmetadata.service.security.JwtFilter"
+      initialAdmins:
+        - "kgmcquate"
+      principalDomain: "ohdp.local"
+      enforcePrincipalDomain: false
+
+    authentication:
+      enabled: true
+      clientType: public
+      provider: "basic" # -> "custom-oidc" once the IdP is wired up (M2)
+      publicKeys:
+        - "http://openmetadata:8585/api/v1/system/config/jwks"
+      authority: ""
+      clientId: ""
+      callbackUrl: ""
+      responseType: id_token
+      jwtPrincipalClaims:
+        - "email"
+        - "preferred_username"
+        - "sub"
+
+    fernetkey:
+      # Never commit a real key. Create the secret out of band.
+      value: ""
+      secretRef: openmetadata-fernet-secret
+      secretKey: fernetKey
+
+    # No Airflow. Dagster owns orchestration (§2); leaving this enabled makes
+    # the UI advertise ingestion pipelines that cannot run.
+    pipelineServiceClientConfig:
+      enabled: false
+
+service:
+  type: ClusterIP
+  port: 8585
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: catalog.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: openmetadata-tls
+      hosts:
+        - catalog.example.com
+
+# §4 budgets 2 GB. This is a JVM — the limit must leave room above the heap or
+# the pod is OOMKilled by the kernel rather than throwing a Java OOM.
+resources:
+  requests:
+    cpu: 250m
+    memory: 1536Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+extraEnvs:
+  - name: OPENMETADATA_HEAP_OPTS
+    value: "-Xmx1400m -Xms1400m"
+
+podSecurityContext:
+  runAsNonRoot: true
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]

@@ -1,0 +1,148 @@
+# graphql-authz-proxy — the thing that actually enforces read-only on the
+# publicly exposed Dagster UI (ARCHITECTURE.md §5). Dagster's own read-only mode
+# is a UI concern; this is the control.
+#
+# Request path:  Cloudflare -> Traefik -> oauth2-proxy -> THIS -> dagster-webserver
+# oauth2-proxy sets X-Forwarded-Email / -User / -Preferred-Username, which the
+# proxy reads to resolve a user. Unrecognised users fall through to
+# authz.defaultGroups.
+
+replicaCount: 1
+
+image:
+  repository: docker.io/kgmcquate/graphql-authz-proxy
+  # Upstream publishes only a floating :latest tag, so pin the digest instead.
+  # Re-resolve deliberately after reviewing what changed:
+  #   docker buildx imagetools inspect kgmcquate/graphql-authz-proxy:latest
+  digest: "sha256:20158548585fd82320416a73234940d1a4178cde427031a3599cb05f7d895000"
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+upstream:
+  # Dagster webserver Service. Must match the Dagster release name/namespace.
+  url: "http://dagster-dagster-webserver.data.svc.cluster.local:80"
+  graphqlPath: "/graphql"
+
+server:
+  # MUST be 0.0.0.0. The CLI defaults to 127.0.0.1, which binds gunicorn to
+  # loopback and makes the pod unreachable through its Service. (The upstream
+  # repo's own Kubernetes example omits this and does not work as written.)
+  host: "0.0.0.0"
+  port: 5000
+  workers: 2
+  healthcheckPath: "/gqlproxy/health"
+  # Token re-validation against the IdP on every request. Leave off while
+  # oauth2-proxy is the only entry point; turn on if the proxy is ever reachable
+  # without it.
+  validateToken: false
+  idp: "github"
+  enableConfigJinja: false
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false # Traefik routes to oauth2-proxy, which forwards here.
+  className: traefik
+  annotations: {}
+  host: dagster.example.com
+  tls:
+    enabled: true
+    secretName: dagster-tls
+
+# Shares the 0.3 GB budget line with ingress/cert-manager/oauth2-proxy (§4).
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 192Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# ---------------------------------------------------------------------------
+# Authorization config. Rendered into a ConfigMap as users.yaml / groups.yaml.
+# ---------------------------------------------------------------------------
+authz:
+  # Users the proxy recognises by email or username. Everyone else — including
+  # every anonymous visitor — gets defaultGroups.
+  users:
+    - username: kgmcquate
+      email: kgmcquate@gmail.com
+      groups:
+        - admin
+
+  # Applied when no users[] entry matches. This is what makes a public,
+  # read-only Dagster UI possible without enumerating visitors.
+  defaultGroups:
+    - public-viewer
+
+  groups:
+    - name: admin
+      description: Full access. Only for the operator.
+      permissions:
+        queries:
+          effect: allow
+          fields:
+            - field_name: "*"
+        mutations:
+          effect: allow
+          fields:
+            - field_name: "*"
+
+    - name: public-viewer
+      description: >-
+        Anonymous and unrecognised users. Allowlist, never a denylist — a
+        denylist silently reopens on every Dagster upgrade (§5).
+      permissions:
+        mutations:
+          effect: deny
+          fields:
+            - field_name: "*"
+        queries:
+          effect: allow
+          # Each entry here is a deliberate decision to make something public.
+          # To extend: reproduce the denial, read the proxy log line naming the
+          # rejected field, confirm it is read-only, then add it.
+          fields:
+            # Run history
+            - field_name: runsOrError
+            - field_name: pipelineRunsOrError
+            - field_name: runOrError
+            - field_name: runGroupOrError
+            - field_name: runTagsOrError
+            # Asset graph
+            - field_name: assetNodes
+            - field_name: assetNodeOrError
+            - field_name: assetsLatestInfo
+            - field_name: assetOrError
+            - field_name: assetsOrError
+            # Code locations / repositories
+            - field_name: repositoriesOrError
+            - field_name: repositoryOrError
+            - field_name: workspaceOrError
+            # Schedules and sensors (status only — starting/stopping is a mutation)
+            - field_name: instigationStatesOrError
+            - field_name: instigationStateOrError
+            # UI bootstrap
+            - field_name: version
+            - field_name: permissions
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

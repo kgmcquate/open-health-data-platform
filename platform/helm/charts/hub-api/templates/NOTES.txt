@@ -1,0 +1,15 @@
+hub-api {{ .Chart.Version }} deployed as {{ include "hub-api.fullname" . }}.
+
+{{ if .Values.ingress.enabled -}}
+  API:  https://{{ .Values.ingress.host }}{{ .Values.ingress.path }}
+{{- else -}}
+  No ingress. Port-forward with:
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "hub-api.fullname" . }} 8000:{{ .Values.service.port }}
+{{- end }}
+
+Secrets expected in namespace {{ .Release.Namespace }}:
+{{- range .Values.envFrom.secrets }}
+  - {{ . }}
+{{- end }}
+Verify they exist before reporting a CrashLoopBackOff:
+  kubectl -n {{ .Release.Namespace }} get secret {{ join " " .Values.envFrom.secrets }}

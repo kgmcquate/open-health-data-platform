@@ -149,8 +149,16 @@ between a broken upstream API and a wrong number on a clinician's dashboard.
 
 ## 4. Deployment topology
 
-Single VM. Hetzner CX53 (16 vCPU, 32 GB, 320 GB NVMe), k3s, Germany or Finland.
-Do not use EKS: the control plane alone exceeds the entire infrastructure budget.
+Single VM. Hetzner **CX52** (16 vCPU, 32 GB, 320 GB NVMe), k3s, Germany or Finland.
+Provisioned by `platform/terraform`; workloads deployed with Helm.
+
+> Corrected 2026-09-09: earlier drafts said "CX53", which is not a Hetzner server
+> type. The specs and price quoted were those of the CX52. Note CX52 is EU-only —
+> a US region needs `cpx51` (AMD, 16 vCPU / 32 GB / 360 GB).
+
+Do not use EKS or GKE. Note the reason is *compute* cost, not control-plane cost:
+some providers (Vultr VKE among them) give the control plane away free, but their
+compute runs ~4-5x Hetzner's for the same RAM. See [ADR-0005](decisions/0005-hetzner-k3s-over-managed-kubernetes.md).
 
 ```mermaid
 flowchart TB
@@ -227,7 +235,7 @@ down the node.
 
 | Item | Monthly |
 |---|---|
-| Hetzner CX53 + IPv4 | ~$33 |
+| Hetzner CX52 + IPv4 | ~$35 (EUR 32.40 + IPv4) |
 | R2 (10 GB free tier), Cloudflare, hosted IdP, Grafana Cloud, Resend | $0 |
 | Domain amortized | ~$1 |
 | LLM inference | Variable — quota-gated |
@@ -253,6 +261,11 @@ Tokens carry a `tier` claim (`free` | `paid`).
 
 Dagster is publicly exposed. Its own read-only mode is a UI-level concern only;
 the GraphQL proxy is what actually enforces it.
+
+Implemented with [`kgmcquate/graphql-authz-proxy`](https://github.com/kgmcquate/graphql-authz-proxy),
+deployed from `platform/helm/charts/graphql-authz-proxy` — policy is config, not
+code ([ADR-0006](decisions/0006-upstream-charts-and-external-authz-proxy.md),
+which also records two upstream defects to fix before this goes public).
 
 - **Allowlist, not denylist.** Permit read operations (`runsOrError`, `assetNodes`,
   `assetsLatestInfo`, `pipelineRunsOrError`, `instigationStatesOrError`) and reject
@@ -342,11 +355,13 @@ health-data-platform/
 │       └── seed/               # Glossary terms, domains, custom properties
 │
 ├── platform/
+│   ├── terraform/              # Hetzner VM + firewall, Cloudflare DNS + R2, k3s via cloud-init
+│   ├── helm/
+│   │   ├── charts/hub-api/                # our chart — FastAPI backend
+│   │   ├── charts/graphql-authz-proxy/    # our chart — wraps kgmcquate/graphql-authz-proxy
+│   │   └── values/             # values for upstream dagster/openmetadata/opensearch charts
 │   ├── k3s/
-│   │   ├── base/               # Namespaces, ingress, cert-manager
-│   │   ├── charts/             # Helm values per component
-│   │   └── overlays/
-│   ├── graphql-proxy/          # Dagster GraphQL allowlist proxy
+│   │   └── base/               # Namespaces, ingress, cert-manager
 │   └── scripts/                # Bootstrap, backup, restore
 │
 ├── packages/
@@ -404,7 +419,11 @@ Forecasting scored against a naive baseline with WIS.
 
 Things that will look like reasonable improvements and are not:
 
-- **Do not add managed Kubernetes.** The control plane cost exceeds the total budget.
+- **Do not move to a more expensive host for managed Kubernetes.** The original
+  wording here ("the control plane cost exceeds the total budget") was wrong:
+  free managed control planes exist. The binding constraint is compute price per
+  GB of RAM, where Hetzner is ~4-5x cheaper than the managed-k8s providers.
+  [ADR-0005](decisions/0005-hetzner-k3s-over-managed-kubernetes.md) has the numbers.
 - **Do not adopt DuckDB's Quack client-server protocol yet.** It is promoted to stable
   in DuckDB 2.0, which had no release candidate date as of August 2026. Evaluate it,
   document the evaluation, but keep the serving path on publish-and-replicate.

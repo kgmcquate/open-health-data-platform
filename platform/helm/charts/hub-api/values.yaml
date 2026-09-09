@@ -1,0 +1,98 @@
+# hub-api — the only always-on component that talks to users AND to Cube.
+# Single replica by design (ARCHITECTURE.md §1.4, §9).
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kgmcquate/ohdp-hub-api
+  # Pin a digest or immutable tag in production. "latest" makes rollbacks
+  # meaningless and lets a rebuild change what is running without a deploy.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  host: app.example.com
+  path: /api
+  pathType: Prefix
+  tls:
+    enabled: true
+    secretName: hub-api-tls
+
+# ARCHITECTURE.md §4 budgets 0.5 GB for hub-web + hub-api combined.
+# Limits are mandatory on every pod — the node runs near its ceiling.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 320Mi
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 20
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# Non-secret configuration only. Anything sensitive belongs in envFrom.secrets
+# and is referenced by name — never rendered into a manifest (§5).
+env:
+  OHDP_ENVIRONMENT: prod
+  OHDP_LOG_JSON: "true"
+  OHDP_LOG_LEVEL: INFO
+  OHDP_CUBE_API_URL: http://cube.data.svc.cluster.local:4000
+  OHDP_OPENMETADATA_URL: http://openmetadata.meta.svc.cluster.local:8585
+  # Provisional quotas — ARCHITECTURE.md §10.3
+  OHDP_FREE_MONTHLY_QUESTIONS: "20"
+  OHDP_PAID_MONTHLY_QUESTIONS: "500"
+
+envFrom:
+  # Create these out of band (sealed-secrets, SOPS, or kubectl). They hold
+  # OHDP_APP_DATABASE_URL, OHDP_CUBE_API_SECRET, OHDP_OPENMETADATA_JWT,
+  # Stripe keys, and the OIDC client secret.
+  secrets:
+    - hub-api-secrets
+  configMaps: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

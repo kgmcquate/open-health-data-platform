@@ -10,8 +10,8 @@ venv/
 .coverage
 htmlcov/
 
-# uv
-uv.lock
+# uv: uv.lock IS committed — this is an application, not a library, and
+# reproducible builds depend on it.
 
 # Node
 node_modules/
@@ -34,6 +34,21 @@ data/dbt/logs/
 *.duckdb.wal
 data/warehouse/
 data/snapshots/
+
+# Terraform (.terraform.lock.hcl IS committed — pin provider hashes)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+terraform.tfvars
+*.auto.tfvars
+override.tf
+override.tf.json
+
+# Helm — vendored subchart tarballs only. NOT platform/helm/charts/, which is ours.
+*.tgz
+platform/helm/charts/*/charts/
+platform/helm/charts/*/Chart.lock
 
 # Env / secrets
 .env

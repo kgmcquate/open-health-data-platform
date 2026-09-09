@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gqlproxy.fullname" . }}
+  labels:
+    {{- include "gqlproxy.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "gqlproxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gqlproxy.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Roll the pod when the allowlist changes — the config is read once at
+        # startup, so without this a policy edit silently does nothing.
+        checksum/authz: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: proxy
+          image: {{ include "gqlproxy.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+          env:
+            - name: UPSTREAM_URL
+              value: {{ .Values.upstream.url | quote }}
+            - name: UPSTREAM_GRAPHQL_PATH
+              value: {{ .Values.upstream.graphqlPath | quote }}
+            - name: USERS_CONFIG_FILE
+              value: /etc/authz/users.yaml
+            - name: GROUPS_CONFIG_FILE
+              value: /etc/authz/groups.yaml
+            - name: HOST
+              value: {{ .Values.server.host | quote }}
+            - name: PORT
+              value: {{ .Values.server.port | quote }}
+            - name: WORKERS
+              value: {{ .Values.server.workers | quote }}
+            - name: HEALTHCHECK_PATH
+              value: {{ .Values.server.healthcheckPath | quote }}
+            - name: VALIDATE_TOKEN
+              value: {{ .Values.server.validateToken | quote }}
+            - name: IDP
+              value: {{ .Values.server.idp | quote }}
+            - name: ENABLE_CONFIG_JINJA
+              value: {{ .Values.server.enableConfigJinja | quote }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.server.healthcheckPath }}
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.server.healthcheckPath }}
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: authz
+              mountPath: /etc/authz
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: authz
+          configMap:
+            name: {{ include "gqlproxy.fullname" . }}-authz
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

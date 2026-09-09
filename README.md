@@ -22,8 +22,9 @@ as a product.
 | `data/ml` | Anomaly detection and forecasting, classical baselines first |
 | `semantic/cube` | Cube Core semantic layer — one definition per metric |
 | `catalog/openmetadata` | Catalog sync (Cube → metrics, dbt → lineage) and seed data |
-| `platform/k3s` | k3s manifests and Helm values for the single VM |
-| `platform/graphql-proxy` | Dagster GraphQL allowlist proxy (read-only enforcement) |
+| `platform/terraform` | Hetzner VM, Cloudflare DNS + R2, k3s bootstrap |
+| `platform/helm` | Charts for hub-api and the authz proxy; values for upstream charts |
+| `platform/k3s` | Base manifests — namespaces, ingress, cert-manager |
 | `packages/shared` | Shared Python config, types, redacting logger |
 | `docs` | Architecture, ADRs, runbook |
 

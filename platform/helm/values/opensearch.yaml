@@ -1,0 +1,71 @@
+# Values for the upstream chart: opensearch/opensearch
+#
+#   helm repo add opensearch https://opensearch-project.github.io/helm-charts
+#   helm upgrade --install opensearch opensearch/opensearch -n meta \
+#     -f platform/helm/values/opensearch.yaml
+#
+# The single largest memory consumer on the node (3 GB, ARCHITECTURE.md §4).
+# Installed standalone rather than via openmetadata-dependencies so we don't also
+# get MySQL and Airflow.
+
+clusterName: "opensearch-cluster"
+nodeGroup: "master"
+masterService: "opensearch-cluster-master"
+
+# Single node. Not HA — that is the design (§1.4, §9).
+replicas: 1
+roles:
+  - master
+  - ingest
+  - data
+
+singleNode: true
+
+opensearchJavaOpts: "-Xmx2g -Xms2g"
+
+# Limit must exceed heap: the JVM needs off-heap space for Lucene, threads and
+# direct buffers. 2 GB heap inside a 2 GB limit is an OOMKill waiting to happen.
+resources:
+  requests:
+    cpu: 250m
+    memory: 2560Mi
+  limits:
+    cpu: "2"
+    memory: 3Gi
+
+persistence:
+  enabled: true
+  # k3s ships local-path as the default StorageClass; the node has 320 GB NVMe.
+  storageClass: local-path
+  size: 20Gi
+
+config:
+  opensearch.yml: |
+    cluster.name: opensearch-cluster
+    network.host: 0.0.0.0
+    discovery.type: single-node
+    # This cluster holds a search index over public metadata and is reachable
+    # only from inside the cluster. The security plugin costs memory we do not
+    # have; the NetworkPolicy below is the control instead.
+    plugins.security.disabled: true
+    # 1 shard, 0 replicas on a single node — anything else stays yellow forever.
+    index.number_of_shards: 1
+    index.number_of_replicas: 0
+
+extraEnvs:
+  - name: DISABLE_INSTALL_DEMO_CONFIG
+    value: "true"
+  - name: DISABLE_SECURITY_PLUGIN
+    value: "true"
+
+rbac:
+  create: false
+
+networkPolicy:
+  create: true
+  # Only OpenMetadata may talk to OpenSearch.
+  http:
+    enabled: true
+
+sysctlInit:
+  enabled: true # sets vm.max_map_count; also pre-set by cloud-init
