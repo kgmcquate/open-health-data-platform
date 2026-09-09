@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Bring the platform up on a fresh DOKS cluster from platform/terraform.
-# See platform/helm/README.md for the full sequence.
+# The external secrets (R2, source API keys, Stripe, OIDC, OM JWT) are created
+# by the `secrets` step of .github/workflows/deploy-platform.yml, or by hand —
+# see platform/helm/README.md. This script only does the parts that need no
+# out-of-band values.
 set -euo pipefail
 
 : "${KUBECONFIG:?export KUBECONFIG from platform/terraform first}"
-: "${DOPPLER_TOKEN:?a Doppler service token is required}"
 
-kubectl create namespace external-secrets --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n external-secrets create secret generic doppler-token \
-  --from-literal=dopplerToken="$DOPPLER_TOKEN" \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-make -C "$(dirname "$0")/../helm" repos infra install
+make -C "$(dirname "$0")/../helm" repos infra
+echo
+echo "Foundation up. Now create ohdp-pipeline-secrets and hub-api-secrets"
+echo "(platform/helm/README.md), then: make -C platform/helm install"

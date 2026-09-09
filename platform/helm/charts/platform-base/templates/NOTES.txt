@@ -13,5 +13,5 @@ Postgres: StatefulSet postgres in namespace infra, {{ .Values.postgres.storageSi
   Watch it come up:  kubectl -n infra rollout status statefulset/postgres
 
 Still needed before the data platform will run:
-  - External Secrets Operator + the Doppler ClusterSecretStore  (make eso)
-  - Traefik + cert-manager                                      (make traefik cert-manager)
+  - Traefik + cert-manager + ClusterIssuer   (make traefik cert-manager cluster-issuer)
+  - External secrets ohdp-pipeline-secrets / hub-api-secrets  (see helm/README.md)

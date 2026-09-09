@@ -4,18 +4,16 @@ Charts we own, and values files for the upstream charts.
 
 ```
 charts/
-  platform-base/           our chart — namespaces, generated internal secrets,
-                           the shared Postgres StatefulSet, the ClusterIssuer
-  external-secrets-config/  our chart — the Doppler ClusterSecretStore + ExternalSecrets
-  hub-api/                 our chart — the FastAPI backend
-  graphql-authz-proxy/     our chart — wraps kgmcquate/graphql-authz-proxy
+  platform-base/        our chart — namespaces, generated internal secrets,
+                        the shared Postgres StatefulSet, the ClusterIssuer
+  hub-api/              our chart — the FastAPI backend
+  graphql-authz-proxy/  our chart — wraps kgmcquate/graphql-authz-proxy
 values/
-  traefik.yaml             for traefik/traefik
-  cert-manager.yaml        for jetstack/cert-manager
-  external-secrets.yaml    for external-secrets/external-secrets
-  dagster.yaml             for dagster/dagster
-  openmetadata.yaml        for open-metadata/openmetadata  (pinned to 1.13.x)
-  opensearch.yaml          for opensearch/opensearch
+  traefik.yaml          for traefik/traefik
+  cert-manager.yaml     for jetstack/cert-manager
+  dagster.yaml          for dagster/dagster
+  openmetadata.yaml     for open-metadata/openmetadata  (pinned to 1.13.x)
+  opensearch.yaml       for opensearch/opensearch
 ```
 
 Every upstream chart version is pinned in the `Makefile` (`*_VERSION`).
@@ -37,42 +35,58 @@ exists for them.
 ## Prerequisites
 
 - A cluster from [`platform/terraform`](../terraform) with `KUBECONFIG` exported.
-- A Doppler service token in the cluster — the one secret you create by hand:
 
-  ```bash
-  kubectl create namespace external-secrets
-  kubectl -n external-secrets create secret generic doppler-token \
-    --from-literal=dopplerToken=dp.st.xxxxxxxx
-  ```
+### Secrets
 
-  It must be scoped to a Doppler config holding: `STRIPE_SECRET_KEY`,
-  `OIDC_CLIENT_SECRET`, `OHDP_OPENMETADATA_JWT`, `OHDP_R2_ACCESS_KEY_ID`,
-  `OHDP_R2_SECRET_ACCESS_KEY`, `OHDP_R2_ENDPOINT_URL`, `OHDP_OPENAQ_API_KEY`,
-  `OHDP_CDC_APP_TOKEN`. Keys map 1:1 in `charts/external-secrets-config/values.yaml`.
+`make infra` (the `platform-base` chart) generates every **internal** secret and
+keeps it stable across upgrades:
 
-Everything else is created by `make infra`:
-
-| What | Created by | Secret / resource |
+| Secret | Namespace | Holds |
 |---|---|---|
-| Namespaces `app data bi meta infra` | `platform-base` | — |
-| Postgres passwords (× 5), Cube secret, OM fernet key | `platform-base` (generated once, kept on upgrade) | `infra/postgres-secret`, `data/dagster-postgresql-secret`, `meta/openmetadata-db-auth`, `meta/openmetadata-fernet-secret`, `data/cube-secret`, `app/hub-api-db` |
-| Non-secret pipeline env | `platform-base` | `data/ohdp-pipeline-config` (ConfigMap) |
-| Shared Postgres StatefulSet | `platform-base` | `infra` |
-| `letsencrypt-prod` ClusterIssuer | `platform-base` (once cert-manager CRDs exist) | — |
-| Stripe / OIDC / R2 / API keys | External Secrets Operator ← Doppler | `data/ohdp-pipeline-secrets`, `app/hub-api-secrets` |
+| `postgres-secret` | `infra` | postgres + the 4 database passwords |
+| `dagster-postgresql-secret` | `data` | mirror of the dagster password |
+| `openmetadata-db-auth` | `meta` | mirror of the openmetadata password |
+| `openmetadata-fernet-secret` | `meta` | OpenMetadata fernet key |
+| `cube-secret` | `data` | hub-api ↔ Cube shared secret |
+| `hub-api-db` | `app` | `OHDP_APP_DATABASE_URL`, `OHDP_CUBE_API_SECRET` |
+| `ohdp-pipeline-config` (ConfigMap) | `data` | non-secret pipeline env |
+
+The **external** secrets are GitHub Actions repo secrets, injected by the
+`secrets` step of [`deploy-platform.yml`](../../.github/workflows/deploy-platform.yml).
+For a manual deploy, create them yourself after `make base`:
+
+```bash
+kubectl -n data create secret generic ohdp-pipeline-secrets \
+  --from-literal=OHDP_R2_ACCESS_KEY_ID=... \
+  --from-literal=OHDP_R2_SECRET_ACCESS_KEY=... \
+  --from-literal=OHDP_R2_ENDPOINT_URL=https://nyc3.digitaloceanspaces.com \
+  --from-literal=OHDP_OPENAQ_API_KEY=... \
+  --from-literal=OHDP_CDC_APP_TOKEN=... \
+  --from-literal=OHDP_OPENMETADATA_JWT=          # fill after OpenMetadata's first boot
+
+kubectl -n app create secret generic hub-api-secrets \
+  --from-literal=OHDP_OPENMETADATA_JWT= \
+  --from-literal=STRIPE_SECRET_KEY= \
+  --from-literal=OIDC_CLIENT_SECRET=
+```
+
+`OHDP_OPENMETADATA_JWT` is minted by OpenMetadata itself (Settings → Bots →
+`ingestion-bot`); leave it empty for the first deploy, then patch both secrets
+and restart the consumers.
 
 ## Install
 
 ```bash
 make repos      # add + update upstream helm repos
-make infra      # platform-base, Traefik, cert-manager, ClusterIssuer, ESO
+make infra      # platform-base, Traefik, cert-manager, ClusterIssuer
+# create the external secrets (above)
 make install    # opensearch, openmetadata, proxy
 make dagster TAG=sha-...     # needs a built pipeline image
 make hub-api  TAG=sha-...
 ```
 
 Order matters — OpenSearch must be green before OpenMetadata starts or its
-migration job fails; `make install` and `make infra` sequence this for you.
+migration job fails; `make install` sequences this for you.
 
 ## Before trusting the proxy
 

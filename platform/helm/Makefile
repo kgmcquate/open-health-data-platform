@@ -15,9 +15,8 @@ OPENMETADATA_VERSION    ?= 1.13.5
 DAGSTER_VERSION         ?= 1.13.21
 TRAEFIK_VERSION         ?= 41.5.0
 CERT_MANAGER_VERSION    ?= v1.21.1
-EXTERNAL_SECRETS_VERSION ?= 2.10.0
 
-.PHONY: help repos lint template base cluster-issuer traefik cert-manager eso infra \
+.PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy hub-api verify-proxy
 
 help: ## List targets
@@ -29,18 +28,15 @@ repos: ## Add and update upstream chart repos
 	$(HELM) repo add opensearch https://opensearch-project.github.io/helm-charts
 	$(HELM) repo add traefik https://traefik.github.io/charts
 	$(HELM) repo add jetstack https://charts.jetstack.io
-	$(HELM) repo add external-secrets https://charts.external-secrets.io
 	$(HELM) repo update
 
 lint: ## Lint the charts we own
 	$(HELM) lint $(CHARTS)/platform-base
-	$(HELM) lint $(CHARTS)/external-secrets-config
 	$(HELM) lint $(CHARTS)/hub-api --set image.tag=0.0.0-dev
 	$(HELM) lint $(CHARTS)/graphql-authz-proxy
 
 template: ## Render the charts we own locally (catches template errors without a cluster)
 	$(HELM) template platform-base $(CHARTS)/platform-base >/dev/null && echo "platform-base OK"
-	$(HELM) template esc $(CHARTS)/external-secrets-config >/dev/null && echo "external-secrets-config OK"
 	$(HELM) template hub-api $(CHARTS)/hub-api --set image.tag=0.0.0-dev >/dev/null && echo "hub-api OK"
 	$(HELM) template gqlproxy $(CHARTS)/graphql-authz-proxy >/dev/null && echo "graphql-authz-proxy OK"
 
@@ -62,18 +58,11 @@ cert-manager: ## Install cert-manager (HTTP-01 solver for Traefik)
 cluster-issuer: ## Create the letsencrypt-prod ClusterIssuer (re-renders platform-base once the CRDs exist)
 	$(HELM) upgrade platform-base $(CHARTS)/platform-base -n infra --wait --timeout 5m
 
-eso: ## External Secrets Operator + the Doppler ClusterSecretStore and ExternalSecrets
-	@$(KUBECTL) -n external-secrets get secret doppler-token >/dev/null 2>&1 || { \
-	  echo "create the bootstrap token first:"; \
-	  echo "  kubectl create ns external-secrets"; \
-	  echo "  kubectl -n external-secrets create secret generic doppler-token --from-literal=dopplerToken=dp.st.xxxx"; \
-	  exit 1; }
-	$(HELM) upgrade --install external-secrets external-secrets/external-secrets --version $(EXTERNAL_SECRETS_VERSION) \
-		-n external-secrets --create-namespace -f $(VALUES)/external-secrets.yaml --wait --timeout 5m
-	$(HELM) upgrade --install external-secrets-config $(CHARTS)/external-secrets-config \
-		-n external-secrets --wait --timeout 2m
+infra: base traefik cert-manager cluster-issuer ## Cluster foundation: platform-base, ingress, cert-manager, issuer
 
-infra: base traefik cert-manager cluster-issuer eso ## Everything under the data platform
+# The external secrets (R2, source API keys, Stripe, OIDC, OM ingestion JWT) are
+# injected by .github/workflows/deploy-platform.yml from repo secrets — not by a
+# make target. For a manual/local deploy, see platform/helm/README.md.
 
 # --------------------------------------------------------------------------
 # Data platform
