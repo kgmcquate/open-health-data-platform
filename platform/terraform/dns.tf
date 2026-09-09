@@ -6,26 +6,22 @@
 # Because the origin is closed to the internet, use the DNS-01 ACME challenge in
 # cert-manager (it has a Cloudflare token already), not HTTP-01.
 
-resource "cloudflare_record" "subdomain" {
+resource "digitalocean_record" "subdomain" {
   for_each = var.enable_dns ? toset(var.subdomains) : toset([])
 
-  zone_id = var.cloudflare_zone_id
-  name    = each.value
-  content = hcloud_primary_ip.ipv4.ip_address
-  type    = "A"
-  ttl     = 1 # 1 = automatic; required when proxied
-  proxied = true
-  comment = "Managed by Terraform — ${var.name}"
+  domain = var.domain
+  type   = "A"
+  name   = each.value
+  value  = digitalocean_kubernetes_cluster.cluster.ipv4_address
+  ttl    = 60
 }
 
-resource "cloudflare_record" "apex" {
+resource "digitalocean_record" "apex" {
   count = var.enable_dns ? 1 : 0
 
-  zone_id = var.cloudflare_zone_id
-  name    = "@"
-  content = hcloud_primary_ip.ipv4.ip_address
-  type    = "A"
-  ttl     = 1
-  proxied = true
-  comment = "Managed by Terraform — ${var.name}"
+  domain = var.domain
+  type   = "A"
+  name   = "@"
+  value  = digitalocean_kubernetes_cluster.cluster.ipv4_address
+  ttl    = 60
 }

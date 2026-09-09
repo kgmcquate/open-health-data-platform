@@ -1,6 +1,6 @@
 name: Deploy infra (Terraform)
 
-# Creates real, billed Hetzner and Cloudflare resources. Defaults to `plan`;
+# Creates real, billed DigitalOcean resources. Defaults to `plan`;
 # `apply` and `destroy` must be chosen deliberately and `destroy` additionally
 # requires typing the confirmation string.
 
@@ -33,15 +33,11 @@ defaults:
 env:
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "0"
-  TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-  TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-  TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-  TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
   TF_VAR_domain: ${{ secrets.DOMAIN }}
   TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-  # R2 credentials for the S3-compatible state backend.
-  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  # DigitalOcean Spaces credentials for the S3-compatible state backend.
+  AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
 
 jobs:
   terraform:
@@ -108,8 +104,8 @@ jobs:
       - name: Outputs
         if: inputs.action == 'apply'
         run: |
-          echo "node_ipv4=$(terraform output -raw node_ipv4)"
+          echo "cluster_id=$(terraform output -raw cluster_id)"
+          echo "cluster_endpoint=$(terraform output -raw cluster_endpoint)"
           echo ""
           echo "Fetch the kubeconfig and store it as the KUBECONFIG_B64 secret:"
-          echo "  ssh root@$(terraform output -raw node_ipv4) 'cat /etc/rancher/k3s/k3s.yaml' \\"
-          echo "    | sed \"s#127.0.0.1#$(terraform output -raw node_ipv4)#\" | base64"
+          echo "  terraform output -raw kubeconfig | base64"

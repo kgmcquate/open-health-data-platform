@@ -103,15 +103,13 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -uo pipefail
           missing=0
           for v in KUBECONFIG_B64 POSTGRES_PASSWORD DAGSTER_POSTGRES_PASSWORD \
                    SUPERSET_POSTGRES_PASSWORD OPENMETADATA_POSTGRES_PASSWORD \
                    APP_POSTGRES_PASSWORD OPENMETADATA_FERNET_KEY CUBE_API_SECRET \
-                   R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ENDPOINT_URL \
-                   CLOUDFLARE_API_TOKEN; do
+                   R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ENDPOINT_URL; do
             if [ -z "${!v:-}" ]; then
               echo "::warning::missing $v"
               missing=$((missing+1))
@@ -161,18 +159,12 @@ jobs:
             --set resources.limits.memory=128Mi \
             --wait --timeout 5m
 
-      - name: ClusterIssuer (DNS-01)
+      - name: ClusterIssuer (HTTP-01)
         if: env.COMPONENT == 'all' || env.COMPONENT == 'base'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
         run: |
           set -euo pipefail
-          # DNS-01, not HTTP-01: the Hetzner firewall admits only Cloudflare
-          # ranges on 80/443, so Let's Encrypt cannot reach the origin directly.
-          kubectl -n cert-manager create secret generic cloudflare-api-token \
-            --from-literal=api-token="$CLOUDFLARE_API_TOKEN" \
-            --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -f - <<EOF
           apiVersion: cert-manager.io/v1
           kind: ClusterIssuer
@@ -185,11 +177,9 @@ jobs:
               privateKeySecretRef:
                 name: letsencrypt-prod-account-key
               solvers:
-                - dns01:
-                    cloudflare:
-                      apiTokenSecretRef:
-                        name: cloudflare-api-token
-                        key: api-token
+                - http01:
+                    ingress:
+                      class: traefik
           EOF
 
       # -- secrets ---------------------------------------------------------

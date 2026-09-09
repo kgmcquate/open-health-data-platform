@@ -1,25 +1,3 @@
-variable "hcloud_token" {
-  description = "Hetzner Cloud API token (project-scoped, read/write)."
-  type        = string
-  sensitive   = true
-}
-
-variable "cloudflare_api_token" {
-  description = "Cloudflare API token with Zone:DNS:Edit and Workers R2 Storage:Edit."
-  type        = string
-  sensitive   = true
-}
-
-variable "cloudflare_account_id" {
-  description = "Cloudflare account ID (for R2 buckets)."
-  type        = string
-}
-
-variable "cloudflare_zone_id" {
-  description = "Cloudflare zone ID for the domain."
-  type        = string
-}
-
 variable "domain" {
   description = "Apex domain serving the platform, e.g. example.com."
   type        = string
@@ -33,70 +11,50 @@ variable "name" {
 
 variable "location" {
   description = <<-EOT
-    Hetzner location. fsn1/nbg1 = Germany, hel1 = Finland, ash/hil = US.
-    EU is cheapest; US (ash) cuts ~90ms for a US audience at a higher price.
-    Open decision — ARCHITECTURE.md §10.1.
+    DigitalOcean region for the cluster and Spaces bucket. Use a region close to
+    your users (for example fra1 for Frankfurt or nyc3 for New York).
   EOT
   type        = string
-  default     = "fsn1"
+  default     = "nyc3"
 
   validation {
-    condition     = contains(["fsn1", "nbg1", "hel1", "ash", "hil", "sin"], var.location)
-    error_message = "location must be a valid Hetzner Cloud location."
+    condition     = contains(["ams3", "blr1", "fra1", "lon1", "nyc1", "nyc2", "nyc3", "sfo2", "sfo3", "sgp1", "syd1", "tor1"], var.location)
+    error_message = "location must be a valid DigitalOcean region."
   }
 }
 
 variable "server_type" {
-  description = <<-EOT
-    Hetzner server type. cx52 = 16 vCPU / 32 GB / 320 GB NVMe, ~EUR 32.40/mo,
-    which is the budget in ARCHITECTURE.md §4. (The architecture doc said "CX53";
-    no such type exists — cx52 is the one with those specs.)
-    cx52 is Intel/shared and EU-only; use cpx51 (AMD, 16 vCPU / 32 GB / 360 GB)
-    if you move to a US location.
-  EOT
+  description = "DigitalOcean Kubernetes node size for the default pool."
   type        = string
-  default     = "cx52"
+  default     = "s-4vcpu-8gb"
 }
 
-variable "ssh_public_key" {
-  description = "SSH public key authorised for root on the node."
+variable "kubernetes_version" {
+  description = "Pinned Kubernetes version, or empty to let DigitalOcean pick the default supported version."
   type        = string
+  default     = "1.36.3-do.4"
 }
 
-variable "admin_ip_ranges" {
-  description = <<-EOT
-    CIDRs allowed to reach SSH (22) and the Kubernetes API (6443).
-    Do NOT leave this as 0.0.0.0/0 — the API server is the whole cluster.
-  EOT
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-
-  # validation {
-  #   condition     = !contains(var.admin_ip_ranges, "0.0.0.0/0")
-  #   error_message = "Refusing to expose SSH and the Kubernetes API to the internet."
-  # }
-}
-
-variable "k3s_version" {
-  description = "Pinned k3s channel or version, e.g. v1.31.5+k3s1. Empty = stable channel."
-  type        = string
-  default     = ""
+variable "node_count" {
+  description = "Number of worker nodes in the default pool."
+  type        = number
+  default     = 1
 }
 
 variable "snapshot_bucket" {
-  description = "R2 bucket for versioned DuckDB snapshots and Postgres backups."
+  description = "DigitalOcean Spaces bucket for versioned DuckDB snapshots and Postgres backups."
   type        = string
   default     = "ohdp-warehouse"
 }
 
 variable "enable_dns" {
-  description = "Manage DNS records for the platform hostnames in Cloudflare."
+  description = "Manage A records for the platform hostnames in DigitalOcean DNS."
   type        = bool
   default     = true
 }
 
 variable "subdomains" {
-  description = "Hostnames fronted by the ingress. All proxied through Cloudflare."
+  description = "Hostnames fronted by the ingress."
   type        = list(string)
   default     = ["app", "dagster", "superset", "catalog", "cube"]
 }
