@@ -4,9 +4,9 @@
 #   helm upgrade --install opensearch opensearch/opensearch -n meta \
 #     -f platform/helm/values/opensearch.yaml
 #
-# The single largest memory consumer on the node (3 GB, ARCHITECTURE.md §4).
-# Installed standalone rather than via openmetadata-dependencies so we don't also
-# get MySQL and Airflow.
+# One of the larger memory consumers on the node (2 GB limit / 1 GB heap; see
+# the resources note below). Installed standalone rather than via
+# openmetadata-dependencies so we don't also get MySQL and Airflow.
 
 clusterName: "opensearch-cluster"
 nodeGroup: "master"
@@ -21,17 +21,21 @@ roles:
 
 singleNode: true
 
-opensearchJavaOpts: "-Xmx2g -Xms2g"
+# 1 GB heap. ARCHITECTURE.md §4 budgeted 3 GB on a 16 GB Hetzner node; the DOKS
+# default node is 8 GB, so OpenSearch is squeezed to make room for Dagster and
+# BI. Fine for a search index over public metadata at this scale — revisit if
+# the node grows or the index does.
+opensearchJavaOpts: "-Xmx1g -Xms1g"
 
 # Limit must exceed heap: the JVM needs off-heap space for Lucene, threads and
-# direct buffers. 2 GB heap inside a 2 GB limit is an OOMKill waiting to happen.
+# direct buffers.
 resources:
   requests:
     cpu: 250m
-    memory: 2560Mi
+    memory: 1280Mi
   limits:
     cpu: "2"
-    memory: 3Gi
+    memory: 2Gi
 
 persistence:
   enabled: true
@@ -51,10 +55,9 @@ config:
 
 # 1 shard / 0 replicas on a single node — anything else stays yellow forever.
 # number_of_shards / number_of_replicas are index-level settings: OpenSearch
-# refuses to boot if they are in opensearch.yml. Push them as a cluster-wide
-# index template with a postStart hook instead. `_index_template` with a `*`
-# pattern covers OpenMetadata's indices and the system indices OpenSearch
-# creates on its own.
+# refuses to boot if they are in opensearch.yml. Push them from a postStart hook
+# instead: a `*` index template for indices created later, plus a one-shot
+# `_all/_settings` for any index (e.g. OpenMetadata's) that predates the hook.
 lifecycle:
   postStart:
     exec:
@@ -66,6 +69,9 @@ lifecycle:
           curl -sf -X PUT localhost:9200/_index_template/single-node-defaults \
             -H 'Content-Type: application/json' \
             -d '{"index_patterns":["*"],"priority":1,"template":{"settings":{"number_of_shards":1,"number_of_replicas":0}}}'
+          curl -sf -X PUT localhost:9200/_all/_settings \
+            -H 'Content-Type: application/json' \
+            -d '{"index":{"number_of_replicas":0}}' || true
 
 extraEnvs:
   - name: DISABLE_INSTALL_DEMO_CONFIG
