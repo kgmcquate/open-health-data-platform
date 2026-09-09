@@ -31,10 +31,14 @@ export KUBECONFIG=$PWD/kubeconfig
 cd ../helm && make repos
 make infra                               # platform-base, Traefik, cert-manager, ClusterIssuer
 # create the external secrets (helm/README.md), then:
-make install                             # opensearch, openmetadata, proxy
-make dagster TAG=sha-...                 # needs a built pipeline image
-make hub-api TAG=sha-...
+make install                             # opensearch, openmetadata, proxy, dagster
+make hub-api                             # deployed on its own for now
 ```
+
+`dagster` and `hub-api` deploy `ghcr.io/kgmcquate/ohdp-{pipeline,hub-api}` at
+the `sha-<12>` tag of the current commit (`TAG` defaults to `git rev-parse
+HEAD`). `build-images.yml` pushes that tag on every merge to `main`. Override
+with `make dagster TAG=sha-…` to roll back.
 
 ## Non-negotiables
 

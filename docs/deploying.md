@@ -48,10 +48,11 @@ Order matters, and two steps are deliberately manual.
 
 5. **Deploy the platform.**
    ```bash
-   act workflow_dispatch -W .github/workflows/deploy-platform.yml \
-     --input deploy=true --input image_tag=sha-abc123def456
+   act workflow_dispatch -W .github/workflows/deploy-platform.yml --input deploy=true
    ```
-   Leave `image_tag` blank to bring up everything except Dagster and hub-api.
+   Dagster + hub-api deploy the `sha-<12>` of the commit being run (the tag
+   `build-images.yml` pushed). Pass `--input image_tag=sha-…` to pin an older
+   build.
 
 ## Day-to-day
 
@@ -103,8 +104,9 @@ act -l
 - `deploy-platform` runs preflight only unless `deploy` is ticked.
 - Both use `concurrency` groups with `cancel-in-progress: false`, so two applies
   cannot race on Terraform state or the same Helm release.
-- `deploy-platform` skips Dagster and hub-api when `image_tag` is blank; the
-  hub-api chart additionally fails to render on `latest`.
+- `deploy-platform` deploys Dagster and hub-api at `sha-<commit>` by default;
+  the hub-api chart fails to render on `latest`, so the running image is always
+  a specific build.
 - After deploying the proxy, the workflow asserts a mutation is rejected with
   403. A Dagster upgrade that breaks the allowlist fails the deploy rather than
   silently opening the UI up.
