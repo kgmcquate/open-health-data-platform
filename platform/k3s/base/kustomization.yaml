@@ -2,6 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespaces.yaml
-  # - traefik-config.yaml
-  # - cert-manager.yaml
-  # - cluster-issuer.yaml
+  # Traefik and cert-manager are Helm releases (see platform/helm/Makefile:
+  # `make traefik`, `make cert-manager`). cluster-issuer.yaml is applied by
+  # `make cert-manager` once the cert-manager CRDs exist — it cannot go here
+  # because kustomize applies this before any CRDs are installed.

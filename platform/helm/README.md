@@ -27,7 +27,11 @@ exists for them.
 ## Prerequisites
 
 - A cluster from [`platform/terraform`](../terraform) with `KUBECONFIG` exported.
-- Namespaces + cert-manager + ClusterIssuer from [`platform/k3s/base`](../k3s/base).
+- Namespaces, the Traefik ingress controller, cert-manager and the
+  `letsencrypt-prod` ClusterIssuer: `make infra` (targets `namespaces`,
+  `traefik`, `cert-manager`). Namespaces come from
+  [`platform/k3s/base`](../k3s/base); Traefik and cert-manager are Helm releases
+  with values in [`values/`](values).
 - **Postgres in `infra`**, with databases `dagster`, `superset`, `openmetadata`,
   `app` (§2 — one instance, four databases; §9 — do not split it).
   Not yet written. When you do it in M1, prefer a plain StatefulSet or
@@ -49,7 +53,8 @@ exists for them.
 
 ```bash
 make repos      # add + update upstream helm repos
-make install    # everything, in dependency order
+make infra      # namespaces, Traefik ingress, cert-manager + ClusterIssuer
+make install    # everything else, in dependency order
 ```
 
 Or one at a time — order matters, OpenSearch must be green before OpenMetadata

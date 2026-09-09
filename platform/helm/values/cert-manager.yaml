@@ -1,0 +1,44 @@
+# Values for the upstream chart: jetstack/cert-manager
+#
+#   helm repo add jetstack https://charts.jetstack.io
+#   helm upgrade --install cert-manager jetstack/cert-manager -n infra \
+#     -f platform/helm/values/cert-manager.yaml
+#
+# Issues the TLS certs for the Traefik Ingresses. HTTP-01 challenge over the
+# `traefik` ingress class — the ClusterIssuer lives in
+# platform/k3s/base/cluster-issuer.yaml and is applied by `make cert-manager`.
+
+# The chart can install its own CRDs; keep it in one release so upgrades are
+# a single `helm upgrade`.
+crds:
+  enabled: true
+  keep: true
+
+replicaCount: 1
+
+# Small footprint — shares the 0.3 GB ingress/cert-manager budget line (§4).
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+cainjector:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

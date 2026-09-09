@@ -35,8 +35,8 @@ resources:
 
 persistence:
   enabled: true
-  # k3s ships local-path as the default StorageClass; the node has 320 GB NVMe.
-  storageClass: local-path
+  # DOKS default StorageClass — CSI-backed DigitalOcean block storage.
+  storageClass: do-block-storage
   size: 20Gi
 
 config:
@@ -48,9 +48,24 @@ config:
     # only from inside the cluster. The security plugin costs memory we do not
     # have; the NetworkPolicy below is the control instead.
     plugins.security.disabled: true
-    # 1 shard, 0 replicas on a single node — anything else stays yellow forever.
-    index.number_of_shards: 1
-    index.number_of_replicas: 0
+
+# 1 shard / 0 replicas on a single node — anything else stays yellow forever.
+# number_of_shards / number_of_replicas are index-level settings: OpenSearch
+# refuses to boot if they are in opensearch.yml. Push them as a cluster-wide
+# index template with a postStart hook instead. `_index_template` with a `*`
+# pattern covers OpenMetadata's indices and the system indices OpenSearch
+# creates on its own.
+lifecycle:
+  postStart:
+    exec:
+      command:
+        - bash
+        - -c
+        - |
+          until curl -sf localhost:9200/_cluster/health >/dev/null; do sleep 5; done
+          curl -sf -X PUT localhost:9200/_index_template/single-node-defaults \
+            -H 'Content-Type: application/json' \
+            -d '{"index_patterns":["*"],"priority":1,"template":{"settings":{"number_of_shards":1,"number_of_replicas":0}}}'
 
 extraEnvs:
   - name: DISABLE_INSTALL_DEMO_CONFIG

@@ -8,7 +8,8 @@ Everything that turns one DigitalOcean Kubernetes cluster into the running syste
 | [`helm/charts/hub-api/`](helm/charts/hub-api) | Our chart — the FastAPI backend |
 | [`helm/charts/graphql-authz-proxy/`](helm/charts/graphql-authz-proxy) | Our chart — wraps `kgmcquate/graphql-authz-proxy` |
 | [`helm/values/`](helm/values) | Values for the upstream Dagster, OpenMetadata and OpenSearch charts |
-| `k3s/base/` | Namespaces (`app`, `data`, `bi`, `meta`, `infra`), ingress, cert-manager |
+| `k3s/base/` | Namespaces (`app`, `data`, `bi`, `meta`, `infra`) + the `letsencrypt-prod` ClusterIssuer |
+| `k3s/postgres/` | The shared Postgres StatefulSet (one instance, four databases) |
 | `scripts/` | Bootstrap, `pg_dump` backup to Spaces, restore |
 
 Terraform stops at the cluster boundary. It does not manage Helm releases — a bad chart should not be able to wedge infrastructure state.
@@ -18,9 +19,10 @@ Terraform stops at the cluster boundary. It does not manage Helm releases — a 
 ```bash
 cd terraform && terraform apply          # cluster, DNS, Spaces
 export KUBECONFIG=$PWD/kubeconfig
-kubectl apply -k ../k3s/base             # namespaces, cert-manager, ClusterIssuer
-# create Postgres + the secrets listed in helm/README.md
-cd ../helm && make repos && make install
+cd ../helm && make repos && make infra   # namespaces, Traefik, cert-manager, ClusterIssuer
+kubectl apply -f ../k3s/postgres/postgres.yaml   # after creating postgres-secret
+# create the remaining secrets listed in helm/README.md
+make install
 ```
 
 ## Non-negotiables

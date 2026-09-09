@@ -4,7 +4,10 @@ SHELL := /usr/bin/env bash
 HELM ?= helm
 VALUES := values
 
-.PHONY: help repos lint template install opensearch openmetadata dagster proxy hub-api verify-proxy
+KUBECTL ?= kubectl
+BASE := ../k3s/base
+
+.PHONY: help repos lint template namespaces traefik cert-manager infra install opensearch openmetadata dagster proxy hub-api verify-proxy
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -13,6 +16,8 @@ repos: ## Add and update upstream chart repos
 	$(HELM) repo add dagster https://dagster-io.github.io/helm
 	$(HELM) repo add open-metadata https://helm.open-metadata.org
 	$(HELM) repo add opensearch https://opensearch-project.github.io/helm-charts
+	$(HELM) repo add traefik https://traefik.github.io/charts
+	$(HELM) repo add jetstack https://charts.jetstack.io
 	$(HELM) repo update
 
 lint: ## Lint the charts we own
@@ -22,6 +27,20 @@ lint: ## Lint the charts we own
 template: ## Render our charts locally (catches template errors without a cluster)
 	$(HELM) template hub-api charts/hub-api --set image.tag=0.0.0-dev >/dev/null && echo "hub-api OK"
 	$(HELM) template gqlproxy charts/graphql-authz-proxy >/dev/null && echo "graphql-authz-proxy OK"
+
+namespaces: ## Create the platform namespaces (app, data, bi, meta, infra)
+	$(KUBECTL) apply -k $(BASE)
+
+traefik: ## Install the Traefik ingress controller (provisions a DO load balancer)
+	$(HELM) upgrade --install traefik traefik/traefik --version 41.5.0 \
+		-n infra --create-namespace -f $(VALUES)/traefik.yaml --wait --timeout 5m
+
+cert-manager: ## Install cert-manager and the letsencrypt-prod ClusterIssuer (HTTP-01 via Traefik)
+	$(HELM) upgrade --install cert-manager jetstack/cert-manager --version v1.21.1 \
+		-n infra --create-namespace -f $(VALUES)/cert-manager.yaml --wait --timeout 5m
+	$(KUBECTL) apply -f $(BASE)/cluster-issuer.yaml
+
+infra: namespaces traefik cert-manager ## Cluster prerequisites: namespaces, ingress, cert-manager
 
 opensearch: ## Install OpenSearch (must be green before OpenMetadata)
 	$(HELM) upgrade --install opensearch opensearch/opensearch \

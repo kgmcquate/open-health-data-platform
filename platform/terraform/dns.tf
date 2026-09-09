@@ -1,10 +1,9 @@
-# All records are proxied (orange cloud). That is what puts Cloudflare's WAF and
-# rate limiting in front of the origin (ARCHITECTURE.md §5) — and the firewall in
-# main.tf only admits Cloudflare ranges on 80/443, so an unproxied record would
-# simply stop resolving to a reachable host.
+# A records pointing straight at the DOKS load balancer IP. The origin is
+# reachable on 80/443, so cert-manager uses the HTTP-01 ACME challenge over the
+# Traefik ingress (platform/k3s/base/cluster-issuer.yaml).
 #
-# Because the origin is closed to the internet, use the DNS-01 ACME challenge in
-# cert-manager (it has a Cloudflare token already), not HTTP-01.
+# NOTE: these are DigitalOcean DNS records, not Cloudflare. There is no edge WAF
+# in front of the origin on DOKS — see platform/terraform/README.md.
 
 resource "digitalocean_record" "subdomain" {
   for_each = var.enable_dns ? toset(var.subdomains) : toset([])

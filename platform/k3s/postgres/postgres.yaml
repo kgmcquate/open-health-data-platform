@@ -3,7 +3,7 @@
 # A plain StatefulSet rather than a chart: Bitnami moved most of its free image
 # catalogue behind Bitnami Secure Images in 2025, and CloudNativePG would add an
 # operator plus CRDs for a single un-replicated instance. This is ~100 lines and
-# does exactly what §4 budgets: 1 GB, local-path PVC, no HA.
+# does exactly what §4 budgets: 1 GB, do-block-storage PVC, no HA.
 apiVersion: v1
 kind: Service
 metadata:
@@ -126,7 +126,7 @@ spec:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: local-path
+        storageClassName: do-block-storage
         resources:
           requests:
             storage: 40Gi

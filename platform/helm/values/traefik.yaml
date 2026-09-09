@@ -1,0 +1,64 @@
+# Values for the upstream chart: traefik/traefik  (pinned to 41.x — see Makefile)
+#
+#   helm repo add traefik https://traefik.github.io/charts
+#   helm upgrade --install traefik traefik/traefik -n infra -f platform/helm/values/traefik.yaml
+#
+# DOKS ships no ingress controller. Every chart in this repo sets
+# `ingressClassName: traefik`, so this is what serves them. The Service is a
+# LoadBalancer, which makes DigitalOcean provision (and bill) one load balancer.
+
+# Single replica — no HA, that is the design (ARCHITECTURE.md §1.4, §9).
+deployment:
+  replicas: 1
+
+# Register as the default IngressClass so `ingressClassName: traefik` resolves
+# and bare Ingresses without a class also land here.
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+
+# Traefik's own dashboard IngressRoute — keep it off the public LB.
+ingressRoute:
+  dashboard:
+    enabled: false
+
+providers:
+  kubernetesIngress:
+    enabled: true
+    # Copy the LoadBalancer address onto Ingress status. cert-manager's HTTP-01
+    # solver and any future external-dns read it from there.
+    publishedService:
+      enabled: true
+  kubernetesCRD:
+    enabled: true
+
+ports:
+  web:
+    # Let's Encrypt HTTP-01 lands on :80; everything else is bounced to https.
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    http:
+      tls:
+        enabled: true
+
+service:
+  spec:
+    type: LoadBalancer
+
+# Shares the 0.3 GB budget line with cert-manager/oauth2-proxy (§4).
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 192Mi
+
+log:
+  level: INFO
