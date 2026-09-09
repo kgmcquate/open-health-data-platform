@@ -7,6 +7,7 @@ resource "digitalocean_kubernetes_cluster" "cluster" {
   region  = var.location
   version = var.kubernetes_version == "" ? null : var.kubernetes_version
   tags    = [var.name]
+  ha      = false
 
   node_pool {
     name       = "${var.name}-default"
