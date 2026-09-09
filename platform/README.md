@@ -1,10 +1,10 @@
 # platform
 
-Everything that turns one Hetzner CX52 into the running system (ARCHITECTURE.md §4).
+Everything that turns one Kamatera VM into the running system (ARCHITECTURE.md §4).
 
 | Path | What it does |
 |---|---|
-| [`terraform/`](terraform) | Hetzner VM + firewall, Cloudflare DNS + R2 buckets, k3s via cloud-init |
+| [`terraform/`](terraform) | Kamatera VM, Cloudflare DNS + R2 buckets, k3s + nftables via startup script |
 | [`helm/charts/hub-api/`](helm/charts/hub-api) | Our chart — the FastAPI backend |
 | [`helm/charts/graphql-authz-proxy/`](helm/charts/graphql-authz-proxy) | Our chart — wraps `kgmcquate/graphql-authz-proxy` |
 | [`helm/values/`](helm/values) | Values for the upstream Dagster, OpenMetadata and OpenSearch charts |
@@ -17,7 +17,7 @@ chart should not be able to wedge infrastructure state.
 ## Order of operations
 
 ```bash
-cd terraform && terraform apply          # VM, firewall, DNS, R2, k3s
+cd terraform && terraform apply          # VM, DNS, R2, k3s + host firewall
 export KUBECONFIG=$PWD/kubeconfig
 kubectl apply -k ../k3s/base             # namespaces, cert-manager, ClusterIssuer
 # create Postgres + the secrets listed in helm/README.md

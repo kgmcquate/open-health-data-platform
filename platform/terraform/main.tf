@@ -1,106 +1,72 @@
 locals {
   node_name = "${var.name}-node"
 
-  # Only Cloudflare may reach 80/443. This is what makes the WAF and rate
-  # limiting in ARCHITECTURE.md §5 actually enforceable — without it anyone can
-  # hit the origin IP directly and skip every edge control.
-  cloudflare_cidrs = concat(
-    data.cloudflare_ip_ranges.cloudflare.ipv4_cidr_blocks,
-    data.cloudflare_ip_ranges.cloudflare.ipv6_cidr_blocks,
+  # Only Cloudflare may reach 80/443 — that is what makes the §5 WAF and rate
+  # limiting unbypassable. Kamatera has no cloud firewall resource (Hetzner had
+  # hcloud_firewall), so those rules live on the host as nftables, rendered into
+  # the startup script from the Cloudflare data source and refreshed daily by a
+  # systemd timer (the startup script itself runs only once).
+
+  # The Kubernetes API (6443) cannot be Cloudflare-proxied on the free plan, so
+  # it is reached directly at k3s.<domain> (an unproxied record, see dns.tf),
+  # gated by admin_ip_ranges in nftables. k3s needs this name in its serving
+  # cert. The apex and proxied subdomains are here too so an in-cluster client
+  # hitting them by name still verifies.
+  api_hostname = "k3s.${var.domain}"
+  tls_sans = concat(
+    [local.api_hostname, var.domain],
+    [for s in var.subdomains : "${s}.${var.domain}"],
   )
 }
 
 data "cloudflare_ip_ranges" "cloudflare" {}
 
-resource "hcloud_ssh_key" "admin" {
-  name       = "${var.name}-admin"
-  public_key = var.ssh_public_key
+data "kamatera_datacenter" "node" {
+  country = var.datacenter_country
+  name    = var.datacenter_name
 }
 
-resource "hcloud_primary_ip" "ipv4" {
-  name        = "${var.name}-ipv4"
-  type        = "ipv4"
-  location    = var.location
-  auto_delete = false
-
-  lifecycle {
-    # Keep the address across server rebuilds so DNS does not have to change.
-    prevent_destroy = true
-  }
-}
-
-resource "hcloud_firewall" "node" {
-  name = "${var.name}-node"
-
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "22"
-    source_ips = var.admin_ip_ranges
-  }
-
-  rule {
-    direction   = "in"
-    protocol    = "tcp"
-    port        = "6443"
-    source_ips  = var.admin_ip_ranges
-    description = "Kubernetes API — admin networks only"
-  }
-
-  rule {
-    direction   = "in"
-    protocol    = "tcp"
-    port        = "80"
-    source_ips  = local.cloudflare_cidrs
-    description = "HTTP from Cloudflare edge only"
-  }
-
-  rule {
-    direction   = "in"
-    protocol    = "tcp"
-    port        = "443"
-    source_ips  = local.cloudflare_cidrs
-    description = "HTTPS from Cloudflare edge only"
-  }
-
-  rule {
-    direction   = "in"
-    protocol    = "icmp"
-    source_ips  = ["0.0.0.0/0", "::/0"]
-    description = "ping"
-  }
-}
-
-resource "hcloud_server" "node" {
-  name         = local.node_name
-  server_type  = var.server_type
-  location     = var.location
-  image        = "ubuntu-24.04"
-  ssh_keys     = [hcloud_ssh_key.admin.id]
-  firewall_ids = [hcloud_firewall.node.id]
-
-  public_net {
-    ipv4_enabled = true
-    ipv4         = hcloud_primary_ip.ipv4.id
-    ipv6_enabled = true
-  }
-
-  user_data = templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
-    k3s_version = var.k3s_version
-    tls_sans    = concat([hcloud_primary_ip.ipv4.ip_address], [for s in var.subdomains : "${s}.${var.domain}"])
-  })
-
-  labels = {
-    project = var.name
-    role    = "k3s-server"
-  }
-
-  lifecycle {
-    # user_data changes would otherwise force a rebuild and wipe the cluster.
-    # Re-run bootstrap by hand instead, or take the rebuild deliberately.
-    ignore_changes = [user_data, image]
-  }
+data "kamatera_image" "ubuntu" {
+  datacenter_id = data.kamatera_datacenter.node.id
+  os            = "Ubuntu"
+  code          = var.image_code
 }
 
 # Single VM, single replica, no HA (ARCHITECTURE.md §1.4, §9). There is
 # deliberately no load balancer, no second node, and no autoscaling here.
+resource "kamatera_server" "node" {
+  name          = local.node_name
+  datacenter_id = data.kamatera_datacenter.node.id
+  image_id      = data.kamatera_image.ubuntu.id
+
+  cpu_type      = var.cpu_type
+  cpu_cores     = var.cpu_cores
+  ram_mb        = var.ram_mb
+  disk_sizes_gb = [var.disk_size_gb]
+  billing_cycle = var.billing_cycle
+
+  ssh_pubkey = var.ssh_public_key
+
+  network {
+    name = "wan"
+    ip   = "auto"
+  }
+
+  # nftables (admin_ip_ranges -> 22/6443, Cloudflare -> 80/443), sysctl for
+  # OpenSearch, then k3s. Replaces Hetzner's cloud-init + hcloud_firewall.
+  startup_script = templatefile("${path.module}/templates/startup-script.sh.tftpl", {
+    k3s_version   = var.k3s_version
+    tls_sans      = local.tls_sans
+    admin_v4      = [for c in var.admin_ip_ranges : c if !strcontains(c, ":")]
+    admin_v6      = [for c in var.admin_ip_ranges : c if strcontains(c, ":")]
+    cloudflare_v4 = data.cloudflare_ip_ranges.cloudflare.ipv4_cidr_blocks
+    cloudflare_v6 = data.cloudflare_ip_ranges.cloudflare.ipv6_cidr_blocks
+  })
+
+  lifecycle {
+    # A startup_script or image change would force a rebuild and wipe the
+    # cluster. Re-run bootstrap by hand instead, or take the rebuild
+    # deliberately (terraform taint).
+    ignore_changes = [startup_script, image_id]
+  }
+}

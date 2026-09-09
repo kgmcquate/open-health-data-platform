@@ -2,9 +2,9 @@ terraform {
   required_version = ">= 1.9"
 
   required_providers {
-    hcloud = {
-      source  = "hetznercloud/hcloud"
-      version = "~> 1.48"
+    kamatera = {
+      source  = "Kamatera/kamatera"
+      version = "~> 0.9"
     }
     cloudflare = {
       # NOTE: provider v5 renamed many resources (cloudflare_record ->
@@ -18,8 +18,9 @@ terraform {
   # Backend lives in backend.tf as a partial config.
 }
 
-provider "hcloud" {
-  token = var.hcloud_token
+provider "kamatera" {
+  api_client_id = var.kamatera_api_client_id
+  api_secret    = var.kamatera_api_secret
 }
 
 provider "cloudflare" {

@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Bootstraps a single-node k3s server on a Kamatera VM. See ARCHITECTURE.md §4
+# and ADR-0005.
+#
+# Kamatera has no cloud firewall (Hetzner had hcloud_firewall), so this script
+# also stands up an nftables ruleset: admin_ip_ranges reach 22/6443, Cloudflare
+# ranges reach 80/443, nothing else. A daily systemd timer refreshes the
+# Cloudflare set — this script runs only at first boot.
+set -euxo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# --- packages --------------------------------------------------------------
+apt-get update
+apt-get install -y --no-install-recommends \
+  curl ca-certificates nftables unattended-upgrades fail2ban
+
+cat >/etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+
+# --- kernel tunables (OpenSearch refuses to start without the raised map count)
+cat >/etc/sysctl.d/99-k3s.conf <<'EOF'
+vm.max_map_count=262144
+fs.inotify.max_user_instances=1024
+fs.inotify.max_user_watches=524288
+EOF
+sysctl --system
+
+# --- host firewall -------------------------------------------------------
+# Named sets so the daily refresh can swap Cloudflare ranges without touching
+# rules. admin sets are baked once — change them via terraform + a rebuild.
+cat >/etc/nftables.conf <<'EOF'
+#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+  set admin4     { type ipv4_addr; flags interval; %{ if length(admin_v4) > 0 }elements = { ${join(", ", admin_v4)} }%{ endif } }
+  set admin6     { type ipv6_addr; flags interval; %{ if length(admin_v6) > 0 }elements = { ${join(", ", admin_v6)} }%{ endif } }
+  set cloudflare4 { type ipv4_addr; flags interval; elements = { ${join(", ", cloudflare_v4)} } }
+  set cloudflare6 { type ipv6_addr; flags interval; elements = { ${join(", ", cloudflare_v6)} } }
+
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    iif "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+
+    ip protocol icmp accept
+    ip6 nexthdr ipv6-icmp accept
+
+    # SSH + Kubernetes API — admin networks only.
+    ip  saddr @admin4 tcp dport { 22, 6443 } accept
+    ip6 saddr @admin6 tcp dport { 22, 6443 } accept
+
+    # HTTP/HTTPS — Cloudflare edge only. This is what makes the §5 WAF and rate
+    # limiting unbypassable.
+    ip  saddr @cloudflare4 tcp dport { 80, 443 } accept
+    ip6 saddr @cloudflare6 tcp dport { 80, 443 } accept
+  }
+
+  chain forward { type filter hook forward priority filter; policy accept; }
+  chain output  { type filter hook output  priority filter; policy accept; }
+}
+EOF
+systemctl enable --now nftables
+nft -f /etc/nftables.conf
+
+# --- daily Cloudflare range refresh -------------------------------------
+cat >/usr/local/bin/refresh-cloudflare-nft.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+v4=$(curl -fsS --max-time 20 https://www.cloudflare.com/ips-v4)
+v6=$(curl -fsS --max-time 20 https://www.cloudflare.com/ips-v6)
+[ -n "$v4" ] && [ -n "$v6" ] || { echo "empty range list, keeping current"; exit 0; }
+nft flush set inet filter cloudflare4
+nft flush set inet filter cloudflare6
+nft add element inet filter cloudflare4 "{ $(echo "$v4" | paste -sd, -) }"
+nft add element inet filter cloudflare6 "{ $(echo "$v6" | paste -sd, -) }"
+EOF
+chmod +x /usr/local/bin/refresh-cloudflare-nft.sh
+
+cat >/etc/systemd/system/refresh-cloudflare-nft.service <<'EOF'
+[Unit]
+Description=Refresh the Cloudflare nftables allowlist
+Wants=network-online.target
+After=network-online.target nftables.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/refresh-cloudflare-nft.sh
+EOF
+
+cat >/etc/systemd/system/refresh-cloudflare-nft.timer <<'EOF'
+[Unit]
+Description=Daily Cloudflare nftables allowlist refresh
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload
+systemctl enable --now refresh-cloudflare-nft.timer
+
+# --- k3s ----------------------------------------------------------------
+# Reserve headroom for the OS and kubelet, and evict before the kernel OOM
+# killer starts picking victims. The node runs close to its memory ceiling by
+# design (ARCHITECTURE.md §4), so these are load-bearing.
+INSTALL_K3S_EXEC=$(cat <<'ARGS'
+server
+  --write-kubeconfig-mode=0600
+  --secrets-encryption
+  --disable-cloud-controller
+  --kubelet-arg=system-reserved=cpu=500m,memory=1Gi
+  --kubelet-arg=kube-reserved=cpu=250m,memory=512Mi
+  --kubelet-arg=eviction-hard=memory.available<512Mi,nodefs.available<10%
+  --kubelet-arg=image-gc-high-threshold=70
+  --kubelet-arg=image-gc-low-threshold=60
+ARGS
+)
+INSTALL_K3S_EXEC="$(echo "$INSTALL_K3S_EXEC" | tr '\n' ' ' | tr -s ' ')"
+%{~ for san in tls_sans ~}
+INSTALL_K3S_EXEC="$INSTALL_K3S_EXEC --tls-san ${san}"
+%{~ endfor ~}
+export INSTALL_K3S_EXEC
+%{~ if k3s_version != "" ~}
+export INSTALL_K3S_VERSION="${k3s_version}"
+%{~ endif ~}
+
+curl -sfL https://get.k3s.io | sh -
+
+for _ in $(seq 1 60); do
+  if k3s kubectl get --raw='/readyz' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 5
+done
+
+k3s kubectl wait --for=condition=Ready node --all --timeout=300s
+touch /var/lib/k3s-bootstrap-complete

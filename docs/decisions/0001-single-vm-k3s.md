@@ -1,12 +1,13 @@
 # 0001 — Single VM with k3s, not managed Kubernetes
 
 **Status:** Accepted — decision stands, reasoning amended by
-[ADR-0005](0005-hetzner-k3s-over-managed-kubernetes.md)
+[ADR-0005](0005-hetzner-k3s-over-managed-kubernetes.md); compute host is now
+Kamatera per [ADR-0007](0007-kamatera-over-hetzner.md).
 
-> Two corrections from ADR-0005, left in place here rather than edited out:
-> the server type is **CX52** (no CX53 exists), and the objection to managed
-> Kubernetes is compute price, not control-plane price — free control planes
-> exist.
+> Corrections left in place rather than edited out: the objection to managed
+> Kubernetes is compute price, not control-plane price (ADR-0005), and the host
+> below is no longer Hetzner — it is a Kamatera VM in US/New York with the same
+> 32 GB spec (ADR-0007).
 
 ## Context
 

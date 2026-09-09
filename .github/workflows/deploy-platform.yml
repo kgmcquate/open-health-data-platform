@@ -168,7 +168,7 @@ jobs:
           ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
         run: |
           set -euo pipefail
-          # DNS-01, not HTTP-01: the Hetzner firewall admits only Cloudflare
+          # DNS-01, not HTTP-01: the host nftables firewall admits only Cloudflare
           # ranges on 80/443, so Let's Encrypt cannot reach the origin directly.
           kubectl -n cert-manager create secret generic cloudflare-api-token \
             --from-literal=api-token="$CLOUDFLARE_API_TOKEN" \

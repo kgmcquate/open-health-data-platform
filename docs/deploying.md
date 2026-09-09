@@ -5,7 +5,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 | Workflow | Does | Needs a cluster? |
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
-| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: Hetzner VM, firewall, Cloudflare DNS + R2 | no |
+| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: Kamatera VM, Cloudflare DNS + R2, host nftables | no |
 | [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | cert-manager, Postgres, OpenSearch, OpenMetadata, Dagster, authz proxy, hub-api | `deploy` mode only |
 
 ## Setup
@@ -34,12 +34,14 @@ Order matters, and two steps are deliberately manual.
    act workflow_dispatch -W .github/workflows/deploy-infra.yml --input action=plan
    act workflow_dispatch -W .github/workflows/deploy-infra.yml --input action=apply
    ```
-   `plan` is the default; `apply` creates billed resources.
+   `plan` is the default; `apply` creates real resources (the Kamatera VM is on
+   free compute, but the Cloudflare records and R2 buckets are live).
 
-3. **Capture the kubeconfig** into `KUBECONFIG_B64` in `.env`:
+3. **Capture the kubeconfig** into `KUBECONFIG_B64` in `.env`. `<node-ip>` and
+   the `k3s.<domain>` API hostname are both in the `apply` step's output:
    ```bash
    ssh root@<node-ip> 'cat /etc/rancher/k3s/k3s.yaml' \
-     | sed "s#127.0.0.1#<node-ip>#" | base64 | tr -d '\n'
+     | sed "s#https://127.0.0.1:6443#https://k3s.<domain>:6443#" | base64 | tr -d '\n'
    ```
 
 4. **Build images** and note the `sha-<12>` tag it prints.
