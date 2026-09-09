@@ -35,8 +35,15 @@ uv sync                 # Python workspace (data, api, packages)
 cp .env.example .env     # fill in secrets locally; never commit
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design and
-[`docs/decisions/`](docs/decisions/) for ADRs.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design,
+[`docs/decisions/`](docs/decisions/) for ADRs, and
+[`docs/deploying.md`](docs/deploying.md) for the deploy workflows (all runnable
+locally with `act`).
+
+```bash
+make act-preflight   # validate charts, policy and manifests — no cluster needed
+make images          # build both container images with docker
+```
 
 ## Build order
 

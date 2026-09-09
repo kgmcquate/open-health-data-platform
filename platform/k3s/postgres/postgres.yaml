@@ -1,0 +1,132 @@
+# One Postgres, four databases (ARCHITECTURE.md §2; §9 — do not split it).
+#
+# A plain StatefulSet rather than a chart: Bitnami moved most of its free image
+# catalogue behind Bitnami Secure Images in 2025, and CloudNativePG would add an
+# operator plus CRDs for a single un-replicated instance. This is ~100 lines and
+# does exactly what §4 budgets: 1 GB, local-path PVC, no HA.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  clusterIP: None
+  ports:
+    - port: 5432
+      targetPort: postgres
+      name: postgres
+  selector:
+    app.kubernetes.io/name: postgres
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: infra
+data:
+  # Runs only on an empty data directory. Adding a database later is a manual
+  # psql step — this file is not re-executed.
+  10-databases.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    create_db() {
+      local db="$1" user="$2" pass="$3"
+      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-SQL
+        CREATE ROLE "$user" WITH LOGIN PASSWORD '$pass';
+        CREATE DATABASE "$db" OWNER "$user";
+        REVOKE ALL ON DATABASE "$db" FROM PUBLIC;
+    SQL
+    }
+    create_db dagster      dagster      "$DAGSTER_PASSWORD"
+    create_db superset     superset     "$SUPERSET_PASSWORD"
+    create_db openmetadata openmetadata "$OPENMETADATA_PASSWORD"
+    create_db app          app          "$APP_PASSWORD"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: infra
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  serviceName: postgres
+  # Single replica. Not HA — that is the design (§1.4, §9).
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16.4-bookworm
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-secret, key: postgres-password }
+            - name: DAGSTER_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-secret, key: dagster-password }
+            - name: SUPERSET_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-secret, key: superset-password }
+            - name: OPENMETADATA_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-secret, key: openmetadata-password }
+            - name: APP_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: postgres-secret, key: app-password }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          # §4 budgets 1 GB.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
+            defaultMode: 0555
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 40Gi

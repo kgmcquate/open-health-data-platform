@@ -1,0 +1,17 @@
+# Defaults for nektos/act. Picked up automatically when running act from the
+# repo root. See docs/deploying.md.
+
+# Secrets come from .env, as does act's default --env-file. One gitignored file
+# holds both the app's OHDP_* config and the deploy secrets.
+--secret-file .env
+
+# The default act image is tiny and lacks node/python/docker, which every one of
+# these workflows needs.
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Apple Silicon: most actions publish amd64 only. Drop this line on x86_64, or
+# if you want native arm64 speed and hit no missing-image errors.
+--container-architecture linux/amd64
+
+# Keep the step summaries act writes; they are where the terraform plan lands.
+--artifact-server-path /tmp/act-artifacts

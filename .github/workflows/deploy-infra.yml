@@ -1,0 +1,141 @@
+name: Deploy infra (Terraform)
+
+# Creates real, billed Hetzner and Cloudflare resources. Defaults to `plan`;
+# `apply` and `destroy` must be chosen deliberately and `destroy` additionally
+# requires typing the confirmation string.
+
+on:
+  pull_request:
+    paths:
+      - "platform/terraform/**"
+      - ".github/workflows/deploy-infra.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to run.
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      confirm:
+        description: For destroy only — type the project name (e.g. ohdp) to confirm.
+        type: string
+        default: ""
+
+concurrency:
+  # Never let two applies touch the same state.
+  group: terraform-infra
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: platform/terraform
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+  TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+  TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+  TF_VAR_domain: ${{ secrets.DOMAIN }}
+  TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+  TF_VAR_admin_ip_ranges: ${{ secrets.ADMIN_IP_RANGES }}
+  # R2 credentials for the S3-compatible state backend.
+  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+          terraform_wrapper: false
+
+      - name: Guard destroy
+        if: inputs.action == 'destroy'
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "ohdp" ]; then
+            echo "::error::destroy requires 'confirm' to be the project name."
+            exit 1
+          fi
+          echo "::warning::Destroying all infrastructure. State bucket is not managed here and survives."
+
+      - name: Check required secrets
+        run: |
+          set -euo pipefail
+          missing=()
+          for v in TF_VAR_hcloud_token TF_VAR_cloudflare_api_token \
+                   TF_VAR_cloudflare_account_id TF_VAR_cloudflare_zone_id \
+                   TF_VAR_domain TF_VAR_ssh_public_key TF_VAR_admin_ip_ranges; do
+            [ -n "${!v:-}" ] || missing+=("$v")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf '::error::missing secret for %s\n' "${missing[@]}"
+            echo "Set them in .env (act) or repository secrets. See docs/deploying.md."
+            exit 1
+          fi
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: |
+          set -euo pipefail
+          terraform init \
+            -backend-config="bucket=${{ secrets.TFSTATE_BUCKET }}" \
+            -backend-config="key=platform/terraform.tfstate" \
+            -backend-config="region=auto" \
+            -backend-config='endpoints={"s3":"${{ secrets.R2_ENDPOINT_URL }}"}' \
+            -backend-config="skip_credentials_validation=true" \
+            -backend-config="skip_metadata_api_check=true" \
+            -backend-config="skip_region_validation=true" \
+            -backend-config="skip_requesting_account_id=true" \
+            -backend-config="skip_s3_checksum=true" \
+            -backend-config="use_lockfile=true"
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        if: inputs.action != 'destroy'
+        id: plan
+        run: terraform plan -out=tfplan -detailed-exitcode || [ $? -eq 2 ]
+
+      - name: Plan (destroy)
+        if: inputs.action == 'destroy'
+        run: terraform plan -destroy -out=tfplan
+
+      - name: Show plan
+        run: |
+          terraform show -no-color tfplan | tee plan.txt
+          {
+            echo "### terraform ${{ inputs.action || 'plan' }}"
+            echo '```terraform'
+            head -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Destroy
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Outputs
+        if: inputs.action == 'apply'
+        run: |
+          echo "node_ipv4=$(terraform output -raw node_ipv4)"
+          echo ""
+          echo "Fetch the kubeconfig and store it as the KUBECONFIG_B64 secret:"
+          echo "  ssh root@$(terraform output -raw node_ipv4) 'cat /etc/rancher/k3s/k3s.yaml' \\"
+          echo "    | sed \"s#127.0.0.1#$(terraform output -raw node_ipv4)#\" | base64"

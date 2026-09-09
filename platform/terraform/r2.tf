@@ -7,12 +7,10 @@ resource "cloudflare_r2_bucket" "warehouse" {
   location   = "EEUR"
 }
 
-# Separate bucket so a warehouse lifecycle rule can never reap state.
-resource "cloudflare_r2_bucket" "tfstate" {
-  account_id = var.cloudflare_account_id
-  name       = "${var.name}-tfstate"
-  location   = "EEUR"
-}
+# The state bucket is deliberately NOT managed here. Terraform storing its own
+# state in a bucket it also creates is a bootstrap cycle: destroying the bucket
+# destroys the record of the bucket. Create `ohdp-tfstate` once by hand in the
+# Cloudflare dashboard (or with wrangler) — see backend.tf.
 
 # Snapshot retention (provisional 14 dailies — ARCHITECTURE.md §10.4) is applied
 # by the publish job, not here: the Terraform provider does not manage R2
