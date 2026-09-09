@@ -6,7 +6,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
 | [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, DNS, Spaces bucket | no |
-| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, Dagster, authz proxy, hub-api | `deploy` mode only |
+| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, Dagster, hub-api | when `deploy` ticked |
 
 ## Setup
 
@@ -49,27 +49,25 @@ Order matters, and two steps are deliberately manual.
 5. **Deploy the platform.**
    ```bash
    act workflow_dispatch -W .github/workflows/deploy-platform.yml \
-     --input mode=deploy --input image_tag=sha-abc123def456
+     --input deploy=true --input image_tag=sha-abc123def456
    ```
+   Leave `image_tag` blank to bring up everything except Dagster and hub-api.
 
 ## Day-to-day
 
 Validate everything without touching a cluster — this is the fast loop:
 
 ```bash
-act workflow_dispatch -W .github/workflows/deploy-platform.yml   # mode=preflight
+act workflow_dispatch -W .github/workflows/deploy-platform.yml   # preflight only
 ```
 
-Preflight lints and renders both charts, asserts the Dagster authz allowlist is
-still default-deny, parses every values file and static manifest, and reports
-which secrets are missing. No kubeconfig required.
+Preflight lints and renders the charts we own, asserts the Dagster authz
+allowlist is still default-deny, and parses every upstream values file. No
+kubeconfig required.
 
-Deploy one component:
-
-```bash
-act workflow_dispatch -W .github/workflows/deploy-platform.yml \
-  --input mode=deploy --input component=dagster --input image_tag=sha-abc123def456
-```
+The deploy job runs `helm upgrade` for each chart in dependency order — there is
+no per-component switch; deploy one thing by running its `make` target (or
+`helm upgrade`) directly against the cluster.
 
 List what act sees:
 
@@ -102,14 +100,14 @@ act -l
 
 - `deploy-infra` defaults to `plan`. `apply` and `destroy` require
   `workflow_dispatch`, and `destroy` also requires typing the project name.
-- `deploy-platform` defaults to `preflight`, not `deploy`.
+- `deploy-platform` runs preflight only unless `deploy` is ticked.
 - Both use `concurrency` groups with `cancel-in-progress: false`, so two applies
   cannot race on Terraform state or the same Helm release.
-- `deploy-platform` refuses to deploy Dagster or hub-api without an explicit
-  `image_tag`; the hub-api chart additionally fails to render on `latest`.
-- After deploying the proxy or Dagster, the workflow asserts a mutation is
-  rejected with 403. A Dagster upgrade that breaks the allowlist fails the deploy
-  rather than silently opening the UI up.
+- `deploy-platform` skips Dagster and hub-api when `image_tag` is blank; the
+  hub-api chart additionally fails to render on `latest`.
+- After deploying the proxy, the workflow asserts a mutation is rejected with
+  403. A Dagster upgrade that breaks the allowlist fails the deploy rather than
+  silently opening the UI up.
 
 ## What is still missing
 

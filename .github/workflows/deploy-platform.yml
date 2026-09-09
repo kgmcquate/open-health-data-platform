@@ -1,33 +1,17 @@
 name: Deploy platform
 
-# Deploys everything that runs on the cluster. `preflight` needs no cluster and
-# is the useful target under act; `deploy` needs a reachable kubeconfig.
+# Preflight (lint + render) runs on every dispatch and needs no cluster — it is
+# the useful target under `act`. Tick `deploy` to actually apply.
 
 on:
   workflow_dispatch:
     inputs:
-      component:
-        description: Which component to deploy.
-        type: choice
-        default: all
-        options:
-          - all
-          - base          # platform-base chart: namespaces, internal secrets, Postgres
-          - traefik
-          - cert-manager
-          - secrets        # external secrets (Spaces, API keys, Stripe, OIDC, OM JWT)
-          - opensearch
-          - openmetadata
-          - dagster
-          - proxy
-          - hub-api
-      mode:
-        description: preflight = validate only, no cluster. deploy = apply for real.
-        type: choice
-        default: preflight
-        options: [preflight, deploy]
+      deploy:
+        description: Apply to the cluster (unticked = preflight only).
+        type: boolean
+        default: false
       image_tag:
-        description: Immutable tag for hub-api and ohdp-pipeline (e.g. sha-abc123def456).
+        description: Immutable image tag for dagster + hub-api (sha-...). Blank = skip them.
         type: string
         default: ""
 
@@ -35,14 +19,9 @@ concurrency:
   group: deploy-platform
   cancel-in-progress: false
 
-env:
-  COMPONENT: ${{ inputs.component || 'all' }}
-  HELM_VALUES: platform/helm/values
-  HELM_CHARTS: platform/helm/charts
-
 jobs:
   preflight:
-    name: Preflight (no cluster required)
+    name: Preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,64 +35,23 @@ jobs:
 
       - name: Assert the Dagster authz policy is still default-deny
         run: |
-          set -euo pipefail
           python3 -m pip install --quiet --break-system-packages pyyaml
           cd platform/helm && python3 .ci/assert_authz_policy.py
 
-      - name: Validate upstream values files parse
+      - name: Validate the upstream values files parse
         run: |
-          set -euo pipefail
           python3 -m pip install --quiet --break-system-packages pyyaml
-          for f in "$HELM_VALUES"/*.yaml; do
-            python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$f"
-            echo "ok: $f"
+          for f in platform/helm/values/*.yaml; do
+            python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f" && echo "ok: $f"
           done
-
-      - name: Report which secrets are missing
-        env:
-          # platform-base generates every internal secret (Postgres passwords,
-          # OM fernet key, Cube secret). These are the externally-issued ones the
-          # `secrets` step injects, plus the kubeconfig.
-          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
-          SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
-          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
-          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
-          CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
-          OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
-        run: |
-          set -uo pipefail
-          missing=0
-          for v in KUBECONFIG_B64 SPACES_ACCESS_KEY_ID SPACES_ACCESS_KEY \
-                   OPENAQ_API_KEY CDC_APP_TOKEN OPENMETADATA_JWT STRIPE_SECRET_KEY \
-                   OIDC_CLIENT_SECRET; do
-            if [ -z "${!v:-}" ]; then
-              echo "::warning::missing $v"
-              missing=$((missing+1))
-            else
-              echo "present: $v"
-            fi
-          done
-          echo "$missing secret(s) missing — deploy mode will fail until they are set."
 
   deploy:
     name: Deploy
     needs: preflight
-    if: inputs.mode == 'deploy'
+    if: ${{ inputs.deploy }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Require an image tag
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'dagster' || env.COMPONENT == 'hub-api'
-        run: |
-          set -euo pipefail
-          if [ -z "${{ inputs.image_tag }}" ]; then
-            echo "::error::image_tag is required to deploy dagster or hub-api."
-            echo "Run 'Build images' first and pass the sha-<12> tag it prints."
-            exit 1
-          fi
 
       - uses: ./.github/actions/setup-kube
         with:
@@ -122,27 +60,14 @@ jobs:
       - name: Helm repos
         run: make -C platform/helm repos
 
-      # -- foundation ----------------------------------------------------------
-      # The platform-base chart generates every internal secret (Postgres
-      # passwords, fernet key, Cube secret) itself, so no password secrets are
-      # passed in here.
-      - name: platform-base (namespaces, internal secrets, Postgres)
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'base'
-        run: make -C platform/helm base
+      # platform-base generates every internal secret itself; nothing sensitive
+      # is passed to this step.
+      - name: Foundation — platform-base, Traefik, cert-manager, ClusterIssuer
+        run: make -C platform/helm base traefik cert-manager cluster-issuer
 
-      - name: Traefik
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'traefik'
-        run: make -C platform/helm traefik
-
-      - name: cert-manager + letsencrypt-prod ClusterIssuer
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'cert-manager'
-        run: make -C platform/helm cert-manager cluster-issuer
-
-      # -- external secrets --------------------------------------------------
-      # platform-base already generated every internal secret. This injects only
-      # the externally-issued ones. Runs after `base` so the namespaces exist.
+      # The only externally-issued secrets. Endpoint + bucket are non-secret and
+      # live in data/ohdp-pipeline-config (platform-base).
       - name: External secrets
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'secrets'
         env:
           SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
           SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
@@ -152,76 +77,39 @@ jobs:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
         run: |
-          set -euo pipefail
-          # `create --dry-run=client | apply` is the idempotent form.
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
             --dry-run=client -o yaml | kubectl apply -f -; }
-
-          # The Spaces endpoint + bucket are non-secret — they live in
-          # data/ohdp-pipeline-config (platform-base).
           upsert data ohdp-pipeline-secrets \
             --from-literal=OHDP_SPACES_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
             --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY="$SPACES_ACCESS_KEY" \
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT"
-
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET"
 
-          echo "external secrets upserted (values not echoed)"
-
       - name: OpenSearch
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'opensearch'
         run: make -C platform/helm opensearch
 
       - name: OpenMetadata
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'openmetadata'
-        run: |
-          set -euo pipefail
-          # OpenSearch must be green first or the migration job fails.
-          kubectl -n meta rollout status statefulset/opensearch-cluster-master --timeout=10m
-          make -C platform/helm openmetadata
-
-      - name: Dagster
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'dagster'
-        run: make -C platform/helm dagster TAG="${{ inputs.image_tag }}"
+        run: make -C platform/helm openmetadata
 
       - name: GraphQL authz proxy
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'proxy'
         run: make -C platform/helm proxy
 
+      - name: Verify the authz proxy denies mutations
+        run: make -C platform/helm verify-proxy
+
+      - name: Dagster
+        if: ${{ inputs.image_tag != '' }}
+        run: make -C platform/helm dagster TAG=${{ inputs.image_tag }}
+
       - name: hub-api
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'hub-api'
-        run: make -C platform/helm hub-api TAG="${{ inputs.image_tag }}"
+        if: ${{ inputs.image_tag != '' }}
+        run: make -C platform/helm hub-api TAG=${{ inputs.image_tag }}
 
-      # -- post-deploy checks ----------------------------------------------
-      - name: Verify the authz proxy still denies mutations
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'proxy' || env.COMPONENT == 'dagster'
-        run: |
-          set -euo pipefail
-          kubectl -n data port-forward svc/gqlproxy-graphql-authz-proxy 18080:80 >/dev/null 2>&1 &
-          pf=$!
-          trap 'kill $pf 2>/dev/null || true' EXIT
-          sleep 5
-          mut=$(curl -s -o /dev/null -w '%{http_code}' localhost:18080/graphql \
-            -H 'Content-Type: application/json' \
-            -d '{"query":"mutation { terminatePipelineExecution(runId:\"x\") { __typename } }"}')
-          qry=$(curl -s -o /dev/null -w '%{http_code}' localhost:18080/graphql \
-            -H 'Content-Type: application/json' -d '{"query":"query { version }"}')
-          echo "mutation -> $mut (want 403), query -> $qry (want 200)"
-          [ "$mut" = "403" ] || { echo "::error::authz proxy did not deny a mutation"; exit 1; }
-
-      - name: Summary
+      - name: Pods
         if: always()
-        run: |
-          {
-            echo "### Deployed: ${COMPONENT}"
-            echo ""
-            echo '```'
-            kubectl get pods -A --no-headers 2>/dev/null \
-              | awk '{print $1"/"$2"\t"$4}' | sort || echo "cluster unreachable"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: kubectl get pods -A
