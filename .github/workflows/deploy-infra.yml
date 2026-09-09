@@ -67,21 +67,6 @@ jobs:
           fi
           echo "::warning::Destroying all infrastructure. State bucket is not managed here and survives."
 
-      - name: Check required secrets
-        run: |
-          set -euo pipefail
-          missing=()
-          for v in TF_VAR_hcloud_token TF_VAR_cloudflare_api_token \
-                   TF_VAR_cloudflare_account_id TF_VAR_cloudflare_zone_id \
-                   TF_VAR_domain TF_VAR_ssh_public_key TF_VAR_admin_ip_ranges; do
-            [ -n "${!v:-}" ] || missing+=("$v")
-          done
-          if [ ${#missing[@]} -gt 0 ]; then
-            printf '::error::missing secret for %s\n' "${missing[@]}"
-            echo "Set them in .env (act) or repository secrets. See docs/deploying.md."
-            exit 1
-          fi
-
       - name: Format check
         run: terraform fmt -check -recursive
 
