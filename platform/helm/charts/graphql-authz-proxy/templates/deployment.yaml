@@ -34,6 +34,20 @@ spec:
               containerPort: {{ .Values.server.port }}
               protocol: TCP
           env:
+            # The image's entrypoint is `uv run`, which by default re-syncs the
+            # venv and writes a cache — both impossible on a read-only root FS.
+            # The venv is already complete in the image, so skip the sync and
+            # send the cache to the /tmp emptyDir.
+            - name: UV_NO_SYNC
+              value: "1"
+            - name: UV_FROZEN
+              value: "1"
+            - name: HOME
+              value: /tmp
+            - name: XDG_CACHE_HOME
+              value: /tmp/.cache
+            - name: UV_CACHE_DIR
+              value: /tmp/.cache/uv
             - name: UPSTREAM_URL
               value: {{ .Values.upstream.url | quote }}
             - name: UPSTREAM_GRAPHQL_PATH
