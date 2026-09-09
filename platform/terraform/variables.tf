@@ -1,5 +1,11 @@
-variable "hcloud_token" {
-  description = "Hetzner Cloud API token (project-scoped, read/write)."
+variable "kamatera_api_client_id" {
+  description = "Kamatera API client ID (console → API keys)."
+  type        = string
+  sensitive   = true
+}
+
+variable "kamatera_api_secret" {
+  description = "Kamatera API secret paired with the client ID."
   type        = string
   sensitive   = true
 }
@@ -31,31 +37,75 @@ variable "name" {
   default     = "ohdp"
 }
 
-variable "location" {
+variable "datacenter_country" {
+  description = "Kamatera datacenter country, matched by the kamatera_datacenter data source."
+  type        = string
+  default     = "United States"
+}
+
+variable "datacenter_name" {
   description = <<-EOT
-    Hetzner location. fsn1/nbg1 = Germany, hel1 = Finland, ash/hil = US.
-    EU is cheapest; US (ash) cuts ~90ms for a US audience at a higher price.
-    Open decision — ARCHITECTURE.md §10.1.
+    Kamatera datacenter name within the country. "New York" for the US audience
+    (ARCHITECTURE.md §10.1). Kamatera also exposes these as codes like US-NY2 —
+    if the name lookup is ambiguous, check `terraform console` against the
+    data source.
   EOT
   type        = string
-  default     = "fsn1"
+  default     = "New York"
+}
+
+variable "image_code" {
+  description = "Kamatera image code for the OS, e.g. '24.04 64bit' for Ubuntu."
+  type        = string
+  default     = "24.04 64bit"
+}
+
+variable "cpu_type" {
+  description = <<-EOT
+    Kamatera CPU class: A = availability (oversubscribed), B = general purpose,
+    D = dedicated, T = burstable. B is the default; move to D if Postgres or
+    OpenSearch latency suffers.
+  EOT
+  type        = string
+  default     = "B"
 
   validation {
-    condition     = contains(["fsn1", "nbg1", "hel1", "ash", "hil", "sin"], var.location)
-    error_message = "location must be a valid Hetzner Cloud location."
+    condition     = contains(["A", "B", "D", "T"], var.cpu_type)
+    error_message = "cpu_type must be one of A, B, D, T."
   }
 }
 
-variable "server_type" {
+variable "cpu_cores" {
+  description = "vCPU cores. 8 covers the §4 workload (memory-bound, not CPU-bound)."
+  type        = number
+  default     = 8
+}
+
+variable "ram_mb" {
   description = <<-EOT
-    Hetzner server type. cx52 = 16 vCPU / 32 GB / 320 GB NVMe, ~EUR 32.40/mo,
-    which is the budget in ARCHITECTURE.md §4. (The architecture doc said "CX53";
-    no such type exists — cx52 is the one with those specs.)
-    cx52 is Intel/shared and EU-only; use cpx51 (AMD, 16 vCPU / 32 GB / 360 GB)
-    if you move to a US location.
+    RAM in MB. 32768 is the ARCHITECTURE.md §4 budget — steady ~13 GB, burst ~15
+    GB, with OpenSearch (3 GB) and OpenMetadata (2 GB) as the big consumers.
+    Below 32 GB you must cut one of them (ADR-0005).
   EOT
+  type        = number
+  default     = 32768
+}
+
+variable "disk_size_gb" {
+  description = "Primary disk in GB. Holds container images, PVCs (Postgres, OpenSearch) and the NVMe snapshot cache."
+  type        = number
+  default     = 300
+}
+
+variable "billing_cycle" {
+  description = "Kamatera billing cycle: 'hourly' or 'monthly'."
   type        = string
-  default     = "cx52"
+  default     = "monthly"
+
+  validation {
+    condition     = contains(["hourly", "monthly"], var.billing_cycle)
+    error_message = "billing_cycle must be 'hourly' or 'monthly'."
+  }
 }
 
 variable "ssh_public_key" {

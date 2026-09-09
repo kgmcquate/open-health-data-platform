@@ -1,6 +1,8 @@
 # 0005 — Hetzner + k3s over managed Kubernetes
 
-**Status:** Accepted
+**Status:** Accepted — compute host amended by [ADR-0007](0007-kamatera-over-hetzner.md)
+(now Kamatera, US/New York, free compute). The "keep k3s on one VM, not managed
+Kubernetes" decision and its reasoning stand; the cost table below is historical.
 **Supersedes the reasoning in:** [0001](0001-single-vm-k3s.md), ARCHITECTURE.md §9
 
 ## Context

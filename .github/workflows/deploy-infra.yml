@@ -1,6 +1,6 @@
 name: Deploy infra (Terraform)
 
-# Creates real, billed Hetzner and Cloudflare resources. Defaults to `plan`;
+# Creates real Kamatera and Cloudflare resources. Defaults to `plan`;
 # `apply` and `destroy` must be chosen deliberately and `destroy` additionally
 # requires typing the confirmation string.
 
@@ -33,7 +33,11 @@ defaults:
 env:
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "0"
-  TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+  TF_VAR_kamatera_api_client_id: ${{ secrets.KAMATERA_API_CLIENT_ID }}
+  TF_VAR_kamatera_api_secret: ${{ secrets.KAMATERA_API_SECRET }}
+  # The provider also reads these unprefixed names directly.
+  KAMATERA_API_CLIENT_ID: ${{ secrets.KAMATERA_API_CLIENT_ID }}
+  KAMATERA_API_SECRET: ${{ secrets.KAMATERA_API_SECRET }}
   TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
   TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
@@ -108,8 +112,11 @@ jobs:
       - name: Outputs
         if: inputs.action == 'apply'
         run: |
-          echo "node_ipv4=$(terraform output -raw node_ipv4)"
+          ip=$(terraform output -raw node_ipv4)
+          api=$(terraform output -raw api_hostname)
+          echo "node_ipv4=$ip"
+          echo "api_hostname=$api"
           echo ""
           echo "Fetch the kubeconfig and store it as the KUBECONFIG_B64 secret:"
-          echo "  ssh root@$(terraform output -raw node_ipv4) 'cat /etc/rancher/k3s/k3s.yaml' \\"
-          echo "    | sed \"s#127.0.0.1#$(terraform output -raw node_ipv4)#\" | base64"
+          echo "  ssh root@$ip 'cat /etc/rancher/k3s/k3s.yaml' \\"
+          echo "    | sed \"s#https://127.0.0.1:6443#https://$api:6443#\" | base64"

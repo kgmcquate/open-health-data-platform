@@ -149,16 +149,19 @@ between a broken upstream API and a wrong number on a clinician's dashboard.
 
 ## 4. Deployment topology
 
-Single VM. Hetzner **CX52** (16 vCPU, 32 GB, 320 GB NVMe), k3s, Germany or Finland.
+Single VM. Kamatera, US/New York, CPU type B — 8 vCPU, 32 GB, 300 GB NVMe — k3s.
 Provisioned by `platform/terraform`; workloads deployed with Helm.
 
-> Corrected 2026-09-09: earlier drafts said "CX53", which is not a Hetzner server
-> type. The specs and price quoted were those of the CX52. Note CX52 is EU-only —
-> a US region needs `cpx51` (AMD, 16 vCPU / 32 GB / 360 GB).
+> History: earlier drafts said Hetzner "CX53" (no such type; the CX52 had the
+> quoted specs). The host moved to Kamatera once free compute was available there
+> — same 32 GB budget, US East for latency. See
+> [ADR-0007](decisions/0007-kamatera-over-hetzner.md).
 
-Do not use EKS or GKE. Note the reason is *compute* cost, not control-plane cost:
-some providers (Vultr VKE among them) give the control plane away free, but their
-compute runs ~4-5x Hetzner's for the same RAM. See [ADR-0005](decisions/0005-hetzner-k3s-over-managed-kubernetes.md).
+Do not use EKS or GKE. The reason is *compute* cost, not control-plane cost: some
+providers (Vultr VKE among them) give the control plane away free, but their
+compute runs ~4-5x a Hetzner-class VM for the same RAM. See
+[ADR-0005](decisions/0005-hetzner-k3s-over-managed-kubernetes.md). Kamatera has no
+managed Kubernetes at all — this is self-managed k3s on their VM.
 
 ```mermaid
 flowchart TB
@@ -235,7 +238,7 @@ down the node.
 
 | Item | Monthly |
 |---|---|
-| Hetzner CX52 + IPv4 | ~$35 (EUR 32.40 + IPv4) |
+| Kamatera VM — 8 vCPU / 32 GB / 300 GB, US/New York | $0 (free compute — ADR-0007) |
 | R2 (10 GB free tier), Cloudflare, hosted IdP, Grafana Cloud, Resend | $0 |
 | Domain amortized | ~$1 |
 | LLM inference | Variable — quota-gated |
@@ -356,7 +359,7 @@ health-data-platform/
 │       └── seed/               # Glossary terms, domains, custom properties
 │
 ├── platform/
-│   ├── terraform/              # Hetzner VM + firewall, Cloudflare DNS + R2, k3s via cloud-init
+│   ├── terraform/              # Kamatera VM, Cloudflare DNS + R2, k3s + nftables via startup script
 │   ├── helm/
 │   │   ├── charts/hub-api/                # our chart — FastAPI backend
 │   │   ├── charts/graphql-authz-proxy/    # our chart — wraps kgmcquate/graphql-authz-proxy
@@ -423,8 +426,10 @@ Things that will look like reasonable improvements and are not:
 - **Do not move to a more expensive host for managed Kubernetes.** The original
   wording here ("the control plane cost exceeds the total budget") was wrong:
   free managed control planes exist. The binding constraint is compute price per
-  GB of RAM, where Hetzner is ~4-5x cheaper than the managed-k8s providers.
-  [ADR-0005](decisions/0005-hetzner-k3s-over-managed-kubernetes.md) has the numbers.
+  GB of RAM, where a Hetzner-class VM is ~4-5x cheaper than the managed-k8s
+  providers. [ADR-0005](decisions/0005-hetzner-k3s-over-managed-kubernetes.md) has
+  the numbers; [ADR-0007](decisions/0007-kamatera-over-hetzner.md) is why the host
+  is now a (free) Kamatera VM running the same self-managed k3s.
 - **Do not adopt DuckDB's Quack client-server protocol yet.** It is promoted to stable
   in DuckDB 2.0, which had no release candidate date as of August 2026. Evaluate it,
   document the evaluation, but keep the serving path on publish-and-replicate.
@@ -442,8 +447,8 @@ Things that will look like reasonable improvements and are not:
 
 Flag these rather than deciding unilaterally:
 
-1. **Hosting region.** Germany/Finland is cheapest; US (Ashburn) has better latency for
-   the likely audience at higher cost. Needs a price check.
+1. ~~**Hosting region.**~~ Resolved: Kamatera US/New York, on free compute
+   (ADR-0007). Latency to the US audience; cost is no longer the tradeoff it was.
 2. **Positioning and disclaimers.** "For clinicians" plus AI-generated insight edges
    toward clinical decision support. Framing must stay explicitly population-level and
    non-clinical, with disclaimers on every generated output. Worth a lawyer's hour
