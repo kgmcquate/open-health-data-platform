@@ -19,12 +19,12 @@ class Settings(BaseSettings):
     log_json: bool = True
     log_level: str = "INFO"
 
-    # Object storage (Cloudflare R2, S3-compatible)
-    r2_endpoint_url: str = ""
-    r2_access_key_id: str = ""
-    r2_secret_access_key: str = ""
-    r2_bucket: str = "ohdp-warehouse"
-    snapshot_retention: int = Field(default=14, description="daily snapshots kept in R2")
+    # Object storage (DigitalOcean Spaces, S3-compatible)
+    spaces_endpoint_url: str = ""
+    spaces_access_key_id: str = ""
+    spaces_secret_access_key: str = ""
+    spaces_bucket: str = "ohdp-warehouse"
+    snapshot_retention: int = Field(default=14, description="daily snapshots kept in Spaces")
 
     # Local DuckDB warehouse path used by the dbt build (writer side only)
     duckdb_path: str = "data/warehouse/warehouse.duckdb"

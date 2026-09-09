@@ -56,10 +56,10 @@ The **external** secrets are GitHub Actions repo secrets, injected by the
 For a manual deploy, create them yourself after `make base`:
 
 ```bash
+# The Spaces endpoint + bucket are non-secret (data/ohdp-pipeline-config).
 kubectl -n data create secret generic ohdp-pipeline-secrets \
-  --from-literal=OHDP_R2_ACCESS_KEY_ID=... \
-  --from-literal=OHDP_R2_SECRET_ACCESS_KEY=... \
-  --from-literal=OHDP_R2_ENDPOINT_URL=https://nyc3.digitaloceanspaces.com \
+  --from-literal=OHDP_SPACES_ACCESS_KEY_ID=... \
+  --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY=... \
   --from-literal=OHDP_OPENAQ_API_KEY=... \
   --from-literal=OHDP_CDC_APP_TOKEN=... \
   --from-literal=OHDP_OPENMETADATA_JWT=          # fill after OpenMetadata's first boot

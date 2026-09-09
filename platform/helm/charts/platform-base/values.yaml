@@ -30,7 +30,8 @@ generatedSecrets:
 pipelineConfig:
   OHDP_ENVIRONMENT: "prod"
   OHDP_LOG_JSON: "true"
-  OHDP_R2_BUCKET: "ohdp-warehouse"
+  OHDP_SPACES_BUCKET: "ohdp-warehouse"
+  OHDP_SPACES_ENDPOINT_URL: "https://nyc3.digitaloceanspaces.com"
 
 postgres:
   image: postgres:16.4-bookworm

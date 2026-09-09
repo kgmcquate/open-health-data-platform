@@ -15,7 +15,7 @@ on:
           - base          # platform-base chart: namespaces, internal secrets, Postgres
           - traefik
           - cert-manager
-          - secrets        # external secrets (R2, API keys, Stripe, OIDC, OM JWT)
+          - secrets        # external secrets (Spaces, API keys, Stripe, OIDC, OM JWT)
           - opensearch
           - openmetadata
           - dagster
@@ -75,9 +75,8 @@ jobs:
           # OM fernet key, Cube secret). These are the externally-issued ones the
           # `secrets` step injects, plus the kubeconfig.
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
           CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
           OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
@@ -86,7 +85,7 @@ jobs:
         run: |
           set -uo pipefail
           missing=0
-          for v in KUBECONFIG_B64 R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ENDPOINT_URL \
+          for v in KUBECONFIG_B64 SPACES_ACCESS_KEY_ID SPACES_ACCESS_KEY \
                    OPENAQ_API_KEY CDC_APP_TOKEN OPENMETADATA_JWT STRIPE_SECRET_KEY \
                    OIDC_CLIENT_SECRET; do
             if [ -z "${!v:-}" ]; then
@@ -145,9 +144,8 @@ jobs:
       - name: External secrets
         if: env.COMPONENT == 'all' || env.COMPONENT == 'secrets'
         env:
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
           CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
           OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
@@ -159,10 +157,11 @@ jobs:
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
             --dry-run=client -o yaml | kubectl apply -f -; }
 
+          # The Spaces endpoint + bucket are non-secret — they live in
+          # data/ohdp-pipeline-config (platform-base).
           upsert data ohdp-pipeline-secrets \
-            --from-literal=OHDP_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
-            --from-literal=OHDP_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
-            --from-literal=OHDP_R2_ENDPOINT_URL="$R2_ENDPOINT_URL" \
+            --from-literal=OHDP_SPACES_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+            --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY="$SPACES_ACCESS_KEY" \
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT"

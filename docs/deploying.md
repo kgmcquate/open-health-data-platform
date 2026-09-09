@@ -5,8 +5,8 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 | Workflow | Does | Needs a cluster? |
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
-| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: Hetzner VM, firewall, Cloudflare DNS + R2 | no |
-| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | cert-manager, Postgres, OpenSearch, OpenMetadata, Dagster, authz proxy, hub-api | `deploy` mode only |
+| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, DNS, Spaces bucket | no |
+| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, Dagster, authz proxy, hub-api | `deploy` mode only |
 
 ## Setup
 
@@ -24,10 +24,12 @@ add it there too.
 
 Order matters, and two steps are deliberately manual.
 
-1. **Create the Terraform state bucket by hand.** An R2 bucket named
-   `ohdp-tfstate`. Terraform does not manage it — a tool storing state in a
-   bucket it also creates cannot destroy that bucket. Create an R2 API token
-   (Object Read & Write) and put the key pair in `.env`.
+1. **Create the Terraform state bucket by hand.** A DigitalOcean Space matching
+   `bucket`/`endpoints.s3` in [`platform/terraform/backend.tf`](../platform/terraform/backend.tf).
+   Terraform does not manage it — a tool storing state in a bucket it also
+   creates cannot destroy that bucket. Create a Spaces access key (DO console →
+   API → Spaces Keys) and put the pair in `.env` as `SPACES_ACCESS_KEY_ID` /
+   `SPACES_ACCESS_KEY`.
 
 2. **Provision infrastructure.**
    ```bash

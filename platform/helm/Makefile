@@ -60,9 +60,9 @@ cluster-issuer: ## Create the letsencrypt-prod ClusterIssuer (re-renders platfor
 
 infra: base traefik cert-manager cluster-issuer ## Cluster foundation: platform-base, ingress, cert-manager, issuer
 
-# The external secrets (R2, source API keys, Stripe, OIDC, OM ingestion JWT) are
-# injected by .github/workflows/deploy-platform.yml from repo secrets — not by a
-# make target. For a manual/local deploy, see platform/helm/README.md.
+# The external secrets (Spaces keys, source API keys, Stripe, OIDC, OM ingestion
+# JWT) are injected by .github/workflows/deploy-platform.yml from repo secrets —
+# not by a make target. For a manual/local deploy, see platform/helm/README.md.
 
 # --------------------------------------------------------------------------
 # Data platform

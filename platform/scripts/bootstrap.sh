@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bring the platform up on a fresh DOKS cluster from platform/terraform.
-# The external secrets (R2, source API keys, Stripe, OIDC, OM JWT) are created
+# The external secrets (Spaces keys, source API keys, Stripe, OIDC, OM JWT) are created
 # by the `secrets` step of .github/workflows/deploy-platform.yml, or by hand —
 # see platform/helm/README.md. This script only does the parts that need no
 # out-of-band values.
