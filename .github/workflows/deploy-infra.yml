@@ -35,7 +35,10 @@ env:
   TF_INPUT: "0"
   TF_VAR_domain: ${{ secrets.DOMAIN }}
   TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+  DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
   # DigitalOcean Spaces credentials for the S3-compatible state backend.
+  SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+  SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
   AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
 
