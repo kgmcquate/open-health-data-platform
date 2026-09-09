@@ -75,11 +75,16 @@ runLauncher:
   type: K8sRunLauncher
   config:
     k8sRunLauncher:
-      imagePullPolicy: IfNotPresent
+      # Each run executes the pipeline code — same image as the user deployment
+      # below. `make dagster TAG=` sets the tag on both.
+      image:
+        repository: "ghcr.io/kgmcquate/ohdp-pipeline"
+        tag: ""
+        pullPolicy: IfNotPresent
       loadInclusterConfig: true
       envSecrets:
-        # R2 credentials, source API keys, OpenMetadata JWT. Referenced by name
-        # only — never inlined into run config or tags, which render in the
+        # Spaces credentials, source API keys, OpenMetadata JWT. Referenced by
+        # name only — never inlined into run config or tags, which render in the
         # public UI (§5).
         - name: ohdp-pipeline-secrets
       envConfigMaps:
@@ -151,7 +156,7 @@ pythonLogs:
   pythonLogLevel: INFO
 
 # Compute (stdout/stderr) logs are dropped by default. Switching to
-# S3ComputeLogManager against R2 would make them browsable — do that only after
+# S3ComputeLogManager against Spaces would make them browsable — do that only after
 # confirming the redaction filter covers subprocess output such as dbt's.
 computeLogManager:
   type: NoOpComputeLogManager

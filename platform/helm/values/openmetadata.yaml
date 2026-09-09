@@ -35,7 +35,10 @@ openmetadata:
       auth:
         username: openmetadata
         password:
-          secretRef: openmetadata-db-secret
+          # A secret we create out of band. NOT `openmetadata-db-secret` — the
+          # chart templates a Secret of that exact name for the non-secret DB
+          # config (host/port/user), and Helm will not merge our key into it.
+          secretRef: openmetadata-db-auth
           secretKey: openmetadata-postgres-password
       maxSize: 20
       minSize: 5
@@ -90,8 +93,19 @@ openmetadata:
 
     # No Airflow. Dagster owns orchestration (§2); leaving this enabled makes
     # the UI advertise ingestion pipelines that cannot run.
+    #
+    # `enabled: false` alone is not enough on chart 1.13.x — the deployment and
+    # migration initContainer still mount AIRFLOW_PASSWORD from a secret named
+    # `airflow-secrets`, which we never create. Blanking the airflow auth
+    # secretRef makes the chart drop that env var entirely.
     pipelineServiceClientConfig:
       enabled: false
+      airflow:
+        auth:
+          enabled: false
+          password:
+            secretRef: ""
+            secretKey: ""
 
 service:
   type: ClusterIP
@@ -126,9 +140,16 @@ extraEnvs:
   - name: OPENMETADATA_HEAP_OPTS
     value: "-Xmx1400m -Xms1400m"
 
+# The image's USER is the name `openmetadata`, not a UID, so `runAsNonRoot`
+# alone fails admission ("cannot verify user is non-root"). Pin the UID/GID —
+# the openmetadata user is 1000 in docker.getcollate.io/openmetadata/server.
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
 securityContext:
   allowPrivilegeEscalation: false
+  runAsUser: 1000
   capabilities:
     drop: ["ALL"]

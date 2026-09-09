@@ -1,5 +1,5 @@
 # Local + CI profile. The build writes to a local DuckDB file; that file is what
-# gets snapshotted to R2 (ARCHITECTURE.md §3). Readers never share this file.
+# gets snapshotted to Spaces (ARCHITECTURE.md §3). Readers never share this file.
 ohdp:
   target: local
   outputs:

@@ -6,7 +6,7 @@ Operational procedures. Keep this current — it is the thing you reach for at 2
 
 The serving warehouse is a pointer. To roll back:
 
-1. List snapshots: `aws s3 ls s3://$OHDP_R2_BUCKET/snapshots/ --endpoint-url $OHDP_R2_ENDPOINT_URL`
+1. List snapshots: `aws s3 ls s3://$OHDP_SPACES_BUCKET/snapshots/ --endpoint-url $OHDP_SPACES_ENDPOINT_URL`
 2. Set `current.json` to the last-known-good `warehouse-{ts}.duckdb`.
 3. Roll the replica: `kubectl -n data rollout restart deploy/duckdb-replica`
 4. Confirm freshness in Superset and via `/healthz` on Cube.
@@ -28,7 +28,7 @@ previous snapshot. Triage:
 
 _Must be tested before M4 (§11)._
 
-1. Latest dump: `s3://$OHDP_R2_BUCKET/backups/pg-*.sql.gz`
+1. Latest dump: `s3://$OHDP_SPACES_BUCKET/backups/pg-*.sql.gz`
 2. `gunzip -c pg-*.sql.gz | psql -h $OHDP_POSTGRES_HOST -U postgres`
 3. Restart consumers: Dagster, Superset, OpenMetadata, hub-api.
 

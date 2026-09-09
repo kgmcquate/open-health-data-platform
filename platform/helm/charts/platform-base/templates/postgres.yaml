@@ -1,9 +1,12 @@
-# One Postgres, four databases (ARCHITECTURE.md §2; §9 — do not split it).
-#
-# A plain StatefulSet rather than a chart: Bitnami moved most of its free image
-# catalogue behind Bitnami Secure Images in 2025, and CloudNativePG would add an
-# operator plus CRDs for a single un-replicated instance. This is ~100 lines and
-# does exactly what §4 budgets: 1 GB, local-path PVC, no HA.
+{{- /*
+One Postgres, four databases (ARCHITECTURE.md §2; §9 — do not split it).
+
+A plain StatefulSet rather than a chart: Bitnami moved most of its free image
+catalogue behind Bitnami Secure Images in 2025, and CloudNativePG would add an
+operator plus CRDs for a single un-replicated instance. This is ~100 lines and
+does exactly what §4 budgets: 1 GB, do-block-storage PVC, no HA.
+*/ -}}
+{{- $labels := include "platform-base.labels" . -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -11,6 +14,7 @@ metadata:
   namespace: infra
   labels:
     app.kubernetes.io/name: postgres
+    {{- $labels | nindent 4 }}
 spec:
   clusterIP: None
   ports:
@@ -25,6 +29,8 @@ kind: ConfigMap
 metadata:
   name: postgres-init
   namespace: infra
+  labels:
+    {{- $labels | nindent 4 }}
 data:
   # Runs only on an empty data directory. Adding a database later is a manual
   # psql step — this file is not re-executed.
@@ -39,10 +45,9 @@ data:
         REVOKE ALL ON DATABASE "$db" FROM PUBLIC;
     SQL
     }
-    create_db dagster      dagster      "$DAGSTER_PASSWORD"
-    create_db superset     superset     "$SUPERSET_PASSWORD"
-    create_db openmetadata openmetadata "$OPENMETADATA_PASSWORD"
-    create_db app          app          "$APP_PASSWORD"
+    {{- range $db := .Values.postgres.databases }}
+    create_db {{ $db }} {{ $db }} "${{ $db | upper }}_PASSWORD"
+    {{- end }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -51,6 +56,7 @@ metadata:
   namespace: infra
   labels:
     app.kubernetes.io/name: postgres
+    {{- $labels | nindent 4 }}
 spec:
   serviceName: postgres
   # Single replica. Not HA — that is the design (§1.4, §9).
@@ -69,7 +75,7 @@ spec:
         fsGroup: 999
       containers:
         - name: postgres
-          image: postgres:16.4-bookworm
+          image: {{ .Values.postgres.image }}
           ports:
             - name: postgres
               containerPort: 5432
@@ -81,18 +87,11 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef: { name: postgres-secret, key: postgres-password }
-            - name: DAGSTER_PASSWORD
+            {{- range $db := .Values.postgres.databases }}
+            - name: {{ $db | upper }}_PASSWORD
               valueFrom:
-                secretKeyRef: { name: postgres-secret, key: dagster-password }
-            - name: SUPERSET_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: postgres-secret, key: superset-password }
-            - name: OPENMETADATA_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: postgres-secret, key: openmetadata-password }
-            - name: APP_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: postgres-secret, key: app-password }
+                secretKeyRef: { name: postgres-secret, key: {{ $db }}-password }
+            {{- end }}
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -108,14 +107,8 @@ spec:
               command: ["pg_isready", "-U", "postgres"]
             initialDelaySeconds: 30
             periodSeconds: 20
-          # §4 budgets 1 GB.
           resources:
-            requests:
-              cpu: 100m
-              memory: 512Mi
-            limits:
-              cpu: "2"
-              memory: 1Gi
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
       volumes:
         - name: init
           configMap:
@@ -126,7 +119,7 @@ spec:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: local-path
+        storageClassName: {{ .Values.postgres.storageClass }}
         resources:
           requests:
-            storage: 40Gi
+            storage: {{ .Values.postgres.storageSize }}

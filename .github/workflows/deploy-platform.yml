@@ -1,32 +1,17 @@
 name: Deploy platform
 
-# Deploys everything that runs on the cluster. `preflight` needs no cluster and
-# is the useful target under act; `deploy` needs a reachable kubeconfig.
+# Preflight (lint + render) runs on every dispatch and needs no cluster — it is
+# the useful target under `act`. Tick `deploy` to actually apply.
 
 on:
   workflow_dispatch:
     inputs:
-      component:
-        description: Which component to deploy.
-        type: choice
-        default: all
-        options:
-          - all
-          - base
-          - secrets
-          - postgres
-          - opensearch
-          - openmetadata
-          - dagster
-          - proxy
-          - hub-api
-      mode:
-        description: preflight = validate only, no cluster. deploy = apply for real.
-        type: choice
-        default: preflight
-        options: [preflight, deploy]
+      deploy:
+        description: Apply to the cluster (unticked = preflight only).
+        type: boolean
+        default: false
       image_tag:
-        description: Immutable tag for hub-api and ohdp-pipeline (e.g. sha-abc123def456).
+        description: Immutable image tag for dagster + hub-api (sha-...). Blank = skip them.
         type: string
         default: ""
 
@@ -34,14 +19,9 @@ concurrency:
   group: deploy-platform
   cancel-in-progress: false
 
-env:
-  COMPONENT: ${{ inputs.component || 'all' }}
-  HELM_VALUES: platform/helm/values
-  HELM_CHARTS: platform/helm/charts
-
 jobs:
   preflight:
-    name: Preflight (no cluster required)
+    name: Preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,294 +30,86 @@ jobs:
         with:
           version: v3.16.3
 
-      - name: Lint our charts
-        run: |
-          set -euo pipefail
-          helm lint "$HELM_CHARTS/hub-api" --set image.tag=0.0.0-preflight
-          helm lint "$HELM_CHARTS/graphql-authz-proxy"
-
-      - name: Render our charts
-        run: |
-          set -euo pipefail
-          helm template hub-api "$HELM_CHARTS/hub-api" --set image.tag=0.0.0-preflight >/dev/null
-          helm template gqlproxy "$HELM_CHARTS/graphql-authz-proxy" >/dev/null
-          echo "charts render cleanly"
+      - name: Lint and render the charts we own
+        run: make -C platform/helm lint template
 
       - name: Assert the Dagster authz policy is still default-deny
         run: |
-          set -euo pipefail
           python3 -m pip install --quiet --break-system-packages pyyaml
           cd platform/helm && python3 .ci/assert_authz_policy.py
 
-      - name: Validate upstream values files parse
+      - name: Validate the upstream values files parse
         run: |
-          set -euo pipefail
           python3 -m pip install --quiet --break-system-packages pyyaml
-          for f in "$HELM_VALUES"/*.yaml; do
-            python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$f"
-            echo "ok: $f"
+          for f in platform/helm/values/*.yaml; do
+            python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f" && echo "ok: $f"
           done
-
-      - name: Validate static manifests
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import glob, sys, yaml
-          for path in glob.glob("platform/k3s/**/*.yaml", recursive=True):
-              docs = [d for d in yaml.safe_load_all(open(path)) if d]
-              for d in docs:
-                  assert "kind" in d, f"{path}: document without a kind"
-              print(f"ok: {path} ({len(docs)} docs)")
-          PY
-
-      - name: Report which secrets are missing
-        env:
-          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          DAGSTER_POSTGRES_PASSWORD: ${{ secrets.DAGSTER_POSTGRES_PASSWORD }}
-          SUPERSET_POSTGRES_PASSWORD: ${{ secrets.SUPERSET_POSTGRES_PASSWORD }}
-          OPENMETADATA_POSTGRES_PASSWORD: ${{ secrets.OPENMETADATA_POSTGRES_PASSWORD }}
-          APP_POSTGRES_PASSWORD: ${{ secrets.APP_POSTGRES_PASSWORD }}
-          OPENMETADATA_FERNET_KEY: ${{ secrets.OPENMETADATA_FERNET_KEY }}
-          CUBE_API_SECRET: ${{ secrets.CUBE_API_SECRET }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-        run: |
-          set -uo pipefail
-          missing=0
-          for v in KUBECONFIG_B64 POSTGRES_PASSWORD DAGSTER_POSTGRES_PASSWORD \
-                   SUPERSET_POSTGRES_PASSWORD OPENMETADATA_POSTGRES_PASSWORD \
-                   APP_POSTGRES_PASSWORD OPENMETADATA_FERNET_KEY CUBE_API_SECRET \
-                   R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ENDPOINT_URL; do
-            if [ -z "${!v:-}" ]; then
-              echo "::warning::missing $v"
-              missing=$((missing+1))
-            else
-              echo "present: $v"
-            fi
-          done
-          echo "$missing secret(s) missing — deploy mode will fail until they are set."
 
   deploy:
     name: Deploy
     needs: preflight
-    if: inputs.mode == 'deploy'
+    if: ${{ inputs.deploy }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Require an image tag
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'dagster' || env.COMPONENT == 'hub-api'
-        run: |
-          set -euo pipefail
-          if [ -z "${{ inputs.image_tag }}" ]; then
-            echo "::error::image_tag is required to deploy dagster or hub-api."
-            echo "Run 'Build images' first and pass the sha-<12> tag it prints."
-            exit 1
-          fi
 
       - uses: ./.github/actions/setup-kube
         with:
           kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
 
-      # -- base ------------------------------------------------------------
-      - name: Namespaces
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'base'
-        run: kubectl apply -k platform/k3s/base
+      - name: Helm repos
+        run: make -C platform/helm repos
 
-      - name: cert-manager
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'base'
-        run: |
-          set -euo pipefail
-          helm repo add jetstack https://charts.jetstack.io
-          helm repo update jetstack
-          helm upgrade --install cert-manager jetstack/cert-manager \
-            -n cert-manager --create-namespace \
-            --set crds.enabled=true \
-            --set resources.requests.memory=64Mi \
-            --set resources.limits.memory=128Mi \
-            --wait --timeout 5m
+      # platform-base generates every internal secret itself; nothing sensitive
+      # is passed to this step.
+      - name: Foundation — platform-base, Traefik, cert-manager, ClusterIssuer
+        run: make -C platform/helm base traefik cert-manager cluster-issuer
 
-      - name: ClusterIssuer (HTTP-01)
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'base'
+      # The only externally-issued secrets. Endpoint + bucket are non-secret and
+      # live in data/ohdp-pipeline-config (platform-base).
+      - name: External secrets
         env:
-          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
-        run: |
-          set -euo pipefail
-          kubectl apply -f - <<EOF
-          apiVersion: cert-manager.io/v1
-          kind: ClusterIssuer
-          metadata:
-            name: letsencrypt-prod
-          spec:
-            acme:
-              server: https://acme-v02.api.letsencrypt.org/directory
-              email: ${ACME_EMAIL}
-              privateKeySecretRef:
-                name: letsencrypt-prod-account-key
-              solvers:
-                - http01:
-                    ingress:
-                      class: traefik
-          EOF
-
-      # -- secrets ---------------------------------------------------------
-      - name: Cluster secrets
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'secrets'
-        env:
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          DAGSTER_POSTGRES_PASSWORD: ${{ secrets.DAGSTER_POSTGRES_PASSWORD }}
-          SUPERSET_POSTGRES_PASSWORD: ${{ secrets.SUPERSET_POSTGRES_PASSWORD }}
-          OPENMETADATA_POSTGRES_PASSWORD: ${{ secrets.OPENMETADATA_POSTGRES_PASSWORD }}
-          APP_POSTGRES_PASSWORD: ${{ secrets.APP_POSTGRES_PASSWORD }}
-          OPENMETADATA_FERNET_KEY: ${{ secrets.OPENMETADATA_FERNET_KEY }}
-          OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
-          CUBE_API_SECRET: ${{ secrets.CUBE_API_SECRET }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+          SPACES_ACCESS_KEY: ${{ secrets.SPACES_ACCESS_KEY }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
           CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
+          OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
         run: |
-          set -euo pipefail
-          # `create --dry-run=client | apply` is the idempotent form: plain
-          # `create` fails on re-run, and `apply` alone cannot build from literals.
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
             --dry-run=client -o yaml | kubectl apply -f -; }
-
-          upsert infra postgres-secret \
-            --from-literal=postgres-password="$POSTGRES_PASSWORD" \
-            --from-literal=dagster-password="$DAGSTER_POSTGRES_PASSWORD" \
-            --from-literal=superset-password="$SUPERSET_POSTGRES_PASSWORD" \
-            --from-literal=openmetadata-password="$OPENMETADATA_POSTGRES_PASSWORD" \
-            --from-literal=app-password="$APP_POSTGRES_PASSWORD"
-
-          upsert data dagster-postgresql-secret \
-            --from-literal=postgresql-password="$DAGSTER_POSTGRES_PASSWORD"
-
           upsert data ohdp-pipeline-secrets \
-            --from-literal=OHDP_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
-            --from-literal=OHDP_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
-            --from-literal=OHDP_R2_ENDPOINT_URL="$R2_ENDPOINT_URL" \
+            --from-literal=OHDP_SPACES_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+            --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY="$SPACES_ACCESS_KEY" \
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT"
-
-          kubectl -n data create configmap ohdp-pipeline-config \
-            --from-literal=OHDP_ENVIRONMENT=prod \
-            --from-literal=OHDP_LOG_JSON=true \
-            --from-literal=OHDP_R2_BUCKET=ohdp-warehouse \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-          upsert meta openmetadata-db-secret \
-            --from-literal=openmetadata-postgres-password="$OPENMETADATA_POSTGRES_PASSWORD"
-          upsert meta openmetadata-fernet-secret \
-            --from-literal=fernetKey="$OPENMETADATA_FERNET_KEY"
-
           upsert app hub-api-secrets \
-            --from-literal=OHDP_APP_DATABASE_URL="postgresql+psycopg://app:${APP_POSTGRES_PASSWORD}@postgres.infra.svc.cluster.local:5432/app" \
-            --from-literal=OHDP_CUBE_API_SECRET="$CUBE_API_SECRET" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET"
 
-          echo "secrets upserted (values not echoed)"
-
-      # -- postgres --------------------------------------------------------
-      - name: Postgres
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'postgres'
-        run: |
-          set -euo pipefail
-          kubectl apply -f platform/k3s/postgres/postgres.yaml
-          kubectl -n infra rollout status statefulset/postgres --timeout=5m
-
-      # -- data platform ---------------------------------------------------
-      - name: Helm repos
-        if: env.COMPONENT != 'base' && env.COMPONENT != 'secrets' && env.COMPONENT != 'postgres'
-        run: |
-          set -euo pipefail
-          helm repo add dagster https://dagster-io.github.io/helm
-          helm repo add open-metadata https://helm.open-metadata.org
-          helm repo add opensearch https://opensearch-project.github.io/helm-charts
-          helm repo update
-
       - name: OpenSearch
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'opensearch'
-        run: |
-          set -euo pipefail
-          helm upgrade --install opensearch opensearch/opensearch \
-            -n meta --create-namespace -f "$HELM_VALUES/opensearch.yaml" \
-            --wait --timeout 15m
+        run: make -C platform/helm opensearch
 
       - name: OpenMetadata
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'openmetadata'
-        run: |
-          set -euo pipefail
-          # OpenSearch must be green first or the migration job fails.
-          kubectl -n meta rollout status statefulset/opensearch-cluster-master --timeout=10m
-          helm upgrade --install openmetadata open-metadata/openmetadata \
-            -n meta --create-namespace -f "$HELM_VALUES/openmetadata.yaml" \
-            --wait --timeout 15m
-
-      - name: Dagster
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'dagster'
-        run: |
-          set -euo pipefail
-          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          helm upgrade --install dagster dagster/dagster \
-            -n data --create-namespace -f "$HELM_VALUES/dagster.yaml" \
-            --set "dagster-user-deployments.deployments[0].image.repository=ghcr.io/${owner}/ohdp-pipeline" \
-            --set "dagster-user-deployments.deployments[0].image.tag=${{ inputs.image_tag }}" \
-            --set "runLauncher.config.k8sRunLauncher.image.repository=ghcr.io/${owner}/ohdp-pipeline" \
-            --set "runLauncher.config.k8sRunLauncher.image.tag=${{ inputs.image_tag }}" \
-            --wait --timeout 15m
+        run: make -C platform/helm openmetadata
 
       - name: GraphQL authz proxy
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'proxy'
-        run: |
-          set -euo pipefail
-          helm upgrade --install gqlproxy "$HELM_CHARTS/graphql-authz-proxy" \
-            -n data --create-namespace --wait --timeout 5m
+        run: make -C platform/helm proxy
+
+      - name: Verify the authz proxy denies mutations
+        run: make -C platform/helm verify-proxy
+
+      - name: Dagster
+        if: ${{ inputs.image_tag != '' }}
+        run: make -C platform/helm dagster TAG=${{ inputs.image_tag }}
 
       - name: hub-api
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'hub-api'
-        run: |
-          set -euo pipefail
-          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          helm upgrade --install hub-api "$HELM_CHARTS/hub-api" \
-            -n app --create-namespace \
-            --set "image.repository=ghcr.io/${owner}/ohdp-hub-api" \
-            --set "image.tag=${{ inputs.image_tag }}" \
-            --wait --timeout 5m
+        if: ${{ inputs.image_tag != '' }}
+        run: make -C platform/helm hub-api TAG=${{ inputs.image_tag }}
 
-      # -- post-deploy checks ----------------------------------------------
-      - name: Verify the authz proxy still denies mutations
-        if: env.COMPONENT == 'all' || env.COMPONENT == 'proxy' || env.COMPONENT == 'dagster'
-        run: |
-          set -euo pipefail
-          kubectl -n data port-forward svc/gqlproxy-graphql-authz-proxy 18080:80 >/dev/null 2>&1 &
-          pf=$!
-          trap 'kill $pf 2>/dev/null || true' EXIT
-          sleep 5
-          mut=$(curl -s -o /dev/null -w '%{http_code}' localhost:18080/graphql \
-            -H 'Content-Type: application/json' \
-            -d '{"query":"mutation { terminatePipelineExecution(runId:\"x\") { __typename } }"}')
-          qry=$(curl -s -o /dev/null -w '%{http_code}' localhost:18080/graphql \
-            -H 'Content-Type: application/json' -d '{"query":"query { version }"}')
-          echo "mutation -> $mut (want 403), query -> $qry (want 200)"
-          [ "$mut" = "403" ] || { echo "::error::authz proxy did not deny a mutation"; exit 1; }
-
-      - name: Summary
+      - name: Pods
         if: always()
-        run: |
-          {
-            echo "### Deployed: ${COMPONENT}"
-            echo ""
-            echo '```'
-            kubectl get pods -A --no-headers 2>/dev/null \
-              | awk '{print $1"/"$2"\t"$4}' | sort || echo "cluster unreachable"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: kubectl get pods -A

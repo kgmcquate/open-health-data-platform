@@ -1,0 +1,26 @@
+{{- /*
+Let's Encrypt production issuer. HTTP-01 challenge solved through the Traefik
+ingress class (platform/README.md §5).
+
+Rendered only once cert-manager's CRDs exist — on a fresh cluster the first
+`make base` runs before cert-manager, so this is skipped and `make cluster-issuer`
+(a second `helm upgrade`) creates it afterwards.
+*/ -}}
+{{- if and .Values.clusterIssuer.enabled (.Capabilities.APIVersions.Has "cert-manager.io/v1") }}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ .Values.clusterIssuer.name }}
+  labels:
+    {{- include "platform-base.labels" . | nindent 4 }}
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: {{ .Values.clusterIssuer.email | quote }}
+    privateKeySecretRef:
+      name: {{ .Values.clusterIssuer.name }}-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: {{ .Values.clusterIssuer.ingressClass }}
+{{- end }}
