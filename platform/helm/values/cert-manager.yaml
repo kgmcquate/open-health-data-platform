@@ -5,8 +5,9 @@
 #     -f platform/helm/values/cert-manager.yaml
 #
 # Issues the TLS certs for the Traefik Ingresses. HTTP-01 challenge over the
-# `traefik` ingress class — the ClusterIssuer lives in
-# platform/k3s/base/cluster-issuer.yaml and is applied by `make cert-manager`.
+# `traefik` ingress class — the `letsencrypt-prod` ClusterIssuer is rendered by
+# the platform-base chart and applied by `make cluster-issuer` once these CRDs
+# exist.
 
 # The chart can install its own CRDs; keep it in one release so upgrades are
 # a single `helm upgrade`.

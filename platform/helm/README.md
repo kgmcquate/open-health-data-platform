@@ -1,16 +1,26 @@
 # Helm
 
-Two charts we own, and values files for three upstream charts.
+Charts we own, and values files for the upstream charts.
 
 ```
 charts/
-  hub-api/              our chart — the FastAPI backend
-  graphql-authz-proxy/  our chart — wraps kgmcquate/graphql-authz-proxy
+  platform-base/           our chart — namespaces, generated internal secrets,
+                           the shared Postgres StatefulSet, the ClusterIssuer
+  external-secrets-config/  our chart — the Doppler ClusterSecretStore + ExternalSecrets
+  hub-api/                 our chart — the FastAPI backend
+  graphql-authz-proxy/     our chart — wraps kgmcquate/graphql-authz-proxy
 values/
-  dagster.yaml          for dagster/dagster
-  openmetadata.yaml     for open-metadata/openmetadata
-  opensearch.yaml       for opensearch/opensearch
+  traefik.yaml             for traefik/traefik
+  cert-manager.yaml        for jetstack/cert-manager
+  external-secrets.yaml    for external-secrets/external-secrets
+  dagster.yaml             for dagster/dagster
+  openmetadata.yaml        for open-metadata/openmetadata  (pinned to 1.13.x)
+  opensearch.yaml          for opensearch/opensearch
 ```
+
+Every upstream chart version is pinned in the `Makefile` (`*_VERSION`).
+`helm upgrade --install` otherwise pulls the newest — and OpenMetadata 2.0.x
+restructured its secret/config layout in a way these values do not support.
 
 ## Why Dagster and OpenMetadata are values files, not charts
 
@@ -27,45 +37,42 @@ exists for them.
 ## Prerequisites
 
 - A cluster from [`platform/terraform`](../terraform) with `KUBECONFIG` exported.
-- Namespaces, the Traefik ingress controller, cert-manager and the
-  `letsencrypt-prod` ClusterIssuer: `make infra` (targets `namespaces`,
-  `traefik`, `cert-manager`). Namespaces come from
-  [`platform/k3s/base`](../k3s/base); Traefik and cert-manager are Helm releases
-  with values in [`values/`](values).
-- **Postgres in `infra`**, with databases `dagster`, `superset`, `openmetadata`,
-  `app` (§2 — one instance, four databases; §9 — do not split it).
-  Not yet written. When you do it in M1, prefer a plain StatefulSet or
-  CloudNativePG over the Bitnami chart — Bitnami moved most of its free image
-  catalog behind Bitnami Secure Images in 2025, so `bitnami/postgresql` is no
-  longer the safe default it used to be.
-- Secrets created out of band. None of them are in git:
+- A Doppler service token in the cluster — the one secret you create by hand:
 
-  | Secret | Namespace | Keys |
-  |---|---|---|
-  | `dagster-postgresql-secret` | `data` | `postgresql-password` |
-  | `ohdp-pipeline-secrets` | `data` | R2 creds, source API keys, OM JWT |
-  | `ohdp-pipeline-config` (ConfigMap) | `data` | non-secret pipeline env |
-  | `hub-api-secrets` | `app` | DB URL, Cube secret, Stripe, OIDC |
-  | `openmetadata-db-auth` | `meta` | `openmetadata-postgres-password` |
-  | `openmetadata-fernet-secret` | `meta` | `fernetKey` |
+  ```bash
+  kubectl create namespace external-secrets
+  kubectl -n external-secrets create secret generic doppler-token \
+    --from-literal=dopplerToken=dp.st.xxxxxxxx
+  ```
+
+  It must be scoped to a Doppler config holding: `STRIPE_SECRET_KEY`,
+  `OIDC_CLIENT_SECRET`, `OHDP_OPENMETADATA_JWT`, `OHDP_R2_ACCESS_KEY_ID`,
+  `OHDP_R2_SECRET_ACCESS_KEY`, `OHDP_R2_ENDPOINT_URL`, `OHDP_OPENAQ_API_KEY`,
+  `OHDP_CDC_APP_TOKEN`. Keys map 1:1 in `charts/external-secrets-config/values.yaml`.
+
+Everything else is created by `make infra`:
+
+| What | Created by | Secret / resource |
+|---|---|---|
+| Namespaces `app data bi meta infra` | `platform-base` | — |
+| Postgres passwords (× 5), Cube secret, OM fernet key | `platform-base` (generated once, kept on upgrade) | `infra/postgres-secret`, `data/dagster-postgresql-secret`, `meta/openmetadata-db-auth`, `meta/openmetadata-fernet-secret`, `data/cube-secret`, `app/hub-api-db` |
+| Non-secret pipeline env | `platform-base` | `data/ohdp-pipeline-config` (ConfigMap) |
+| Shared Postgres StatefulSet | `platform-base` | `infra` |
+| `letsencrypt-prod` ClusterIssuer | `platform-base` (once cert-manager CRDs exist) | — |
+| Stripe / OIDC / R2 / API keys | External Secrets Operator ← Doppler | `data/ohdp-pipeline-secrets`, `app/hub-api-secrets` |
 
 ## Install
 
 ```bash
 make repos      # add + update upstream helm repos
-make infra      # namespaces, Traefik ingress, cert-manager + ClusterIssuer
-make install    # everything else, in dependency order
+make infra      # platform-base, Traefik, cert-manager, ClusterIssuer, ESO
+make install    # opensearch, openmetadata, proxy
+make dagster TAG=sha-...     # needs a built pipeline image
+make hub-api  TAG=sha-...
 ```
 
-Or one at a time — order matters, OpenSearch must be green before OpenMetadata
-starts or its migration job fails:
-
-```bash
-make opensearch && make openmetadata
-make dagster
-make proxy
-make hub-api
-```
+Order matters — OpenSearch must be green before OpenMetadata starts or its
+migration job fails; `make install` and `make infra` sequence this for you.
 
 ## Before trusting the proxy
 
