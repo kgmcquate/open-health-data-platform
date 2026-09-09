@@ -1,0 +1,16 @@
+# Local + CI profile. The build writes to a local DuckDB file; that file is what
+# gets snapshotted to R2 (ARCHITECTURE.md §3). Readers never share this file.
+ohdp:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('OHDP_DUCKDB_PATH', '../warehouse/warehouse.duckdb') }}"
+      threads: 4
+      extensions:
+        - httpfs
+        - parquet
+    ci:
+      type: duckdb
+      path: "ci_warehouse.duckdb"
+      threads: 4

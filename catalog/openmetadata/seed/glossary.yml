@@ -1,0 +1,12 @@
+# Seed glossary. Keep definitions population-level and non-clinical (ARCHITECTURE.md §10).
+glossary:
+  name: Public Health Data
+  terms:
+    - name: PM2.5
+      description: >
+        Fine particulate matter under 2.5 microns, mass concentration in µg/m³.
+        Reported as a population/area average, not a personal exposure estimate.
+    - name: ILI
+      description: >
+        Influenza-like illness: a surveillance case definition (fever plus cough
+        or sore throat), not a clinical diagnosis.

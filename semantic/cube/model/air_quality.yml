@@ -1,0 +1,35 @@
+# First cube (ARCHITECTURE.md §8, M2). Reads a dbt mart, not raw tables.
+# Every measure here is something a dashboard, the chatbot, and an alert can all
+# ask for and get the same number.
+
+cubes:
+  - name: air_quality
+    sql_table: marts.fct_air_quality_daily
+    description: >
+      Daily air quality measurements from OpenAQ, aggregated to location + day.
+      Population-level only. Not a clinical or personal exposure metric.
+
+    dimensions:
+      - name: measurement_date
+        sql: measurement_date
+        type: time
+        primary_key: false
+      - name: country
+        sql: country
+        type: string
+      - name: parameter
+        sql: parameter
+        type: string
+        description: "pm25, pm10, o3, no2, so2, co"
+
+    measures:
+      - name: avg_value
+        sql: avg_value
+        type: avg
+        description: "Mean concentration for the parameter over the grain."
+      - name: max_value
+        sql: max_value
+        type: max
+      - name: measurement_count
+        sql: measurement_count
+        type: sum

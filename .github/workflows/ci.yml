@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages --dev
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format check
+        run: uv run ruff format --check .
+      - name: Types
+        run: uv run mypy packages apps data
+      - name: Tests
+        run: uv run pytest
+
+  dbt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: dbt parse (no warehouse needed)
+        working-directory: data/dbt
+        env:
+          OHDP_DUCKDB_PATH: ci_warehouse.duckdb
+        run: |
+          uvx --from dbt-duckdb dbt deps
+          uvx --from dbt-duckdb dbt parse --target ci
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Lint web (skips cleanly until scaffolded)
+        working-directory: apps/web
+        run: |
+          if [ -f next.config.js ] || [ -f next.config.mjs ] || [ -f next.config.ts ]; then
+            npm ci && npm run lint
+          else
+            echo "apps/web not scaffolded yet — skipping"
+          fi
+
+  # deploy: added in M1 — build images, push, kubectl apply against the VM.
