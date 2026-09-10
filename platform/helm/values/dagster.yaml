@@ -42,7 +42,7 @@ dagsterWebserver:
       memory: 768Mi
   # Belt and braces. The proxy is the real control (§5) — this only hides the
   # mutating affordances in the UI — but there is no reason to leave them on.
-  enableReadOnly: true
+  enableReadOnly: false
   # The UI polls GraphQL continuously and is publicly exposed; a few hundred idle
   # viewers put real load on Postgres (§5). Cap any single statement.
   dbStatementTimeout: 15000
