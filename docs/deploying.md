@@ -5,7 +5,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 | Workflow | Does | Needs a cluster? |
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
-| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket (DNS is manual — see below) | no |
+| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket, Cloudflare DNS records | no |
 | [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, Dagster, hub-api | when `deploy` ticked |
 
 ## Setup
@@ -54,25 +54,23 @@ Order matters, and two steps are deliberately manual.
    `build-images.yml` pushed). Pass `--input image_tag=sha-…` to pin an older
    build.
 
-6. **Point DNS at the load balancer.** Terraform does not manage DNS —
-   `kevinmcquate.com` is a Cloudflare zone. Once Traefik is up, read the
-   DigitalOcean load balancer IP it provisioned:
+6. **Point DNS at the load balancer.** `kevinmcquate.com` is a Cloudflare zone;
+   `deploy-infra` manages the `*.ohdp.kevinmcquate.com` A records there via the
+   `cloudflare` provider. They are **DNS-only** (not proxied) so the Let's
+   Encrypt HTTP-01 challenge reaches the origin unproxied.
+
+   The records target the DigitalOcean load balancer Traefik provisioned in
+   step 5, which does not exist until then — so on the first `deploy-infra` run
+   `loadbalancer_ip` is blank and the records are skipped. Read the IP:
    ```bash
    kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
    ```
-   Then, in the Cloudflare dashboard for `kevinmcquate.com`, add one **A record
-   per hostname**, all pointing at that IP, **DNS-only (grey cloud)** so the
-   Let's Encrypt HTTP-01 challenge reaches the origin unproxied:
+   Set it as the `LOADBALANCER_IP` secret (`.env` for `act`, wired to
+   `TF_VAR_loadbalancer_ip`) and re-run `deploy-infra` with `action=apply`. It
+   creates one A record per entry in `dns_hostnames` (`app`, `dagster`,
+   `catalog`, `cube`, `superset`).
 
-   | Name | Content |
-   |---|---|
-   | `app.ohdp` | `<lb-ip>` |
-   | `dagster.ohdp` | `<lb-ip>` |
-   | `catalog.ohdp` | `<lb-ip>` |
-   | `cube.ohdp` | `<lb-ip>` |
-   | `superset.ohdp` | `<lb-ip>` |
-
-   cert-manager issues a cert per host on the first request; check with
+   cert-manager then issues a cert per host on the first request; check with
    `kubectl get certificate -A`. Switching a record to proxied (orange cloud)
    later needs cert-manager moved to a DNS-01 solver or a Cloudflare Origin CA
    cert — HTTP-01 breaks behind the proxy.

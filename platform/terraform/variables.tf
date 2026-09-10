@@ -41,3 +41,31 @@ variable "snapshot_bucket" {
   type        = string
   default     = "ohdp-warehouse"
 }
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for the domain hosting the platform hostnames."
+  type        = string
+}
+
+variable "dns_base" {
+  description = "Base under which per-service A records are created, e.g. ohdp.kevinmcquate.com -> app.ohdp.kevinmcquate.com."
+  type        = string
+  default     = "ohdp.kevinmcquate.com"
+}
+
+variable "dns_hostnames" {
+  description = "Service hostnames (left-most label) fronted by the Traefik ingress."
+  type        = list(string)
+  default     = ["app", "dagster", "catalog", "cube", "superset"]
+}
+
+variable "loadbalancer_ip" {
+  description = <<-EOT
+    Public IPv4 of the DigitalOcean load balancer Traefik provisions during
+    deploy-platform. Empty on the first infra apply (the LB does not exist yet),
+    which skips the DNS records; set it and re-apply once the platform is up.
+      kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  EOT
+  type        = string
+  default     = ""
+}
