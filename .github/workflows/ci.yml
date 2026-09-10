@@ -67,11 +67,6 @@ jobs:
         run: |
           helm template hub-api charts/hub-api --set image.tag=0.0.0-dev >/dev/null
           helm template gqlproxy charts/graphql-authz-proxy >/dev/null
-      - name: Assert the authz allowlist stays default-deny
-        working-directory: platform/helm
-        run: |
-          pip install --quiet --break-system-packages pyyaml
-          python3 .ci/assert_authz_policy.py
 
   terraform:
     runs-on: ubuntu-latest

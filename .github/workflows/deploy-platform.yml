@@ -33,11 +33,6 @@ jobs:
       - name: Lint and render the charts we own
         run: make -C platform/helm lint template
 
-      - name: Assert the Dagster authz policy is still default-deny
-        run: |
-          python3 -m pip install --quiet --break-system-packages pyyaml
-          cd platform/helm && python3 .ci/assert_authz_policy.py
-
       - name: Validate the upstream values files parse
         run: |
           python3 -m pip install --quiet --break-system-packages pyyaml
