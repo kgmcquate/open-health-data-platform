@@ -16,7 +16,7 @@ cloudflare_zone_id = ""
 dns_base      = "ohdp.kevinmcquate.com"
 dns_hostnames = ["app", "dagster", "catalog", "cube", "superset"]
 
-# Public IP of the Traefik load balancer. Leave blank on the first apply (the LB
-# does not exist yet); set it and re-apply once deploy-platform has run:
-#   kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Public IPv4 of the Traefik ingress. Set this explicitly here (or in the
+# environment as TF_VAR_loadbalancer_ip) to the address Cloudflare should point
+# to; do not create a DigitalOcean reserved IP for this.
 loadbalancer_ip = ""

@@ -26,17 +26,15 @@ output "fetch_kubeconfig" {
 
 output "loadbalancer_ip_command" {
   description = <<-EOT
-    The Cloudflare A records (DNS-only) are created only once `loadbalancer_ip`
-    is set. After deploy-platform brings Traefik up, read the load balancer IP
-    with this command, set it as `loadbalancer_ip` (tfvars or
-    TF_VAR_loadbalancer_ip), and re-apply this stack:
-      kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+    Set `loadbalancer_ip` directly in terraform.tfvars (or TF_VAR_loadbalancer_ip)
+    to the public IPv4 for the Traefik ingress. Do not rely on a reserved IP or
+    a fallback value here.
   EOT
-  value       = "kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'"
+  value       = "Set loadbalancer_ip in terraform.tfvars or TF_VAR_loadbalancer_ip to the Traefik public IPv4."
 }
 
 output "service_hostnames" {
-  description = "Fully-qualified hostnames managed as Cloudflare A records (empty until loadbalancer_ip is set)."
+  description = "Fully-qualified hostnames managed as Cloudflare A records."
   value       = [for r in cloudflare_dns_record.service : r.name]
 }
 

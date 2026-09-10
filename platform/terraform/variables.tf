@@ -55,11 +55,15 @@ variable "dns_hostnames" {
 
 variable "loadbalancer_ip" {
   description = <<-EOT
-    Public IPv4 of the DigitalOcean load balancer Traefik provisions during
-    deploy-platform. Empty on the first infra apply (the LB does not exist yet),
-    which skips the DNS records; set it and re-apply once the platform is up.
-      kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+    Public IPv4 for the Traefik ingress that fronts the platform services.
+    Set this explicitly in terraform.tfvars (or TF_VAR_loadbalancer_ip) and
+    keep it in sync with the actual Kuberenetes load balancer address.
   EOT
   type        = string
-  default     = ""
+  default     = "134.199.244.105"
+
+  validation {
+    condition     = var.loadbalancer_ip == "" || can(cidrhost("${var.loadbalancer_ip}/32", 0))
+    error_message = "loadbalancer_ip must be a valid IPv4 address or left empty."
+  }
 }

@@ -2,7 +2,7 @@
 
 Provisions the managed cluster and the Spaces bucket, then leaves the application stack to Helm. The old self-hosted k3s-on-droplet bootstrap has been removed.
 
-DNS lives in Cloudflare (`kevinmcquate.com` is a Cloudflare zone). This stack manages the `*.ohdp.kevinmcquate.com` A records through the `cloudflare` provider, DNS-only (not proxied), pointing each host at the Traefik load balancer IP. That IP does not exist until the platform is deployed, so `loadbalancer_ip` is blank on the first apply and the records are skipped — set it and re-apply. See [`docs/deploying.md`](../../docs/deploying.md) step 6.
+DNS lives in Cloudflare (`kevinmcquate.com` is a Cloudflare zone). This stack manages the `*.ohdp.kevinmcquate.com` A records through the `cloudflare` provider, DNS-only (not proxied), pointing each host at the Traefik load balancer IP configured in `loadbalancer_ip`. There is no reserved DigitalOcean IP fallback here; the value must be set explicitly in `terraform.tfvars` or via `TF_VAR_loadbalancer_ip`.
 
 ## What it creates
 
