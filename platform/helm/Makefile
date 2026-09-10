@@ -83,7 +83,7 @@ openmetadata: ## Install OpenMetadata
 dagster: ## Install Dagster (TAG defaults to the current commit's sha-<12>)
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
 	$(HELM) upgrade --install dagster dagster/dagster --version $(DAGSTER_VERSION) \
-		-n data --create-namespace-f $(VALUES)/dagster.yaml \
+		-n data --create-namespace -f $(VALUES)/dagster.yaml \
 		--set "dagster-user-deployments.deployments[0].image.tag=$(TAG)" \
 		--set "runLauncher.config.k8sRunLauncher.image.tag=$(TAG)" \
 		--wait --timeout 10m
