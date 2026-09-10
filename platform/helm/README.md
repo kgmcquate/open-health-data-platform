@@ -64,7 +64,18 @@ kubectl -n data create secret generic ohdp-pipeline-secrets \
   --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY=... \
   --from-literal=OHDP_OPENAQ_API_KEY=... \
   --from-literal=OHDP_CDC_APP_TOKEN=... \
+  --from-literal=OHDP_ICEBERG_CREDENTIAL=<polaris client-id>:<client-secret> \  # ADR-0010
   --from-literal=OHDP_OPENMETADATA_JWT=          # fill after OpenMetadata's first boot
+
+# Polaris (ADR-0010): metastore + bootstrap creds, consumed by values/polaris.yaml.
+kubectl -n data create secret generic polaris-persistence \
+  --from-literal=jdbcUrl="jdbc:postgresql://postgres.infra.svc.cluster.local:5432/polaris" \
+  --from-literal=username=polaris \
+  --from-literal=password="$(kubectl -n infra get secret postgres-secret -o jsonpath='{.data.polaris-password}' | base64 -d)"
+kubectl -n data create secret generic polaris-bootstrap \
+  --from-literal=client-id=... --from-literal=client-secret=...
+# then: polaris-admin-tool bootstrap --realm ohdp, and create warehouse `ohdp`
+# (allowedLocations s3://ohdp-warehouse/) + a pipeline principal via the mgmt API.
 
 kubectl -n app create secret generic hub-api-secrets \
   --from-literal=OHDP_OPENMETADATA_JWT= \

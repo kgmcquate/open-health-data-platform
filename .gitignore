@@ -23,11 +23,20 @@ npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Dagster scratch (dagster dev / definitions validate with no DAGSTER_HOME)
+.tmp_dagster_home_*/
+dagster_home/
+
 # dbt
 data/dbt/target/
 data/dbt/dbt_packages/
 data/dbt/logs/
+data/dbt/package-lock.yml
 .user.yml
+
+# Local kubeconfig dumps (see .env.example KUBECONFIG_B64)
+kubeconfig_base64
+kubeconfig*.yaml
 
 # DuckDB local warehouse + snapshots
 *.duckdb

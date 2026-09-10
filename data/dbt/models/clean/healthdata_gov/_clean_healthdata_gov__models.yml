@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: stg_healthdata_gov__hospital_capacity_by_state
+    description: >
+      Current-state hospital utilization by state, deduped from the append-only
+      raw Iceberg table. One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]

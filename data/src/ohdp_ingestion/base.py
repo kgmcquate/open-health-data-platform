@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import httpx
+
 from ohdp_shared import get_logger
 
 log = get_logger(__name__)

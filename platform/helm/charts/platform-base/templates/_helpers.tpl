@@ -27,6 +27,7 @@ dagster: {{ (index $pg "dagster-password") | default (randAlphaNum $len | b64enc
 superset: {{ (index $pg "superset-password") | default (randAlphaNum $len | b64enc) }}
 openmetadata: {{ (index $pg "openmetadata-password") | default (randAlphaNum $len | b64enc) }}
 app: {{ (index $pg "app-password") | default (randAlphaNum $len | b64enc) }}
+polaris: {{ (index $pg "polaris-password") | default (randAlphaNum $len | b64enc) }}
 fernet: {{ (index $fernet "fernetKey") | default ((randAlphaNum 32 | b64enc | replace "+" "-" | replace "/" "_") | b64enc) }}
 cube: {{ (index $cube "OHDP_CUBE_API_SECRET") | default (randAlphaNum $len | b64enc) }}
 {{/* oauth2-proxy cookie secret — must decode to exactly 32 bytes. */}}

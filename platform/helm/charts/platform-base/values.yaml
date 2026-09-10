@@ -32,6 +32,11 @@ pipelineConfig:
   OHDP_LOG_JSON: "true"
   OHDP_SPACES_BUCKET: "ohdp-warehouse"
   OHDP_SPACES_ENDPOINT_URL: "https://nyc3.digitaloceanspaces.com"
+  OHDP_SPACES_REGION: "nyc3"
+  # Iceberg lakehouse (ADR-0010). Catalog credentials are in ohdp-pipeline-secrets.
+  OHDP_ICEBERG_CATALOG_URI: "http://polaris.data.svc.cluster.local:8181/api/catalog"
+  OHDP_ICEBERG_CATALOG_NAME: "ohdp"
+  OHDP_DBT_STAGE_DIR: "/tmp/ohdp_dbt_stage"
 
 postgres:
   image: postgres:16.4-bookworm
@@ -53,3 +58,4 @@ postgres:
     - superset
     - openmetadata
     - app
+    - polaris # Iceberg REST catalog metastore (ADR-0010)

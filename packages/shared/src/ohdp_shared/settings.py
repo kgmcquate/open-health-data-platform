@@ -23,10 +23,30 @@ class Settings(BaseSettings):
     spaces_endpoint_url: str = ""
     spaces_access_key_id: str = ""
     spaces_secret_access_key: str = ""
+    spaces_region: str = "nyc3"
     spaces_bucket: str = "ohdp-warehouse"
     snapshot_retention: int = Field(default=14, description="daily snapshots kept in Spaces")
 
-    # Local DuckDB warehouse path used by the dbt build (writer side only)
+    # Iceberg lakehouse (ADR-0010). Layers live under s3://<spaces_bucket>/{raw,clean,curated};
+    # the Apache Polaris REST catalog tracks the tables.
+    iceberg_catalog_uri: str = Field(
+        default="",
+        description="Polaris Iceberg REST endpoint, e.g. https://catalog.ohdp.../api/catalog",
+    )
+    iceberg_catalog_name: str = "ohdp"
+    iceberg_credential: str = Field(
+        default="", description="Polaris OAuth2 'client_id:client_secret'"
+    )
+    iceberg_scope: str = "PRINCIPAL_ROLE:ALL"
+    iceberg_warehouse: str = Field(
+        default="", description="Polaris warehouse name; defaults to iceberg_catalog_name"
+    )
+    # When iceberg_catalog_uri is unset (local dev / CI) fall back to a pyiceberg
+    # SqlCatalog: this SQLite file is the catalog, iceberg_local_warehouse the data root.
+    iceberg_local_catalog_path: str = "data/warehouse/iceberg_catalog.db"
+    iceberg_local_warehouse: str = "data/warehouse/lake"
+
+    # Local DuckDB warehouse path used by the publish step (writer side only)
     duckdb_path: str = "data/warehouse/warehouse.duckdb"
 
     # Postgres (single instance, 4 logical databases)

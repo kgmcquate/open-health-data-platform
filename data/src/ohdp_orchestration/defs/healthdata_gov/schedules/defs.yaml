@@ -1,0 +1,6 @@
+type: ohdp_orchestration.defs.healthdata_gov.component.HealthDataGovCadenceSchedules
+attributes:
+  daily_cron: 0 7 * * *
+  weekly_cron: 0 7 * * 1
+  monthly_cron: 0 7 1 * *
+  default_status: STOPPED
