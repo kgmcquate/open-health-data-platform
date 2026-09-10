@@ -44,7 +44,6 @@ config:
     # redirect/callback URLs are https and the real client IP is logged.
     reverse_proxy = true
     cookie_secure = true
-    cookie_domain = "dagster.ohdp.kevinmcquate.com"
     # gqlproxy authorizes on these headers — must be forwarded to the upstream.
     pass_user_headers = true
     # One provider, one IdP: skip the "Sign in with Google" interstitial.
