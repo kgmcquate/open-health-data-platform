@@ -21,9 +21,15 @@ DAGSTER_VERSION         ?= 1.13.21
 TRAEFIK_VERSION         ?= 41.5.0
 CERT_MANAGER_VERSION    ?= v1.21.1
 OAUTH2_PROXY_VERSION    ?= 10.7.0
+POLARIS_VERSION         ?= 1.7.0
+
+# Root principal for the Polaris `ohdp` realm — the same "<clientId>:<clientSecret>"
+# the pipeline uses as OHDP_ICEBERG_CREDENTIAL (ADR-0010). The bootstrap script
+# falls back to reading it from the `ohdp-pipeline-secrets` secret when unset.
+OHDP_ICEBERG_CREDENTIAL ?=
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
-        install opensearch openmetadata dagster proxy hub-api
+        install opensearch openmetadata dagster proxy hub-api polaris
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -35,6 +41,7 @@ repos: ## Add and update upstream chart repos
 	$(HELM) repo add traefik https://traefik.github.io/charts
 	$(HELM) repo add jetstack https://charts.jetstack.io
 	$(HELM) repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
+	$(HELM) repo add polaris https://downloads.apache.org/polaris/helm-chart
 	$(HELM) repo update
 
 lint: ## Lint the charts we own
@@ -90,6 +97,14 @@ dagster: ## Install Dagster (TAG defaults to the current commit's sha-<12>)
 		--set "runLauncher.config.k8sRunLauncher.image.tag=$(TAG)" \
 		--wait --timeout 10m
 
+polaris: ## Install Apache Polaris — the Iceberg REST catalog (ADR-0010)
+	# 1. schema + `ohdp` realm (admin tool) — must precede the server.
+	# 2. the chart. 3. the `ohdp` catalog via the management API (server must be up).
+	OHDP_ICEBERG_CREDENTIAL="$(OHDP_ICEBERG_CREDENTIAL)" POLARIS_VERSION="$(POLARIS_VERSION)" ../scripts/polaris-bootstrap.sh schema
+	$(HELM) upgrade --install polaris polaris/polaris --version $(POLARIS_VERSION) \
+		-n data --create-namespace -f $(VALUES)/polaris.yaml --wait --timeout 5m
+	OHDP_ICEBERG_CREDENTIAL="$(OHDP_ICEBERG_CREDENTIAL)" POLARIS_VERSION="$(POLARIS_VERSION)" ../scripts/polaris-bootstrap.sh catalog
+
 proxy: ## Install the GraphQL authz proxy in front of Dagster
 	$(HELM) upgrade --install gqlproxy $(CHARTS)/graphql-authz-proxy \
 		-n data --create-namespace --wait
@@ -103,4 +118,4 @@ hub-api: ## Install the FastAPI backend (TAG defaults to the current commit's sh
 	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
 		-n app --create-namespace --set image.tag=$(TAG) --wait
 
-install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)
+install: opensearch openmetadata polaris proxy dagster ## The data platform (hub-api is deployed on its own)
