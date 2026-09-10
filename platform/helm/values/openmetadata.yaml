@@ -98,10 +98,11 @@ openmetadata:
     # No Airflow. Dagster owns orchestration (§2); leaving this enabled makes
     # the UI advertise ingestion pipelines that cannot run.
     #
-    # `enabled: false` alone is not enough on chart 1.13.x — the deployment and
-    # migration initContainer still mount AIRFLOW_PASSWORD from a secret named
-    # `airflow-secrets`, which we never create. Blanking the airflow auth
-    # secretRef makes the chart drop that env var entirely.
+    # `enabled: false` alone is not enough (still true on chart 2.0.x) — the
+    # deployment and its run-db-migrations initContainer still mount
+    # AIRFLOW_PASSWORD from a secret named `airflow-secrets`, which we never
+    # create. Blanking the airflow auth secretRef makes the chart drop that env
+    # var entirely.
     pipelineServiceClientConfig:
       enabled: false
       airflow:
