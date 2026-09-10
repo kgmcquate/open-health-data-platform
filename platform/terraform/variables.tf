@@ -21,7 +21,7 @@ variable "location" {
 variable "server_type" {
   description = "DigitalOcean Kubernetes node size for the default pool."
   type        = string
-  default     = "s-4vcpu-8gb"
+  default     = "s-8vcpu-16gb"
 }
 
 variable "kubernetes_version" {
