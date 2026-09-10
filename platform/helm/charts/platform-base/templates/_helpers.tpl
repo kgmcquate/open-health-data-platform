@@ -22,6 +22,17 @@ value is freshly random — fine for validation, never written anywhere.
 {{- $fernet := (lookup "v1" "Secret" "meta" "openmetadata-fernet-secret").data | default dict -}}
 {{- $cube := (lookup "v1" "Secret" "data" "cube-secret").data | default dict -}}
 {{- $oauth2 := (lookup "v1" "Secret" "data" "oauth2-proxy-secret").data | default dict -}}
+{{- /* Polaris `ohdp` realm root principal (ADR-0010). Two generated tokens; read
+       back from the live secret (split the stored "<id>:<secret>") so they never
+       rotate on upgrade. clientId/clientSecret are alnum only — the value must
+       survive an OAuth2 form body, a ","-delimited admin-tool arg and a k8s env. */ -}}
+{{- $polaris := (lookup "v1" "Secret" "data" "polaris-principal").data | default dict -}}
+{{- $polarisId := "" -}}{{- $polarisSecret := "" -}}
+{{- with (index $polaris "OHDP_ICEBERG_CREDENTIAL") -}}
+{{- $parts := splitList ":" (b64dec .) -}}
+{{- $polarisId = index $parts 0 -}}{{- $polarisSecret = index $parts 1 -}}
+{{- end -}}
+{{- if not $polarisId -}}{{- $polarisId = randAlpha 16 -}}{{- $polarisSecret = randAlphaNum 40 -}}{{- end -}}
 postgres: {{ (index $pg "postgres-password") | default (randAlphaNum $len | b64enc) }}
 dagster: {{ (index $pg "dagster-password") | default (randAlphaNum $len | b64enc) }}
 superset: {{ (index $pg "superset-password") | default (randAlphaNum $len | b64enc) }}
@@ -32,4 +43,6 @@ fernet: {{ (index $fernet "fernetKey") | default ((randAlphaNum 32 | b64enc | re
 cube: {{ (index $cube "OHDP_CUBE_API_SECRET") | default (randAlphaNum $len | b64enc) }}
 {{/* oauth2-proxy cookie secret — must decode to exactly 32 bytes. */}}
 oauth2Cookie: {{ (index $oauth2 "cookie-secret") | default (randAlphaNum 32 | b64enc) }}
+polarisClientId: {{ $polarisId | b64enc }}
+polarisClientSecret: {{ $polarisSecret | b64enc }}
 {{- end -}}

@@ -33,7 +33,8 @@ pipelineConfig:
   OHDP_SPACES_BUCKET: "ohdp-warehouse"
   OHDP_SPACES_ENDPOINT_URL: "https://nyc3.digitaloceanspaces.com"
   OHDP_SPACES_REGION: "nyc3"
-  # Iceberg lakehouse (ADR-0010). Catalog credentials are in ohdp-pipeline-secrets.
+  # Iceberg lakehouse (ADR-0010). Catalog credentials (OHDP_ICEBERG_CREDENTIAL)
+  # are in the generated `polaris-principal` secret, loaded via dagster envSecrets.
   OHDP_ICEBERG_CATALOG_URI: "http://polaris.data.svc.cluster.local:8181/api/catalog"
   OHDP_ICEBERG_CATALOG_NAME: "ohdp"
   OHDP_DBT_STAGE_DIR: "/tmp/ohdp_dbt_stage"
