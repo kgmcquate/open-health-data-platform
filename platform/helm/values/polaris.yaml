@@ -64,7 +64,6 @@ extraInitContainers:
     image: "apache/polaris-admin-tool:{{ .Chart.AppVersion }}"
     imagePullPolicy: IfNotPresent
     securityContext:
-      runAsNonRoot: true
       allowPrivilegeEscalation: false
       capabilities:
         drop: ["ALL"]
