@@ -19,20 +19,32 @@ resource "digitalocean_kubernetes_cluster" "cluster" {
   }
 }
 
-resource "digitalocean_kubernetes_node_pool" "heavy" {
+resource "digitalocean_kubernetes_node_pool" "8_cpu_16gb" {
   cluster_id = digitalocean_kubernetes_cluster.cluster.id
-  name       = "${var.name}-heavy"
+  name       = "${var.name}-8-cpu-16gb"
   size       = "s-8vcpu-16gb"
-  node_count = 1
+  node_count = 0
+  auto_scale = false
   labels = {
     node-role = "heavy"
   }
+
+  lifecycle {
+    ignore_changes = [ node_count ]
+  }
 }
 
-resource "digitalocean_reserved_ip" "traefik" {
-  region = var.location
-}
+resource "digitalocean_kubernetes_node_pool" "4_cpu_8gb" {
+  cluster_id = digitalocean_kubernetes_cluster.cluster.id
+  name       = "${var.name}-4-cpu-8gb"
+  size       = "s-4vcpu-8gb"
+  node_count = 0
+  auto_scale = false
+  labels = {
+    node-role = "heavy"
+  }
 
-# Keep the public ingress IP stable by reserving a DigitalOcean IP and reusing it
-# for the Traefik Service. You can scale the heavy pool to 0 for cost savings
-# without destroying this public IP or forcing a DNS flip.
+  lifecycle {
+    ignore_changes = [ node_count ]
+  }
+}

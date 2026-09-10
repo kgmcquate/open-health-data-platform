@@ -1,8 +1,3 @@
-output "traefik_reserved_ip" {
-  description = "Reserved public IPv4 held for the Traefik load balancer so the ingress IP stays stable across node pool scale-down events."
-  value       = digitalocean_reserved_ip.traefik.ip_address
-}
-
 output "cluster_id" {
   description = "ID of the managed DigitalOcean Kubernetes cluster."
   value       = digitalocean_kubernetes_cluster.cluster.id
