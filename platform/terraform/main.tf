@@ -30,7 +30,7 @@ resource "digitalocean_kubernetes_node_pool" "8_cpu_16gb" {
   }
 
   lifecycle {
-    ignore_changes = [ node_count ]
+    ignore_changes = [node_count]
   }
 }
 
@@ -45,6 +45,6 @@ resource "digitalocean_kubernetes_node_pool" "4_cpu_8gb" {
   }
 
   lifecycle {
-    ignore_changes = [ node_count ]
+    ignore_changes = [node_count]
   }
 }
