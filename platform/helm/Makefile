@@ -98,12 +98,12 @@ dagster: ## Install Dagster (TAG defaults to the current commit's sha-<12>)
 		--wait --timeout 10m
 
 polaris: ## Install Apache Polaris — the Iceberg REST catalog (ADR-0010)
-	# 1. schema + `ohdp` realm (admin tool) — must precede the server.
-	# 2. the chart. 3. the `ohdp` catalog via the management API (server must be up).
-	OHDP_ICEBERG_CREDENTIAL="$(OHDP_ICEBERG_CREDENTIAL)" POLARIS_VERSION="$(POLARIS_VERSION)" ../scripts/polaris-bootstrap.sh schema
+	# The chart's `bootstrap-schema` init container creates the schema + `ohdp`
+	# realm on first boot (needs the `polaris-bootstrap` secret). Then create the
+	# `ohdp` catalog via the management API — server must be up, hence post-helm.
 	$(HELM) upgrade --install polaris polaris/polaris --version $(POLARIS_VERSION) \
 		-n data --create-namespace -f $(VALUES)/polaris.yaml --wait --timeout 5m
-	OHDP_ICEBERG_CREDENTIAL="$(OHDP_ICEBERG_CREDENTIAL)" POLARIS_VERSION="$(POLARIS_VERSION)" ../scripts/polaris-bootstrap.sh catalog
+	OHDP_ICEBERG_CREDENTIAL="$(OHDP_ICEBERG_CREDENTIAL)" ../scripts/polaris-bootstrap.sh
 
 proxy: ## Install the GraphQL authz proxy in front of Dagster
 	$(HELM) upgrade --install gqlproxy $(CHARTS)/graphql-authz-proxy \
