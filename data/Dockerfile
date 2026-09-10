@@ -23,14 +23,14 @@ COPY data/pyproject.toml data/uv.lock data/
 
 WORKDIR /app/data
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-editable
+    uv sync --no-install-project --no-editable
 
 COPY data/ /app/data/
 
 # --no-editable: the default editable install leaves .pth files pointing at
 # /app/data/src/... which do not exist in the runtime stage (ADR-0004).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-editable
+    uv sync --no-editable
 
 # manifest.json for the `warehouse` Dagster component (ADR-0010). `dbt parse` is
 # offline — no catalog or Spaces creds needed.
