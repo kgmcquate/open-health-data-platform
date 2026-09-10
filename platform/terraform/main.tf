@@ -19,7 +19,7 @@ resource "digitalocean_kubernetes_cluster" "cluster" {
   }
 }
 
-resource "digitalocean_kubernetes_node_pool" "8_cpu_16gb" {
+resource "digitalocean_kubernetes_node_pool" "np_8_cpu_16gb" {
   cluster_id = digitalocean_kubernetes_cluster.cluster.id
   name       = "${var.name}-8-cpu-16gb"
   size       = "s-8vcpu-16gb"
@@ -34,7 +34,7 @@ resource "digitalocean_kubernetes_node_pool" "8_cpu_16gb" {
   }
 }
 
-resource "digitalocean_kubernetes_node_pool" "4_cpu_8gb" {
+resource "digitalocean_kubernetes_node_pool" "np_4_cpu_8gb" {
   cluster_id = digitalocean_kubernetes_cluster.cluster.id
   name       = "${var.name}-4-cpu-8gb"
   size       = "s-4vcpu-8gb"
