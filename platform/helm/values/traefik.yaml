@@ -10,6 +10,8 @@
 # Single replica — no HA, that is the design (ARCHITECTURE.md §1.4, §9).
 deployment:
   replicas: 1
+  nodeSelector:
+    node-role: ingress
 
 # Register as the default IngressClass so `ingressClassName: traefik` resolves
 # and bare Ingresses without a class also land here.

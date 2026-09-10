@@ -13,6 +13,9 @@ resource "digitalocean_kubernetes_cluster" "cluster" {
     name       = "${var.name}-default"
     size       = "s-1vcpu-2gb"
     node_count = 1
+    labels = {
+      node-role = "ingress"
+    }
   }
 }
 
@@ -21,6 +24,9 @@ resource "digitalocean_kubernetes_node_pool" "heavy" {
   name       = "${var.name}-heavy"
   size       = "s-8vcpu-16gb"
   node_count = 1
+  labels = {
+    node-role = "heavy"
+  }
 }
 
 resource "digitalocean_reserved_ip" "traefik" {
