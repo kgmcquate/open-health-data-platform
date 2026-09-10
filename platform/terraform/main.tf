@@ -11,7 +11,7 @@ resource "digitalocean_kubernetes_cluster" "cluster" {
 
   node_pool {
     name       = "${var.name}-default"
-    size       = "s-1vcpu-1gb"
+    size       = "s-1vcpu-2gb"
     node_count = 1
   }
 }
@@ -23,4 +23,10 @@ resource "digitalocean_kubernetes_node_pool" "heavy" {
   node_count = 1
 }
 
-# Single managed Kubernetes cluster, no self-hosted k3s bootstrap on a droplet.
+resource "digitalocean_reserved_ip" "traefik" {
+  region = var.location
+}
+
+# Keep the public ingress IP stable by reserving a DigitalOcean IP and reusing it
+# for the Traefik Service. You can scale the heavy pool to 0 for cost savings
+# without destroying this public IP or forcing a DNS flip.
