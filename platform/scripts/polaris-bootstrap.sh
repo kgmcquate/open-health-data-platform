@@ -57,7 +57,8 @@ kubectl -n "$NS" run polaris-catalog-init --rm -i --restart=Never \
             \"default-base-location\": \"s3://$BUCKET\",
             \"s3.endpoint\": \"$S3_ENDPOINT\",
             \"s3.region\": \"$S3_REGION\",
-            \"s3.path-style-access\": \"false\"
+            \"s3.path-style-access\": \"false\",
+            \"polaris.config.skip-credential-subscoping-indirection\": \"true\"
           },
           \"storageConfigInfo\": {
             \"storageType\": \"S3\",

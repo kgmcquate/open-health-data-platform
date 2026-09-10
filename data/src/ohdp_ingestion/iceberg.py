@@ -60,6 +60,12 @@ def catalog_properties() -> dict[str, Any]:
         "uri": settings.iceberg_catalog_uri,
         "warehouse": settings.iceberg_warehouse or settings.iceberg_catalog_name,
         "scope": settings.iceberg_scope,
+        # Polaris is given no storage credentials (it cannot subscope for Spaces),
+        # so we never want it to vend any: suppress pyiceberg's default
+        # `X-Iceberg-Access-Delegation: vended-credentials` header. Without this,
+        # every create/load is authorized as the *_WITH_WRITE_DELEGATION variant
+        # and Polaris 403s it. We bring our own s3.* creds below (`_s3_props`).
+        "header.X-Iceberg-Access-Delegation": "",
     }
     if settings.iceberg_credential:
         props["credential"] = settings.iceberg_credential
