@@ -12,11 +12,12 @@ CHARTS := charts
 TAG ?= $(shell git rev-parse HEAD 2>/dev/null | cut -c1-12 | grep . | sed 's/^/sha-/')
 
 # Pin every upstream chart. `helm upgrade --install` otherwise silently pulls
-# whatever is newest — OpenMetadata 2.0.x restructured its secret/config layout
-# and will not deploy against these values. Re-resolve deliberately after
-# reading the upstream changelog (same rule as the proxy image digest).
+# whatever is newest and runs its migrations unattended. Re-resolve deliberately
+# after reading the upstream changelog (same rule as the proxy image digest).
+# OpenMetadata 2.0: chart values schema is unchanged from 1.13.x; the server
+# runs Flyway migrations from the `run-db-migrations` initContainer on upgrade.
 OPENSEARCH_VERSION      ?= 3.8.0
-OPENMETADATA_VERSION    ?= 1.13.5
+OPENMETADATA_VERSION    ?= 2.0.1
 DAGSTER_VERSION         ?= 1.13.21
 TRAEFIK_VERSION         ?= 41.5.0
 CERT_MANAGER_VERSION    ?= v1.21.1

@@ -12,15 +12,16 @@ values/
   traefik.yaml          for traefik/traefik
   cert-manager.yaml     for jetstack/cert-manager
   dagster.yaml          for dagster/dagster
-  openmetadata.yaml     for open-metadata/openmetadata  (pinned to 1.13.x)
+  openmetadata.yaml     for open-metadata/openmetadata  (pinned to 2.0.x)
   opensearch.yaml       for opensearch/opensearch
   oauth2-proxy.yaml     for oauth2-proxy/oauth2-proxy  (Google login wall, ADR-0007)
   polaris.yaml          for polaris/polaris  (Iceberg REST catalog, ADR-0010)
 ```
 
 Every upstream chart version is pinned in the `Makefile` (`*_VERSION`).
-`helm upgrade --install` otherwise pulls the newest — and OpenMetadata 2.0.x
-restructured its secret/config layout in a way these values do not support.
+`helm upgrade --install` otherwise pulls the newest and runs its migrations
+unattended — bump a pin only after reading the upstream changelog. OpenMetadata
+runs its Flyway DB migrations from an initContainer on every `make openmetadata`.
 
 ## Why Dagster and OpenMetadata are values files, not charts
 
