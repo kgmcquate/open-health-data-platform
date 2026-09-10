@@ -14,6 +14,7 @@ values/
   dagster.yaml          for dagster/dagster
   openmetadata.yaml     for open-metadata/openmetadata  (pinned to 1.13.x)
   opensearch.yaml       for opensearch/opensearch
+  oauth2-proxy.yaml     for oauth2-proxy/oauth2-proxy  (Google login wall, ADR-0007)
 ```
 
 Every upstream chart version is pinned in the `Makefile` (`*_VERSION`).
@@ -49,6 +50,7 @@ keeps it stable across upgrades:
 | `openmetadata-fernet-secret` | `meta` | OpenMetadata fernet key |
 | `cube-secret` | `data` | hub-api ↔ Cube shared secret |
 | `hub-api-db` | `app` | `OHDP_APP_DATABASE_URL`, `OHDP_CUBE_API_SECRET` |
+| `oauth2-proxy-secret` | `data` | oauth2-proxy `cookie-secret` (Google `client-id`/`client-secret` merged in externally) |
 | `ohdp-pipeline-config` (ConfigMap) | `data` | non-secret pipeline env |
 
 The **external** secrets are GitHub Actions repo secrets, injected by the
@@ -68,6 +70,15 @@ kubectl -n app create secret generic hub-api-secrets \
   --from-literal=OHDP_OPENMETADATA_JWT= \
   --from-literal=STRIPE_SECRET_KEY= \
   --from-literal=OIDC_CLIENT_SECRET=
+
+# oauth2-proxy (ADR-0007) — merge the Google client creds into the Secret
+# platform-base created (it already holds the generated `cookie-secret`).
+# `make base` must have run first. Google Cloud console: a "Web application"
+# OAuth client, redirect URI https://dagster.ohdp.kevinmcquate.com/oauth2/callback
+kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$(printf \
+  '{"data":{"client-id":"%s","client-secret":"%s"}}' \
+  "$(printf %s "$DAGSTER_OIDC_CLIENT_ID" | base64 -w0)" \
+  "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")"
 ```
 
 `OHDP_OPENMETADATA_JWT` is minted by OpenMetadata itself (Settings → Bots →
@@ -80,7 +91,7 @@ and restart the consumers.
 make repos      # add + update upstream helm repos
 make infra      # platform-base, Traefik, cert-manager, ClusterIssuer
 # create the external secrets (above)
-make install    # opensearch, openmetadata, proxy, dagster
+make install    # opensearch, openmetadata, proxy, oauth2-proxy, dagster
 make hub-api    # deployed on its own for now
 ```
 

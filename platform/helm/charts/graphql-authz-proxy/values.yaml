@@ -1,11 +1,13 @@
 # graphql-authz-proxy — the thing that actually enforces read-only on the
-# publicly exposed Dagster UI (ARCHITECTURE.md §5). Dagster's own read-only mode
-# is a UI concern; this is the control.
+# Dagster UI (ARCHITECTURE.md §5). Dagster's own read-only mode is a UI concern;
+# this is the control.
 #
 # Request path:  Cloudflare -> Traefik -> oauth2-proxy -> THIS -> dagster-webserver
-# oauth2-proxy sets X-Forwarded-Email / -User / -Preferred-Username, which the
-# proxy reads to resolve a user. Unrecognised users fall through to
-# authz.defaultGroups.
+# oauth2-proxy (ADR-0007) authenticates every request with Google and sets
+# X-Forwarded-Email / -User / -Preferred-Username, which this proxy reads to
+# resolve a user. Authenticated-but-unrecognised users fall through to
+# authz.defaultGroups (public-viewer). This Service is ClusterIP with no Ingress:
+# oauth2-proxy is the only way in.
 
 replicaCount: 1
 
@@ -38,7 +40,7 @@ server:
   # oauth2-proxy is the only entry point; turn on if the proxy is ever reachable
   # without it.
   validateToken: false
-  idp: "github"
+  idp: "google"
   enableConfigJinja: false
 
 service:

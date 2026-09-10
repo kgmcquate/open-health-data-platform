@@ -13,3 +13,4 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0004](0004-orchestration-package-import-name.md) | Orchestration package imported as `ohdp_orchestration` | Accepted |
 | [0005](0005-hetzner-k3s-over-managed-kubernetes.md) | Hetzner + k3s over managed Kubernetes | Accepted |
 | [0006](0006-upstream-charts-and-external-authz-proxy.md) | Upstream Helm charts, external authz proxy | Accepted |
+| [0007](0007-oauth2-proxy-google-sso.md) | Google login wall in front of Dagster (oauth2-proxy) | Accepted |

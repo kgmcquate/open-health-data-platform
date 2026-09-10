@@ -70,6 +70,10 @@ openmetadata:
       principalDomain: "gmail.com"
       enforcePrincipalDomain: false
 
+    # Google SSO. Public (PKCE) client — the OAuth client ID is not a secret,
+    # so it lives here; there is no client secret in this flow. The client is a
+    # "Web application" OAuth client in Google Cloud console with redirect URI
+    # https://catalog.ohdp.kevinmcquate.com/callback.
     authentication:
       enabled: true
       provider: "google"
