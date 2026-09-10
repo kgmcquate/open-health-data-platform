@@ -23,11 +23,7 @@ CERT_MANAGER_VERSION    ?= v1.21.1
 OAUTH2_PROXY_VERSION    ?= 10.7.0
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
-<<<<<<< HEAD
-        install opensearch openmetadata dagster proxy oauth2-proxy hub-api verify-proxy
-=======
         install opensearch openmetadata dagster proxy hub-api
->>>>>>> main
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
