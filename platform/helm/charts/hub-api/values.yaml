@@ -28,7 +28,7 @@ ingress:
   className: traefik
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-  host: app.example.com
+  host: app.ohdp.kevinmcquate.com
   path: /api
   pathType: Prefix
   tls:

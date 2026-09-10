@@ -24,6 +24,17 @@ output "fetch_kubeconfig" {
   value       = "terraform output -raw kubeconfig > platform/terraform/kubeconfig && chmod 600 platform/terraform/kubeconfig"
 }
 
+output "loadbalancer_ip_command" {
+  description = <<-EOT
+    DNS is not managed here — kevinmcquate.com is a Cloudflare zone and the
+    records are created by hand (DNS-only / grey cloud). After the platform is
+    deployed, read the Traefik load balancer's public IP and point the
+    *.ohdp.kevinmcquate.com A records at it:
+      kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  EOT
+  value       = "kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'"
+}
+
 output "warehouse_bucket" {
   description = "Spaces bucket holding snapshots and backups."
   value       = digitalocean_spaces_bucket.warehouse.name

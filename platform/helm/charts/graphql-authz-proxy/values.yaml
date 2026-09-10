@@ -49,7 +49,7 @@ ingress:
   enabled: false # Traefik routes to oauth2-proxy, which forwards here.
   className: traefik
   annotations: {}
-  host: dagster.example.com
+  host: dagster.ohdp.kevinmcquate.com
   tls:
     enabled: true
     secretName: dagster-tls

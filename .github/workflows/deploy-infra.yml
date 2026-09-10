@@ -33,7 +33,6 @@ defaults:
 env:
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "0"
-  TF_VAR_domain: ${{ secrets.DOMAIN }}
   TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
   DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
   # DigitalOcean Spaces credentials for the S3-compatible state backend.

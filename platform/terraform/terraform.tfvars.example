@@ -6,8 +6,7 @@ cloudflare_api_token = ""
 cloudflare_account_id = ""
 cloudflare_zone_id   = ""
 
-domain = "example.com"
-name   = "ohdp"
+name = "ohdp"
 
 # fsn1/nbg1 = Germany, hel1 = Finland, ash/hil = US. See ARCHITECTURE.md §10.1.
 location    = "fsn1"

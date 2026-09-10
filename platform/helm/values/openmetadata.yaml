@@ -117,14 +117,14 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: catalog.example.com
+    - host: catalog.ohdp.kevinmcquate.com
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: openmetadata-tls
       hosts:
-        - catalog.example.com
+        - catalog.ohdp.kevinmcquate.com
 
 # §4 budgets 2 GB. This is a JVM — the limit must leave room above the heap or
 # the pod is OOMKilled by the kernel rather than throwing a Java OOM.

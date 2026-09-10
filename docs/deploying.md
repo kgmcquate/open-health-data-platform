@@ -5,7 +5,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 | Workflow | Does | Needs a cluster? |
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
-| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, DNS, Spaces bucket | no |
+| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket (DNS is manual — see below) | no |
 | [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, Dagster, hub-api | when `deploy` ticked |
 
 ## Setup
@@ -53,6 +53,29 @@ Order matters, and two steps are deliberately manual.
    Dagster + hub-api deploy the `sha-<12>` of the commit being run (the tag
    `build-images.yml` pushed). Pass `--input image_tag=sha-…` to pin an older
    build.
+
+6. **Point DNS at the load balancer.** Terraform does not manage DNS —
+   `kevinmcquate.com` is a Cloudflare zone. Once Traefik is up, read the
+   DigitalOcean load balancer IP it provisioned:
+   ```bash
+   kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+   ```
+   Then, in the Cloudflare dashboard for `kevinmcquate.com`, add one **A record
+   per hostname**, all pointing at that IP, **DNS-only (grey cloud)** so the
+   Let's Encrypt HTTP-01 challenge reaches the origin unproxied:
+
+   | Name | Content |
+   |---|---|
+   | `app.ohdp` | `<lb-ip>` |
+   | `dagster.ohdp` | `<lb-ip>` |
+   | `catalog.ohdp` | `<lb-ip>` |
+   | `cube.ohdp` | `<lb-ip>` |
+   | `superset.ohdp` | `<lb-ip>` |
+
+   cert-manager issues a cert per host on the first request; check with
+   `kubectl get certificate -A`. Switching a record to proxied (orange cloud)
+   later needs cert-manager moved to a DNS-01 solver or a Cloudflare Origin CA
+   cert — HTTP-01 breaks behind the proxy.
 
 ## Day-to-day
 

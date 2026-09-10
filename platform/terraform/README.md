@@ -1,6 +1,8 @@
 # Terraform — DigitalOcean Kubernetes
 
-Provisions the managed cluster, its public DNS records, and the Spaces bucket, then leaves the application stack to Helm. The old self-hosted k3s-on-droplet bootstrap has been removed.
+Provisions the managed cluster and the Spaces bucket, then leaves the application stack to Helm. The old self-hosted k3s-on-droplet bootstrap has been removed.
+
+DNS is **not** managed here. `kevinmcquate.com` is a Cloudflare zone; its records are created by hand, DNS-only (grey cloud), pointing each `*.ohdp.kevinmcquate.com` host at the Traefik load balancer IP. See [`docs/deploying.md`](../../docs/deploying.md) step 6.
 
 ## What it creates
 
@@ -8,7 +10,6 @@ Provisions the managed cluster, its public DNS records, and the Spaces bucket, t
 |---|---|
 | `digitalocean_kubernetes_cluster` | Managed cluster in the chosen region |
 | `digitalocean_kubernetes_node_pool` | Default worker pool (`size`, `node_count`) |
-| `digitalocean_record` | A records for the apex and each subdomain |
 | `digitalocean_spaces_bucket` | `ohdp-warehouse` for snapshots + backups |
 
 This setup intentionally uses a managed DigitalOcean Kubernetes cluster instead of a single self-hosted k3s node. The cluster endpoint and kubeconfig are surfaced via Terraform outputs.
@@ -38,4 +39,4 @@ State is local until the Spaces bucket exists. After the first apply, uncomment 
 - **`admin_ip_ranges` gates the Kubernetes API.** If your IP is dynamic, expect to update this.
 - **`user_data` is in `ignore_changes`.** Editing the cloud-init template will not re-bootstrap an existing node.
 - **Spaces and S3-compatible backends use the AWS S3 compatibility layer.** Keep `force_path_style = true` and the access keys in GitHub secrets.
-- **DigitalOcean does not have the Cloudflare edge WAF.** If you want the same protection, add nginx/Traefik-rate limiting or a separate ingress layer in front of the node.
+- **DigitalOcean does not have the Cloudflare edge WAF.** The DNS records are DNS-only (grey cloud), so the origin LB IP is public and there is no edge WAF or rate limiting. If you want that, switch the records to proxied (orange cloud) — which also requires moving cert-manager to a DNS-01 solver or a Cloudflare Origin CA cert, since HTTP-01 breaks behind the proxy.

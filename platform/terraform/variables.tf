@@ -1,8 +1,3 @@
-variable "domain" {
-  description = "Apex domain serving the platform, e.g. example.com."
-  type        = string
-}
-
 variable "name" {
   description = "Name prefix for all resources."
   type        = string
@@ -45,16 +40,4 @@ variable "snapshot_bucket" {
   description = "DigitalOcean Spaces bucket for versioned DuckDB snapshots and Postgres backups."
   type        = string
   default     = "ohdp-warehouse"
-}
-
-variable "enable_dns" {
-  description = "Manage A records for the platform hostnames in DigitalOcean DNS."
-  type        = bool
-  default     = true
-}
-
-variable "subdomains" {
-  description = "Hostnames fronted by the ingress."
-  type        = list(string)
-  default     = ["app", "dagster", "superset", "catalog", "cube"]
 }
