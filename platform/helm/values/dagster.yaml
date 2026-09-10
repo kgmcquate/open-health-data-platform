@@ -101,6 +101,9 @@ runLauncher:
           # would otherwise take the node down.
           cpu: "4"
           memory: 1536Mi
+      runK8sConfig:
+        jobSpecConfig:
+          ttlSecondsAfterFinished: 3600
 
 # ---------------------------------------------------------------------------
 # Concurrency. maxConcurrentRuns: 1 is load-bearing — two concurrent builds
