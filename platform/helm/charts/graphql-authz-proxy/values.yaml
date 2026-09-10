@@ -85,7 +85,7 @@ authz:
   # Users the proxy recognises by email or username. Everyone else — including
   # every anonymous visitor — gets defaultGroups.
   users:
-    - username: kgmcquate
+    - username: kgmcquate@gmail.com
       email: kgmcquate@gmail.com
       groups:
         - admin
