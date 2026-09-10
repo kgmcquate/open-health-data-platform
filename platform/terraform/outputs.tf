@@ -44,8 +44,3 @@ output "warehouse_bucket" {
   description = "Spaces bucket holding snapshots and backups."
   value       = digitalocean_spaces_bucket.warehouse.name
 }
-
-output "monthly_cost_estimate_usd" {
-  description = "Rough fixed infrastructure cost."
-  value       = "${var.server_type} x ${var.node_count} nodes in ${var.location}; check https://www.digitalocean.com/pricing for current pricing"
-}
