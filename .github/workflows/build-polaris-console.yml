@@ -1,0 +1,80 @@
+name: Build Polaris console image
+
+# apache/polaris-tools ships the console as source only — no Helm repo, no
+# published image. Build it from a pinned commit and push to GHCR, where
+# charts/polaris-console pulls it from.
+#
+# Not on the merge-to-main hot path: the pin changes rarely, so this runs on
+# demand and whenever this file itself changes (i.e. when POLARIS_TOOLS_REF is
+# bumped). Keep image.tag in platform/helm/charts/polaris-console/values.yaml in
+# sync with POLARIS_TOOLS_REF below.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-polaris-console.yml
+
+concurrency:
+  group: build-polaris-console
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+  # apache/polaris-tools commit to build console/ from.
+  POLARIS_TOOLS_REF: da984987b91ffb421502059dea422b9331186e46
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout polaris-tools
+        uses: actions/checkout@v4
+        with:
+          repository: apache/polaris-tools
+          ref: ${{ env.POLARIS_TOOLS_REF }}
+
+      - name: Compute image reference
+        id: meta
+        run: |
+          set -euo pipefail
+          owner=$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')
+          echo "image=${REGISTRY}/${owner}/polaris-console" >> "$GITHUB_OUTPUT"
+          echo "Building ${REGISTRY}/${owner}/polaris-console:${POLARIS_TOOLS_REF}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: console
+          file: console/docker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ env.POLARIS_TOOLS_REF }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=gha,scope=polaris-console
+          cache-to: type=gha,mode=max,scope=polaris-console
+          provenance: false
+
+      - name: Summary
+        run: |
+          {
+            echo "### polaris-console"
+            echo ""
+            echo "    ${{ steps.meta.outputs.image }}:${{ env.POLARIS_TOOLS_REF }}"
+            echo ""
+            echo "Bump \`image.tag\` in platform/helm/charts/polaris-console/values.yaml to match."
+          } >> "$GITHUB_STEP_SUMMARY"

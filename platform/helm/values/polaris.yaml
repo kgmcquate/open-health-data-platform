@@ -130,6 +130,17 @@ service:
 ingress:
   enabled: false
 
+# CORS: the Polaris console (platform/helm/charts/polaris-console) is a browser
+# SPA that calls this API directly from the operator's machine over a
+# `kubectl port-forward` (`make polaris-console` / `make console`). Allow that
+# localhost origin so the browser's preflight succeeds. In-cluster clients (dlt,
+# dbt, the publish step) send no Origin header and are unaffected.
+cors:
+  enabled: true
+  allowedOrigins:
+    - http://localhost:8080
+  allowedMethods: [GET, POST, PUT, DELETE, HEAD, PATCH]
+
 serviceAccount:
   create: true
 

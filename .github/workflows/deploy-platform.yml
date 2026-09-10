@@ -121,6 +121,11 @@ jobs:
       - name: Polaris
         run: make -C platform/helm polaris
 
+      # The Polaris console UI (ADR-0010). Local chart; image built by
+      # build-polaris-console.yml. Internal only — reached via `make console`.
+      - name: Polaris console
+        run: make -C platform/helm polaris-console
+
       - name: GraphQL authz proxy
         run: make -C platform/helm proxy
 

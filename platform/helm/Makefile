@@ -25,7 +25,8 @@ OAUTH2_PROXY_VERSION    ?= 10.7.0
 POLARIS_VERSION         ?= 1.7.0
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
-        install opensearch openmetadata dagster proxy hub-api polaris
+        install opensearch openmetadata dagster proxy hub-api polaris \
+        polaris-console console
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -44,11 +45,13 @@ lint: ## Lint the charts we own
 	$(HELM) lint $(CHARTS)/platform-base
 	$(HELM) lint $(CHARTS)/hub-api --set image.tag=0.0.0-dev
 	$(HELM) lint $(CHARTS)/graphql-authz-proxy
+	$(HELM) lint $(CHARTS)/polaris-console
 
 template: ## Render the charts we own locally (catches template errors without a cluster)
 	$(HELM) template platform-base $(CHARTS)/platform-base >/dev/null && echo "platform-base OK"
 	$(HELM) template hub-api $(CHARTS)/hub-api --set image.tag=0.0.0-dev >/dev/null && echo "hub-api OK"
 	$(HELM) template gqlproxy $(CHARTS)/graphql-authz-proxy >/dev/null && echo "graphql-authz-proxy OK"
+	$(HELM) template polaris-console $(CHARTS)/polaris-console >/dev/null && echo "polaris-console OK"
 
 # --------------------------------------------------------------------------
 # Cluster foundation
@@ -101,6 +104,20 @@ polaris: ## Install Apache Polaris — the Iceberg REST catalog (ADR-0010)
 		-n data --create-namespace -f $(VALUES)/polaris.yaml --wait --timeout 5m
 	../scripts/polaris-bootstrap.sh
 
+polaris-console: ## Install the Apache Polaris console UI (ADR-0010; internal only — see `make console`)
+	# Local chart; the image is built by .github/workflows/build-polaris-console.yml.
+	$(HELM) upgrade --install polaris-console $(CHARTS)/polaris-console \
+		-n data --create-namespace --wait --timeout 3m
+
+console: ## Port-forward the Polaris console (:8080) + Polaris API (:8181) for local access
+	@echo "Polaris console  -> http://localhost:8080   (Ctrl-C to stop)"
+	@echo "log in with the ohdp root principal (clientId:clientSecret):"
+	@echo "  kubectl -n data get secret polaris-principal -o jsonpath='{.data.OHDP_ICEBERG_CREDENTIAL}' | base64 -d"
+	@trap 'kill 0' EXIT; \
+	 $(KUBECTL) -n data port-forward svc/polaris 8181:8181 & \
+	 $(KUBECTL) -n data port-forward svc/polaris-console 8080:8080 & \
+	 wait
+
 proxy: ## Install the GraphQL authz proxy in front of Dagster
 	$(HELM) upgrade --install gqlproxy $(CHARTS)/graphql-authz-proxy \
 		-n data --create-namespace --wait
@@ -114,4 +131,4 @@ hub-api: ## Install the FastAPI backend (TAG defaults to the current commit's sh
 	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
 		-n app --create-namespace --set image.tag=$(TAG) --wait
 
-install: opensearch openmetadata polaris proxy dagster ## The data platform (hub-api is deployed on its own)
+install: opensearch openmetadata polaris polaris-console proxy dagster ## The data platform (hub-api is deployed on its own)

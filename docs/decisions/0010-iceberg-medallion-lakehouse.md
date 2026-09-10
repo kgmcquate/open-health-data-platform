@@ -42,6 +42,19 @@ RAM (JVM) + one Postgres DB — noted against ARCHITECTURE §4's budget.
 and CI (`OHDP_ICEBERG_CATALOG_URI` unset) it falls back to a pyiceberg
 `SqlCatalog` on SQLite with a local warehouse dir — same API, no services.
 
+The pipeline suppresses pyiceberg's default `X-Iceberg-Access-Delegation:
+vended-credentials` header and passes `s3.*` to pyiceberg itself: Polaris is
+given no storage credentials (it cannot subscope for non-AWS Spaces), so asking
+it to vend only earns a `403` on the `*_WITH_WRITE_DELEGATION` op.
+
+The Apache Polaris **console** (a browser SPA, `platform/helm/charts/polaris-console`)
+is deployed for catalog inspection/admin. Upstream ships neither a Helm repo nor
+an image, so the chart is local and the image is built from a pinned
+`apache/polaris-tools` commit by `build-polaris-console.yml`. It is internal-only
+(`make console` port-forwards it; ARCHITECTURE §5 — nothing new exposed) and logs
+in as the `ohdp` root principal. Polaris gets a narrow CORS allowlist
+(`http://localhost:8080`) for it.
+
 ### Raw is append-only, dedupe in `clean`
 
 dlt fetches only changed rows (SoQL `$where` on `:updated_at`) but **appends** —

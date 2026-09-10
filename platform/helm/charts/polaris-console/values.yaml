@@ -1,0 +1,76 @@
+# Apache Polaris console — a read/write web UI for the `ohdp` Iceberg catalog
+# (ADR-0010).
+#
+# Upstream (apache/polaris-tools) publishes neither a Helm repo nor a container
+# image, so:
+#   - the image is built from a pinned polaris-tools commit and pushed to GHCR by
+#     .github/workflows/build-polaris-console.yml
+#   - this is a local chart. ADR-0006 is "upstream chart, our values"; there is no
+#     upstream chart to point at, and gqlproxy / hub-api set the local-chart
+#     precedent.
+#
+# Access is cluster-internal only — nothing new is exposed publicly
+# (ARCHITECTURE.md §5). Reach it over a port-forward:
+#   make -C platform/helm console          # console :8080 + Polaris API :8181
+#   open http://localhost:8080
+# Log in with the `ohdp` root principal's `clientId:clientSecret` (the only
+# principal that exists — polaris-bootstrap, ADR-0010):
+#   kubectl -n data get secret polaris-principal \
+#     -o jsonpath='{.data.OHDP_ICEBERG_CREDENTIAL}' | base64 -d
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kgmcquate/polaris-console
+  # Pinned to the apache/polaris-tools commit build-polaris-console.yml built
+  # from. Bump both together (POLARIS_TOOLS_REF in that workflow).
+  tag: "da984987b91ffb421502059dea422b9331186e46"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# VITE_* runtime config. The image's `generate-config.sh` entrypoint writes these
+# into /config.js at startup; the SPA reads them in the *browser* and calls the
+# Polaris API directly — so polarisApiUrl / oauthTokenUrl must resolve from the
+# browser (hence localhost:8181, the `make console` port-forward) and Polaris
+# must allow that origin (cors.* in values/polaris.yaml).
+config:
+  polarisApiUrl: "http://localhost:8181"
+  oauthTokenUrl: "http://localhost:8181/api/catalog/v1/oauth/tokens"
+  polarisRealm: "ohdp"
+  polarisRealmHeaderName: "Polaris-Realm"
+  polarisPrincipalScope: "PRINCIPAL_ROLE:ALL"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# A small nginx serving static files — a few MB resident. Shares §4's budget.
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 96Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  # uid 10000 / gid 10001 — the `polaris` user baked into the upstream image.
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsUser: 10000
+  allowPrivilegeEscalation: false
+  # generate-config.sh writes /opt/app-root/src/config.js at startup and the UBI
+  # nginx needs its runtime dirs writable, so the root FS is not read-only.
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
