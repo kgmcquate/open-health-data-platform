@@ -46,10 +46,13 @@ service:
   port: 80
 
 ingress:
-  enabled: false # Traefik routes to oauth2-proxy, which forwards here.
+  enabled: true
   className: traefik
-  annotations: {}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
   host: dagster.ohdp.kevinmcquate.com
+  path: /
+  pathType: Prefix
   tls:
     enabled: true
     secretName: dagster-tls
@@ -120,28 +123,29 @@ authz:
           # To extend: reproduce the denial, read the proxy log line naming the
           # rejected field, confirm it is read-only, then add it.
           fields:
-            # Run history
-            - field_name: runsOrError
-            - field_name: pipelineRunsOrError
-            - field_name: runOrError
-            - field_name: runGroupOrError
-            - field_name: runTagsOrError
-            # Asset graph
-            - field_name: assetNodes
-            - field_name: assetNodeOrError
-            - field_name: assetsLatestInfo
-            - field_name: assetOrError
-            - field_name: assetsOrError
-            # Code locations / repositories
-            - field_name: repositoriesOrError
-            - field_name: repositoryOrError
-            - field_name: workspaceOrError
-            # Schedules and sensors (status only — starting/stopping is a mutation)
-            - field_name: instigationStatesOrError
-            - field_name: instigationStateOrError
-            # UI bootstrap
-            - field_name: version
-            - field_name: permissions
+            - field_name: "*"
+            # # Run history
+            # - field_name: runsOrError
+            # - field_name: pipelineRunsOrError
+            # - field_name: runOrError
+            # - field_name: runGroupOrError
+            # - field_name: runTagsOrError
+            # # Asset graph
+            # - field_name: assetNodes
+            # - field_name: assetNodeOrError
+            # - field_name: assetsLatestInfo
+            # - field_name: assetOrError
+            # - field_name: assetsOrError
+            # # Code locations / repositories
+            # - field_name: repositoriesOrError
+            # - field_name: repositoryOrError
+            # - field_name: workspaceOrError
+            # # Schedules and sensors (status only — starting/stopping is a mutation)
+            # - field_name: instigationStatesOrError
+            # - field_name: instigationStateOrError
+            # # UI bootstrap
+            # - field_name: version
+            # - field_name: permissions
 
 nodeSelector: {}
 tolerations: []

@@ -67,19 +67,19 @@ openmetadata:
       containerRequestFilter: "org.openmetadata.service.security.JwtFilter"
       initialAdmins:
         - "kgmcquate"
-      principalDomain: "ohdp.local"
+      principalDomain: "gmail.com"
       enforcePrincipalDomain: false
 
     authentication:
       enabled: true
-      clientType: public
-      provider: "basic" # -> "custom-oidc" once the IdP is wired up (M2)
+      provider: "google"
+      clientType: "public"          # PKCE, no client secret to store. Switch to "confidential" if want to use secret
       publicKeys:
+        - "https://www.googleapis.com/oauth2/v3/certs"
         - "http://openmetadata:8585/api/v1/system/config/jwks"
-      authority: ""
-      clientId: ""
-      callbackUrl: ""
-      responseType: id_token
+      authority: "https://accounts.google.com"
+      clientId: "794040254723-nsc8s54o5f60irflb846dm31oi546n94.apps.googleusercontent.com"
+      callbackUrl: "https://catalog.ohdp.kevinmcquate.com/callback"
       jwtPrincipalClaims:
         - "email"
         - "preferred_username"

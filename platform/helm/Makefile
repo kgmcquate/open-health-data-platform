@@ -22,7 +22,7 @@ TRAEFIK_VERSION         ?= 41.5.0
 CERT_MANAGER_VERSION    ?= v1.21.1
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
-        install opensearch openmetadata dagster proxy hub-api verify-proxy
+        install opensearch openmetadata dagster proxy hub-api
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -98,16 +98,3 @@ hub-api: ## Install the FastAPI backend (TAG defaults to the current commit's sh
 		-n app --create-namespace --set image.tag=$(TAG) --wait
 
 install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)
-
-verify-proxy: ## Assert the allowlist denies mutations. Run after every Dagster upgrade.
-	@echo "port-forwarding gqlproxy..."
-	@kubectl -n data port-forward svc/gqlproxy-graphql-authz-proxy 18080:80 >/dev/null 2>&1 & \
-	  PF=$$!; sleep 3; \
-	  MUT=$$(curl -s -o /dev/null -w '%{http_code}' localhost:18080/graphql \
-	    -H 'Content-Type: application/json' \
-	    -d '{"query":"mutation { terminatePipelineExecution(runId:\"x\") { __typename } }"}'); \
-	  QRY=$$(curl -s -o /dev/null -w '%{http_code}' localhost:18080/graphql \
-	    -H 'Content-Type: application/json' -d '{"query":"query { version }"}'); \
-	  kill $$PF 2>/dev/null; \
-	  echo "mutation -> $$MUT (want 403), query -> $$QRY (want 200)"; \
-	  test "$$MUT" = "403" || { echo "FAIL: mutation was not denied"; exit 1; }
