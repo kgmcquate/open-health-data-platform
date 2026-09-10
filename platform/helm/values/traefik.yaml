@@ -52,7 +52,7 @@ service:
     type: LoadBalancer
     # Reserve a public IP in DigitalOcean and set it here to keep the ingress
     # endpoint stable across node-pool scale-downs. Example:
-    # loadBalancerIP: 203.0.113.42
+    loadBalancerIP: 209.38.63.225
 
 # Shares the 0.3 GB budget line with cert-manager/oauth2-proxy (§4).
 resources:
