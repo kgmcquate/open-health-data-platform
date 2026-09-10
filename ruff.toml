@@ -1,0 +1,18 @@
+# Repo-wide lint/format config. The three Python projects (packages/shared,
+# apps/api, data) are each standalone uv projects now — this keeps their style,
+# and the M2 catalog stubs, consistent. Ruff walks up to find this file.
+target-version = "py312"
+line-length = 100
+extend-exclude = ["**/.venv", "data/dbt/target", "data/dbt/dbt_packages"]
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "TID"]
+
+[lint.isort]
+known-first-party = [
+    "ohdp_shared",
+    "ohdp_ingestion",
+    "ohdp_orchestration",
+    "ohdp_ml",
+    "hub_api",
+]

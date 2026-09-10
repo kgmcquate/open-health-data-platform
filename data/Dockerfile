@@ -1,33 +1,41 @@
 # ohdp-pipeline — the Dagster code location, and the image every run Job uses.
-# Built from the repo root:
+# Built from the repo root (build context = .):
 #   docker build -f data/Dockerfile -t ohdp-pipeline .
 #
-# K8sRunLauncher launches this image for each run, so it must carry dbt and
-# DuckDB as well as the Dagster definitions.
+# `data/` is a standalone uv project; `ohdp-shared` is a path dependency at
+# ../packages/shared. K8sRunLauncher launches this image for each run, so it
+# carries dbt + DuckDB + pyiceberg as well as the Dagster definitions.
 
 FROM ghcr.io/astral-sh/uv:0.5-python3.12-bookworm-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=never
+    UV_PYTHON_DOWNLOADS=never \
+    # venv at a fixed path so console-script shebangs survive the copy to runtime
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
-COPY packages/shared/pyproject.toml packages/shared/
-COPY apps/api/pyproject.toml apps/api/
-COPY data/pyproject.toml data/
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-editable --package ohdp-data
-
+# Keep the ../packages/shared layout that data/pyproject.toml's path source
+# expects. Resolve deps first so a source-only change does not re-resolve.
 COPY packages/shared/ packages/shared/
-COPY data/ data/
+COPY data/pyproject.toml data/uv.lock data/
 
-# --no-editable is required: the default editable install leaves .pth files
-# pointing at /app/data/src/... , which do not exist in the runtime stage.
+WORKDIR /app/data
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-editable --package ohdp-data
+    uv sync --frozen --no-install-project --no-editable
+
+COPY data/ /app/data/
+
+# --no-editable: the default editable install leaves .pth files pointing at
+# /app/data/src/... which do not exist in the runtime stage (ADR-0004).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-editable
+
+# manifest.json for the `warehouse` Dagster component (ADR-0010). `dbt parse` is
+# offline — no catalog or Spaces creds needed.
+RUN /app/.venv/bin/dbt deps --project-dir dbt \
+ && /app/.venv/bin/dbt parse --project-dir dbt --profiles-dir dbt --target ci
 
 
 FROM python:3.12-slim-bookworm AS runtime
@@ -37,7 +45,8 @@ RUN groupadd --gid 10001 dagster \
 
 WORKDIR /app
 COPY --from=builder --chown=10001:10001 /app/.venv /app/.venv
-# The dbt project is data files, not an importable package — it has to be copied.
+# The dbt project (with the built manifest) is data files, not an importable
+# package — copy it whole.
 COPY --from=builder --chown=10001:10001 /app/data/dbt /app/dbt
 
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -46,10 +55,11 @@ ENV PATH="/app/.venv/bin:$PATH" \
     DAGSTER_HOME=/opt/dagster/dagster_home \
     DBT_PROJECT_DIR=/app/dbt \
     DBT_PROFILES_DIR=/app/dbt \
-    OHDP_DUCKDB_PATH=/tmp/warehouse/warehouse.duckdb
+    OHDP_DUCKDB_PATH=/tmp/warehouse/build.duckdb \
+    OHDP_DBT_STAGE_DIR=/tmp/ohdp_dbt_stage
 
-RUN mkdir -p /opt/dagster/dagster_home /tmp/warehouse \
- && chown -R 10001:10001 /opt/dagster /tmp/warehouse
+RUN mkdir -p /opt/dagster/dagster_home /tmp/warehouse /tmp/ohdp_dbt_stage \
+ && chown -R 10001:10001 /opt/dagster /tmp/warehouse /tmp/ohdp_dbt_stage
 
 USER 10001
 

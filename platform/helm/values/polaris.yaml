@@ -1,0 +1,76 @@
+# Values for Apache Polaris — the Iceberg REST catalog (ADR-0010).
+#
+# No stable Helm repo yet; the chart lives in the Polaris source tree. Vendor it
+# or pull from OCI, then:
+#   helm upgrade --install polaris oci://<registry>/polaris \
+#     -n data -f platform/helm/values/polaris.yaml
+#
+# Metastore is the shared Postgres (platform-base adds the `polaris` database).
+# Data + manifests live in Spaces (s3://ohdp-warehouse). See ADR-0006 for the
+# "upstream chart, our values" rule.
+
+image:
+  tag: "" # pin per deploy; never "latest" (ARCHITECTURE.md §5)
+
+# JVM. §4's budget is tight — this is the cost of a REST catalog over a
+# pyiceberg SqlCatalog. Cap it hard.
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# Persistence: relational-jdbc against the shared Postgres. The DDL is applied
+# once by the polaris-admin-tool bootstrap job (see platform/scripts).
+# ---------------------------------------------------------------------------
+persistence:
+  type: relational-jdbc
+  relationalJdbc:
+    secret:
+      name: polaris-persistence # ExternalSecret: jdbcUrl, username, password
+      keys:
+        jdbcUrl: jdbcUrl
+        username: username
+        password: password
+
+# ---------------------------------------------------------------------------
+# Bootstrap: realm + root principal. Credentials come from a secret so they are
+# never in values or the UI (§5). `polaris-admin-tool bootstrap` runs this.
+# ---------------------------------------------------------------------------
+bootstrap:
+  enabled: true
+  secret:
+    name: polaris-bootstrap
+    keys:
+      clientId: client-id
+      clientSecret: client-secret
+
+realmContext:
+  realms:
+    - ohdp
+
+# ---------------------------------------------------------------------------
+# One warehouse `ohdp` on Spaces. Storage credentials: Polaris does not vend
+# scoped creds for non-AWS S3, so the pipeline passes s3.* to pyiceberg itself
+# (ohdp_ingestion.iceberg). Polaris just needs the root + path.
+# ---------------------------------------------------------------------------
+storage:
+  # Applied post-bootstrap via the management API (bootstrap script), not by the
+  # chart. Documented here for reference:
+  #   type: S3
+  #   allowedLocations: ["s3://ohdp-warehouse/"]
+  #   endpoint: https://nyc3.digitaloceanspaces.com
+  #   pathStyleAccess: false
+  {}
+
+# Public host is `catalog.ohdp.kevinmcquate.com`, behind oauth2-proxy like
+# Dagster (ARCHITECTURE.md §5) — the pipeline reaches it in-cluster at
+# http://polaris.data.svc.cluster.local:8181/api/catalog
+ingress:
+  enabled: false
+
+serviceAccount:
+  create: true

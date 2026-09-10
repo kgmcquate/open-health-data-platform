@@ -74,6 +74,7 @@ jobs:
         env:
           SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
           SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+          ICEBERG_CREDENTIAL: ${{ secrets.ICEBERG_CREDENTIAL }} # Polaris client-id:client-secret (ADR-0010)
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
           CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
           OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
@@ -87,6 +88,7 @@ jobs:
           upsert data ohdp-pipeline-secrets \
             --from-literal=OHDP_SPACES_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
             --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
+            --from-literal=OHDP_ICEBERG_CREDENTIAL="$ICEBERG_CREDENTIAL" \
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT"

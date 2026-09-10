@@ -1,0 +1,28 @@
+# Build context is the repo root. Keep it lean and deterministic.
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Local data + dbt artifacts (regenerated in the build)
+data/warehouse/
+data/dbt/target/
+data/dbt/dbt_packages/
+data/dbt/logs/
+*.duckdb
+
+# Node / web
+**/node_modules
+apps/web/.next
+
+# VCS + editor + infra state
+.git
+.github
+.idea
+.vscode
+platform/terraform/.terraform
+*.tfstate*
+kubeconfig_base64
+.env

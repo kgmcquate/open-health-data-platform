@@ -1,31 +1,33 @@
 # hub-api — FastAPI backend.
-# Built from the repo root so the uv workspace (packages/shared) is in context:
+# Built from the repo root (build context = .) so ../packages/shared is present:
 #   docker build -f apps/api/Dockerfile -t ohdp-hub-api .
+#
+# `apps/api` is a standalone uv project; `ohdp-shared` is a path dependency at
+# ../../packages/shared.
 
 FROM ghcr.io/astral-sh/uv:0.5-python3.12-bookworm-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=never
+    UV_PYTHON_DOWNLOADS=never \
+    # venv at a fixed path so console-script shebangs survive the copy to runtime
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /app
 
-# Resolve dependencies first so a source-only change does not re-resolve.
-COPY pyproject.toml uv.lock ./
-COPY packages/shared/pyproject.toml packages/shared/
-COPY apps/api/pyproject.toml apps/api/
-COPY data/pyproject.toml data/
-
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-editable --package ohdp-api
-
+# Keep the ../../packages/shared layout the path source expects.
 COPY packages/shared/ packages/shared/
-COPY apps/api/ apps/api/
+COPY apps/api/pyproject.toml apps/api/uv.lock apps/api/
 
-# --no-editable is required: the default editable install leaves .pth files
-# pointing at /app/packages/... , which do not exist in the runtime stage.
+WORKDIR /app/apps/api
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-editable --package ohdp-api
+    uv sync --frozen --no-install-project --no-editable
+
+COPY apps/api/ /app/apps/api/
+
+# --no-editable: no .pth files pointing at paths absent from the runtime stage.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-editable
 
 
 FROM python:3.12-slim-bookworm AS runtime

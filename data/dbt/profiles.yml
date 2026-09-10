@@ -1,16 +1,36 @@
-# Local + CI profile. The build writes to a local DuckDB file; that file is what
-# gets snapshotted to Spaces (ARCHITECTURE.md §3). Readers never share this file.
+# dbt-duckdb is the compute engine; models materialize to Iceberg in the lake via
+# the ohdp_ingestion.dbt.iceberg plugin (ADR-0010). The DuckDB file is scratch.
+#
+# Requires the project venv (dbt-duckdb + ohdp-data): `cd data && uv run dbt ...`
+# — `uvx --from dbt-duckdb dbt` will NOT find the plugin module.
 ohdp:
   target: local
   outputs:
     local:
       type: duckdb
-      path: "{{ env_var('OHDP_DUCKDB_PATH', '../warehouse/warehouse.duckdb') }}"
+      path: "{{ env_var('OHDP_DUCKDB_PATH', '../warehouse/build.duckdb') }}"
       threads: 4
-      extensions:
-        - httpfs
-        - parquet
+      # dbt writes each model to a scratch Parquet here; the iceberg plugin then
+      # commits it to the catalog. Local only — never the durable artifact.
+      external_root: "{{ env_var('OHDP_DBT_STAGE_DIR', '/tmp/ohdp_dbt_stage') }}"
+      extensions: [httpfs, parquet, iceberg]
+      settings:
+        s3_endpoint: "{{ env_var('OHDP_SPACES_ENDPOINT_URL', 'https://nyc3.digitaloceanspaces.com') | replace('https://', '') }}"
+        s3_region: "{{ env_var('OHDP_SPACES_REGION', 'nyc3') }}"
+        s3_access_key_id: "{{ env_var('OHDP_SPACES_ACCESS_KEY_ID', '') }}"
+        s3_secret_access_key: "{{ env_var('OHDP_SPACES_SECRET_ACCESS_KEY', '') }}"
+        s3_url_style: "vhost"
+      plugins:
+        - module: ohdp_ingestion.dbt.iceberg
+          alias: iceberg
     ci:
       type: duckdb
-      path: "ci_warehouse.duckdb"
+      path: "ci_build.duckdb"
       threads: 4
+      # dbt writes each model to a scratch Parquet here; the iceberg plugin then
+      # commits it to the catalog. Local only — never the durable artifact.
+      external_root: "{{ env_var('OHDP_DBT_STAGE_DIR', '/tmp/ohdp_dbt_stage') }}"
+      extensions: [httpfs, parquet, iceberg]
+      plugins:
+        - module: ohdp_ingestion.dbt.iceberg
+          alias: iceberg

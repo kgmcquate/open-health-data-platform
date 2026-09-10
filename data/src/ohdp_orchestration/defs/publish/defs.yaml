@@ -1,0 +1,5 @@
+type: ohdp_orchestration.defs.publish.component.WarehousePublish
+
+attributes:
+  group_name: publish
+  snapshot_prefix: snapshots

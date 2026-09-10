@@ -14,6 +14,7 @@ raw SQL tool — ever.
 from __future__ import annotations
 
 from fastapi import FastAPI
+
 from ohdp_shared import configure_logging, settings
 
 configure_logging(json=settings.log_json, level=settings.log_level)
