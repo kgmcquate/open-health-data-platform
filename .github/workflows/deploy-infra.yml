@@ -14,7 +14,7 @@ on:
       action:
         description: What to run.
         type: choice
-        options: [plan, apply, destroy]
+        options: [plan, apply, destroy, delete-heavy-nodepool]
         default: plan
       confirm:
         description: For destroy only — type the project name (e.g. ohdp) to confirm.
@@ -63,7 +63,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Guard destroy
-        if: inputs.action == 'destroy'
+        if: inputs.action == 'destroy' || inputs.action == 'delete-heavy-nodepool'
         run: |
           set -euo pipefail
           if [ "${{ inputs.confirm }}" != "ohdp" ]; then
@@ -84,13 +84,17 @@ jobs:
         run: terraform validate
 
       - name: Plan
-        if: inputs.action != 'destroy'
+        if: inputs.action != 'destroy' && inputs.action != 'delete-heavy-nodepool'
         id: plan
         run: terraform plan -out=tfplan -detailed-exitcode || [ $? -eq 2 ]
 
       - name: Plan (destroy)
         if: inputs.action == 'destroy'
         run: terraform plan -destroy -out=tfplan
+
+      - name: Plan (delete heavy node pool)
+        if: inputs.action == 'delete-heavy-nodepool'
+        run: terraform plan -destroy -target='digitalocean_kubernetes_node_pool.heavy' -out=tfplan
 
       - name: Show plan
         run: |
@@ -103,7 +107,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Apply
-        if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        if: github.event_name == 'workflow_dispatch' && (inputs.action == 'apply' || inputs.action == 'delete-heavy-nodepool')
         run: terraform apply -auto-approve tfplan
 
       - name: Destroy
