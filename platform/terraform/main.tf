@@ -48,3 +48,7 @@ resource "digitalocean_kubernetes_node_pool" "np_4_cpu_8gb" {
     ignore_changes = [node_count]
   }
 }
+
+resource "digitalocean_reserved_ip" "traefik" {
+  region = var.location
+}
