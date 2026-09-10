@@ -20,9 +20,10 @@ OPENMETADATA_VERSION    ?= 1.13.5
 DAGSTER_VERSION         ?= 1.13.21
 TRAEFIK_VERSION         ?= 41.5.0
 CERT_MANAGER_VERSION    ?= v1.21.1
+OAUTH2_PROXY_VERSION    ?= 10.7.0
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
-        install opensearch openmetadata dagster proxy hub-api verify-proxy
+        install opensearch openmetadata dagster proxy oauth2-proxy hub-api verify-proxy
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -33,6 +34,7 @@ repos: ## Add and update upstream chart repos
 	$(HELM) repo add opensearch https://opensearch-project.github.io/helm-charts
 	$(HELM) repo add traefik https://traefik.github.io/charts
 	$(HELM) repo add jetstack https://charts.jetstack.io
+	$(HELM) repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
 	$(HELM) repo update
 
 lint: ## Lint the charts we own
@@ -92,12 +94,16 @@ proxy: ## Install the GraphQL authz proxy in front of Dagster
 	$(HELM) upgrade --install gqlproxy $(CHARTS)/graphql-authz-proxy \
 		-n data --create-namespace --wait
 
+oauth2-proxy: ## Install the Google login wall in front of the authz proxy (ADR-0007)
+	$(HELM) upgrade --install oauth2-proxy oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
+		-n data --create-namespace -f $(VALUES)/oauth2-proxy.yaml --wait --timeout 5m
+
 hub-api: ## Install the FastAPI backend (TAG defaults to the current commit's sha-<12>)
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
 	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
 		-n app --create-namespace --set image.tag=$(TAG) --wait
 
-install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)
+install: opensearch openmetadata proxy oauth2-proxy dagster ## The data platform (hub-api is deployed on its own)
 
 verify-proxy: ## Assert the allowlist denies mutations. Run after every Dagster upgrade.
 	@echo "port-forwarding gqlproxy..."

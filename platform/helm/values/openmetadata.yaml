@@ -70,15 +70,20 @@ openmetadata:
       principalDomain: "ohdp.local"
       enforcePrincipalDomain: false
 
+    # Google SSO. Public (PKCE) client — the OAuth client ID is not a secret,
+    # so it lives here; there is no client secret in this flow. The client is a
+    # "Web application" OAuth client in Google Cloud console with redirect URI
+    # https://catalog.ohdp.kevinmcquate.com/callback.
     authentication:
       enabled: true
       clientType: public
-      provider: "basic" # -> "custom-oidc" once the IdP is wired up (M2)
+      provider: "google"
       publicKeys:
+        - "https://www.googleapis.com/oauth2/v3/certs"
         - "http://openmetadata:8585/api/v1/system/config/jwks"
-      authority: ""
-      clientId: ""
-      callbackUrl: ""
+      authority: "https://accounts.google.com"
+      clientId: "794040254723-nsc8s54o5f60irflb846dm31oi546n94.apps.googleusercontent.com"
+      callbackUrl: "https://catalog.ohdp.kevinmcquate.com/callback"
       responseType: id_token
       jwtPrincipalClaims:
         - "email"

@@ -84,6 +84,8 @@ jobs:
           OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+          DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
+          DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
             --dry-run=client -o yaml | kubectl apply -f -; }
@@ -98,6 +100,15 @@ jobs:
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET"
 
+          # oauth2-proxy (ADR-0007). platform-base owns this Secret and generates
+          # `cookie-secret`; we merge the Google client creds into it. --type merge
+          # preserves cookie-secret, and Helm's 3-way merge leaves these keys alone
+          # on later `helm upgrade platform-base` runs.
+          patch=$(printf '{"data":{"client-id":"%s","client-secret":"%s"}}' \
+            "$(printf %s "$DAGSTER_OIDC_CLIENT_ID" | base64 -w0)" \
+            "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")
+          kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$patch"
+
       - name: OpenSearch
         run: make -C platform/helm opensearch
 
@@ -106,6 +117,9 @@ jobs:
 
       - name: GraphQL authz proxy
         run: make -C platform/helm proxy
+
+      - name: oauth2-proxy (Google login wall)
+        run: make -C platform/helm oauth2-proxy
 
       - name: Verify the authz proxy denies mutations
         run: make -C platform/helm verify-proxy
