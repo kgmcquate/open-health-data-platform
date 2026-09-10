@@ -106,10 +106,15 @@ authentication:
 
 # ---------------------------------------------------------------------------
 # Storage: no credentials handed to Polaris. It does not vend scoped creds for
-# non-AWS S3 (Spaces), so the catalog is created with
-# `skip-credential-subscoping-indirection=true` (polaris-bootstrap.sh catalog) and
-# the pipeline passes s3.* to pyiceberg itself (ohdp_ingestion.iceberg._s3_props).
-# Polaris only stores the warehouse root + allowed locations.
+# non-AWS S3 (Spaces), so the pipeline never asks it to: the REST client
+# suppresses pyiceberg's default `X-Iceberg-Access-Delegation: vended-credentials`
+# header (ohdp_ingestion.iceberg.catalog_properties) and passes s3.* to pyiceberg
+# itself (ohdp_ingestion.iceberg._s3_props). Polaris only stores the warehouse
+# root + allowed locations.
+#
+# (The `SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION` feature flag would do the same
+# server-side, but Polaris docs mark it dev-only, and `polaris.config.*` catalog
+# properties are a reserved prefix the server rejects — so it is a client concern.)
 # ---------------------------------------------------------------------------
 storage:
   secret:
