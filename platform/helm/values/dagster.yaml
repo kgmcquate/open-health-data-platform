@@ -139,7 +139,7 @@ dagster-user-deployments:
         - "ohdp_orchestration.definitions"
       port: 3030
       includeConfigInLaunchedRuns:
-        enabled: true
+        enabled: false
       envSecrets:
         - name: ohdp-pipeline-secrets
         - name: polaris-principal

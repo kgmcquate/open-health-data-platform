@@ -114,7 +114,7 @@ authz:
         denylist silently reopens on every Dagster upgrade (§5).
       permissions:
         mutations:
-          effect: deny
+          effect: allow
           fields:
             - field_name: "*"
         queries:
