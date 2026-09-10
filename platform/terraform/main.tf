@@ -11,9 +11,16 @@ resource "digitalocean_kubernetes_cluster" "cluster" {
 
   node_pool {
     name       = "${var.name}-default"
-    size       = var.server_type
-    node_count = var.node_count
+    size       = "s-1vcpu-1gb"
+    node_count = 1
   }
+}
+
+resource "digitalocean_kubernetes_node_pool" "heavy" {
+  cluster_id = digitalocean_kubernetes_cluster.cluster.id
+  name       = "${var.name}-heavy"
+  size       = "s-8vcpu-16gb"
+  node_count = 1
 }
 
 # Single managed Kubernetes cluster, no self-hosted k3s bootstrap on a droplet.
