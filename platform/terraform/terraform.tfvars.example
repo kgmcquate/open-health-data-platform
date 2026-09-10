@@ -1,24 +1,22 @@
 # Copy to terraform.tfvars (gitignored) and fill in.
-# Tokens can also come from env: TF_VAR_hcloud_token, TF_VAR_cloudflare_api_token.
+# The Cloudflare API token is NOT set here — export it as CLOUDFLARE_API_TOKEN
+# in the environment (the cloudflare provider reads it directly).
 
-hcloud_token         = ""
-cloudflare_api_token = ""
-cloudflare_account_id = ""
-cloudflare_zone_id   = ""
-
-domain = "example.com"
-name   = "ohdp"
-
-# fsn1/nbg1 = Germany, hel1 = Finland, ash/hil = US. See ARCHITECTURE.md §10.1.
-location    = "fsn1"
-server_type = "cx52"
-
-ssh_public_key = "ssh-ed25519 AAAA... you@example.com"
-
-# Your admin networks. Never 0.0.0.0/0 — this gates the Kubernetes API.
-admin_ip_ranges = ["203.0.113.4/32"]
-
-# Pin k3s so an unattended reinstall cannot jump minor versions.
-k3s_version = "v1.31.5+k3s1"
+name        = "ohdp"
+location    = "nyc3"
+server_type = "s-4vcpu-8gb"
+node_count  = 1
 
 snapshot_bucket = "ohdp-warehouse"
+
+# Cloudflare DNS for the platform hostnames (token via CLOUDFLARE_API_TOKEN env).
+cloudflare_zone_id = ""
+
+# Left-most labels created as A records under dns_base.
+dns_base      = "ohdp.kevinmcquate.com"
+dns_hostnames = ["app", "dagster", "catalog", "cube", "superset"]
+
+# Public IP of the Traefik load balancer. Leave blank on the first apply (the LB
+# does not exist yet); set it and re-apply once deploy-platform has run:
+#   kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+loadbalancer_ip = ""

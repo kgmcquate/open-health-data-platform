@@ -210,6 +210,18 @@ flowchart TB
     vm -.->|metrics, logs| GC
 ```
 
+> **DNS / edge, as built.** One DigitalOcean load balancer fronts everything
+> (Traefik `Service type: LoadBalancer`); Ingresses route by hostname. Public
+> hosts are `app`, `dagster`, `catalog`, `cube`, `superset` under
+> `ohdp.kevinmcquate.com`. `kevinmcquate.com` is a Cloudflare zone; the records
+> are managed by Terraform (`platform/terraform/dns.tf`, `cloudflare` provider)
+> but are **DNS-only** — Cloudflare is not in the request path, so TLS is Let's
+> Encrypt at the origin (cert-manager, HTTP-01) and there is no edge WAF or rate
+> limiting yet. The "rate limit at
+> Cloudflare" and edge-TLS notes below are the target, not the current state;
+> reaching them means switching the records to proxied and moving cert-manager
+> to a DNS-01 solver or a Cloudflare Origin CA cert.
+
 ### Resource budget
 
 Steady state ~13 GB, burst ~15 GB during a build.

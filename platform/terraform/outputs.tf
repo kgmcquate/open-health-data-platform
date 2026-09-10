@@ -24,6 +24,22 @@ output "fetch_kubeconfig" {
   value       = "terraform output -raw kubeconfig > platform/terraform/kubeconfig && chmod 600 platform/terraform/kubeconfig"
 }
 
+output "loadbalancer_ip_command" {
+  description = <<-EOT
+    The Cloudflare A records (DNS-only) are created only once `loadbalancer_ip`
+    is set. After deploy-platform brings Traefik up, read the load balancer IP
+    with this command, set it as `loadbalancer_ip` (tfvars or
+    TF_VAR_loadbalancer_ip), and re-apply this stack:
+      kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  EOT
+  value       = "kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'"
+}
+
+output "service_hostnames" {
+  description = "Fully-qualified hostnames managed as Cloudflare A records (empty until loadbalancer_ip is set)."
+  value       = [for r in cloudflare_dns_record.service : r.name]
+}
+
 output "warehouse_bucket" {
   description = "Spaces bucket holding snapshots and backups."
   value       = digitalocean_spaces_bucket.warehouse.name

@@ -1,8 +1,3 @@
-variable "domain" {
-  description = "Apex domain serving the platform, e.g. example.com."
-  type        = string
-}
-
 variable "name" {
   description = "Name prefix for all resources."
   type        = string
@@ -47,14 +42,30 @@ variable "snapshot_bucket" {
   default     = "ohdp-warehouse"
 }
 
-variable "enable_dns" {
-  description = "Manage A records for the platform hostnames in DigitalOcean DNS."
-  type        = bool
-  default     = true
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for the domain hosting the platform hostnames."
+  type        = string
 }
 
-variable "subdomains" {
-  description = "Hostnames fronted by the ingress."
+variable "dns_base" {
+  description = "Base under which per-service A records are created, e.g. ohdp.kevinmcquate.com -> app.ohdp.kevinmcquate.com."
+  type        = string
+  default     = "ohdp.kevinmcquate.com"
+}
+
+variable "dns_hostnames" {
+  description = "Service hostnames (left-most label) fronted by the Traefik ingress."
   type        = list(string)
-  default     = ["app", "dagster", "superset", "catalog", "cube"]
+  default     = ["app", "dagster", "catalog", "cube", "superset"]
+}
+
+variable "loadbalancer_ip" {
+  description = <<-EOT
+    Public IPv4 of the DigitalOcean load balancer Traefik provisions during
+    deploy-platform. Empty on the first infra apply (the LB does not exist yet),
+    which skips the DNS records; set it and re-apply once the platform is up.
+      kubectl -n infra get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  EOT
+  type        = string
+  default     = ""
 }
