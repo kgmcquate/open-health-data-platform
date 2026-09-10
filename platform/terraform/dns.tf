@@ -8,3 +8,14 @@
 #
 # The Cloudflare A records point at the Traefik public IP configured in
 # `loadbalancer_ip`; do not rely on a DigitalOcean reserved IP here.
+
+resource "cloudflare_dns_record" "service" {
+  for_each = toset(var.dns_hostnames)
+
+  zone_id = var.cloudflare_zone_id
+  name    = "${each.value}.${var.dns_base}"
+  type    = "A"
+  content = var.loadbalancer_ip
+  ttl     = 60
+  proxied = false
+}
