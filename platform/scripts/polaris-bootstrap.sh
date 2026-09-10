@@ -62,7 +62,7 @@ kubectl -n "$NS" run polaris-catalog-init --rm -i --restart=Never \
           },
           \"storageConfigInfo\": {
             \"storageType\": \"S3\",
-            \"allowedLocations\": [\"s3://$BUCKET/*\"],
+            \"allowedLocations\": [\"s3://$BUCKET\", \"s3://$BUCKET/*\"],
             \"endpoint\": \"$S3_ENDPOINT\",
             \"pathStyleAccess\": false,
             \"region\": \"$S3_REGION\"
