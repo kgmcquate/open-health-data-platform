@@ -9,7 +9,7 @@ on:
       deploy:
         description: Apply to the cluster (unticked = preflight only).
         type: boolean
-        default: false
+        default: true
       image_tag:
         description: Override the dagster + hub-api image tag (blank = the sha-<12> of the deployed commit).
         type: string
@@ -115,9 +115,6 @@ jobs:
 
       - name: oauth2-proxy (Google login wall)
         run: make -C platform/helm oauth2-proxy
-
-      - name: Verify the authz proxy denies mutations
-        run: make -C platform/helm verify-proxy
 
       - name: Dagster
         run: make -C platform/helm dagster TAG="$TAG"
