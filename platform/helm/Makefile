@@ -49,19 +49,16 @@ template: ## Render the charts we own locally (catches template errors without a
 # Cluster foundation
 # --------------------------------------------------------------------------
 base: ## Namespaces, generated internal secrets, and the shared Postgres StatefulSet
-	$(KUBECTL) create namespace infra --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	$(HELM) upgrade --install platform-base $(CHARTS)/platform-base \
-		-n infra --wait --timeout 5m
+		-n infra --create-namespace --wait --timeout 5m
 
 traefik: ## Install the Traefik ingress controller (provisions a DO load balancer)
-	$(KUBECTL) create namespace infra --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	$(HELM) upgrade --install traefik traefik/traefik --version $(TRAEFIK_VERSION) \
-		-n infra -f $(VALUES)/traefik.yaml --wait --timeout 5m
+		-n infra --create-namespace -f $(VALUES)/traefik.yaml --wait --timeout 5m
 
 cert-manager: ## Install cert-manager (HTTP-01 solver for Traefik)
-	$(KUBECTL) create namespace infra --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	$(HELM) upgrade --install cert-manager jetstack/cert-manager --version $(CERT_MANAGER_VERSION) \
-		-n infra -f $(VALUES)/cert-manager.yaml --wait --timeout 5m
+		-n infra --create-namespace -f $(VALUES)/cert-manager.yaml --wait --timeout 5m
 
 cluster-issuer: ## Create the letsencrypt-prod ClusterIssuer (re-renders platform-base once the CRDs exist)
 	$(HELM) upgrade platform-base $(CHARTS)/platform-base -n infra --wait --timeout 5m
@@ -76,34 +73,29 @@ infra: base traefik cert-manager cluster-issuer ## Cluster foundation: platform-
 # Data platform
 # --------------------------------------------------------------------------
 opensearch: ## Install OpenSearch (must be green before OpenMetadata)
-	$(KUBECTL) create namespace meta --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	$(HELM) upgrade --install opensearch opensearch/opensearch --version $(OPENSEARCH_VERSION) \
-		-n meta -f $(VALUES)/opensearch.yaml --wait --timeout 10m
+		-n meta --create-namespace -f $(VALUES)/opensearch.yaml --wait --timeout 10m
 
 openmetadata: ## Install OpenMetadata
-	$(KUBECTL) create namespace meta --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	$(HELM) upgrade --install openmetadata open-metadata/openmetadata --version $(OPENMETADATA_VERSION) \
-		-n meta -f $(VALUES)/openmetadata.yaml --wait --timeout 10m
+		-n meta --create-namespace -f $(VALUES)/openmetadata.yaml --wait --timeout 10m
 
 dagster: ## Install Dagster (TAG defaults to the current commit's sha-<12>)
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
-	$(KUBECTL) create namespace data --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	$(HELM) upgrade --install dagster dagster/dagster --version $(DAGSTER_VERSION) \
-		-n data -f $(VALUES)/dagster.yaml \
+		-n data --create-namespace-f $(VALUES)/dagster.yaml \
 		--set "dagster-user-deployments.deployments[0].image.tag=$(TAG)" \
 		--set "runLauncher.config.k8sRunLauncher.image.tag=$(TAG)" \
 		--wait --timeout 10m
 
 proxy: ## Install the GraphQL authz proxy in front of Dagster
-	$(KUBECTL) create namespace data --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	$(HELM) upgrade --install gqlproxy $(CHARTS)/graphql-authz-proxy \
-		-n data --wait
+		-n data --create-namespace --wait
 
 hub-api: ## Install the FastAPI backend (TAG defaults to the current commit's sha-<12>)
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
-	$(KUBECTL) create namespace app --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
-		-n app --set image.tag=$(TAG) --wait
+		-n app --create-namespace --set image.tag=$(TAG) --wait
 
 install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)
 
