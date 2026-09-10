@@ -55,9 +55,9 @@ persistence:
 #   - datasource config comes from the same `polaris-persistence` secret the
 #     server uses.
 #   - `polaris-bootstrap` (key `credential` = "ohdp,<clientId>,<clientSecret>",
-#     the same principal as the pipeline's OHDP_ICEBERG_CREDENTIAL) is created by
-#     the `External secrets` step of deploy-platform.yml. Passed via $(VAR) env
-#     substitution so the client secret never lands in the pod's args/`describe`.
+#     the same principal as the pipeline's OHDP_ICEBERG_CREDENTIAL) is generated
+#     by platform-base. Passed via $(VAR) env substitution so the client secret
+#     never lands in the pod's args / `kubectl describe`.
 # ---------------------------------------------------------------------------
 extraInitContainers:
   - name: bootstrap-schema
