@@ -211,7 +211,7 @@ resource "snowflake_network_policy_attachment" "pipeline" {
 }
 
 resource "snowflake_service_user" "pipeline" {
-  name         = "${var.snowflake_pipeline_user}"
+  name         = var.snowflake_pipeline_user
   comment      = "Dagster pipeline. Authenticates to the Horizon Catalog REST endpoint with a PAT."
   default_role = snowflake_account_role.pipeline.name
 
