@@ -14,7 +14,7 @@ cloudflare_zone_id = ""
 
 # Left-most labels created as A records under dns_base.
 dns_base      = "ohdp.kevinmcquate.com"
-dns_hostnames = ["app", "dagster", "catalog", "cube", "superset"]
+dns_hostnames = ["app", "dagster", "catalog", "cube", "superset", "polaris"]
 
 # Public IPv4 of the Traefik ingress. Set this explicitly here (or in the
 # environment as TF_VAR_loadbalancer_ip) to the address Cloudflare should point

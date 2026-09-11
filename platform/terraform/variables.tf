@@ -50,7 +50,7 @@ variable "dns_base" {
 variable "dns_hostnames" {
   description = "Service hostnames (left-most label) fronted by the Traefik ingress."
   type        = list(string)
-  default     = ["app", "dagster", "catalog", "cube", "superset"]
+  default     = ["app", "dagster", "catalog", "cube", "superset", "polaris"]
 }
 
 variable "loadbalancer_ip" {
