@@ -139,8 +139,6 @@ resource "snowflake_grant_privileges_to_account_role" "schemas_existing" {
   on_schema {
     all_schemas_in_database = each.value.fully_qualified_name
   }
-
-  depends_on = [snowflake_schema.namespace]
 }
 
 resource "snowflake_grant_privileges_to_account_role" "schemas_future" {
@@ -172,8 +170,6 @@ resource "snowflake_grant_privileges_to_account_role" "tables_existing" {
       in_database        = each.value.fully_qualified_name
     }
   }
-
-  depends_on = [snowflake_schema.namespace]
 }
 
 resource "snowflake_grant_privileges_to_account_role" "tables_future" {
