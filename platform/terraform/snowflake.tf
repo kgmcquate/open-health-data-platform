@@ -26,6 +26,11 @@ locals {
   # <organization>-<account>, the account identifier in URLs.
   snowflake_account_identifier = "${var.snowflake_organization_name}-${var.snowflake_account_name}"
   snowflake_catalog_uri        = "https://${local.snowflake_account_identifier}.snowflakecomputing.com/polaris/api/catalog"
+
+  # "<user>:<pat>" — the client_credentials pair pyiceberg exchanges for a
+  # token. Shared by the iceberg_credential output and the Spaces object in
+  # r2.tf so there is exactly one place this gets assembled.
+  iceberg_credential = "${snowflake_service_user.pipeline.name}:${snowflake_user_programmatic_access_token.pipeline.token}"
 }
 
 # ---------------------------------------------------------------------------

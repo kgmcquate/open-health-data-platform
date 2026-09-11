@@ -69,7 +69,7 @@ output "iceberg_credential" {
     pyiceberg exchanges for an access token. Store it as the repo secret
     SNOWFLAKE_ICEBERG_CREDENTIAL, which deploy-platform.yml reads.
   EOT
-  value       = "${snowflake_service_user.pipeline.name}:${snowflake_user_programmatic_access_token.pipeline.token}"
+  value       = local.iceberg_credential
   sensitive   = true
 }
 
