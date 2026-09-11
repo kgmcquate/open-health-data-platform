@@ -47,8 +47,8 @@ Two assets per dataset, so lineage is explicit:
 
 | | key | group | kinds | materialized | built when |
 |---|---|---|---|---|---|
-| **catalog asset** | `healthdata_gov/catalog/<raw_table>` | `healthdata_gov_catalog` | `socrata` | never | always |
-| **table asset** | `healthdata_gov/<raw_table>` | `healthdata_gov` | `dlt`, `snowflake` | yes | `enabled: true` |
+| **catalog asset** | `sources/healthdata_gov/<raw_table>` | `sources_healthdata_gov` | `socrata` | never | always |
+| **table asset** | `ingestion/healthdata_gov/<raw_table>` | `ingestion_healthdata_gov` | `dlt`, `snowflake` | yes | `enabled: true` |
 
 The table asset is `deps=[catalog asset]` → `catalog -> raw table ->
 (dbt clean → core → marts)`. dlt **appends** to `RAW.healthdata_gov.<raw_table>`

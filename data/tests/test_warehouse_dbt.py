@@ -69,7 +69,8 @@ def test_healthdata_gov_bridges_the_dlt_table_to_a_warehouse_raw_asset() -> None
     bridge = graph.get(by_str[bridge_str])
     parents = {p.to_user_string() for p in bridge.parent_keys}
     assert parents == {
-        "healthdata_gov/covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
+        "ingestion/healthdata_gov/"
+        "covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
     }
     assert bridge.tags["ohdp/domain"] == "warehouse"
     assert bridge.tags["ohdp/layer"] == "raw"

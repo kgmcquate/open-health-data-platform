@@ -4,11 +4,12 @@
 
 * models  -> ``warehouse/<database>/<schema>/<model_name>``, grouped
   ``warehouse_<layer>`` (`clean` / `core` / `marts`), kinds ``dbt`` + ``snowflake``.
-* dbt **sources** map back to the keys the ingestion components already own —
-  ``healthdata_gov/<raw_table>`` — so the graph is continuous:
+* dbt **sources** map back to the warehouse RAW-layer keys the ingestion
+  components already own (``warehouse/RAW/<schema>/<table>``, see
+  ``HealthDataGovDataset.warehouse_raw_key``) — so the graph is continuous:
 
-      healthdata_gov/catalog/… → healthdata_gov/<raw_table> (dlt, raw table)
-        → warehouse/stg_… (clean) → warehouse/core_… → warehouse/mart_…
+      sources/healthdata_gov/… → ingestion/healthdata_gov/<raw_table> (dlt)
+        → warehouse/RAW/… → warehouse/stg_… (clean) → warehouse/core_… → warehouse/mart_…
 
 Needs ``dbt/target/manifest.json``. ``dagster dev`` builds it (``prepare_if_dev``);
 CI and the image run ``dbt parse``. Locally: ``cd data/dbt && uv run dbt parse``.

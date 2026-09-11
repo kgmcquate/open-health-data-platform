@@ -32,11 +32,11 @@ def _all_configs() -> list[DatasetConfig]:
 
 
 def _catalog_key(cfg: DatasetConfig) -> str:
-    return f"healthdata_gov/catalog/{cfg.raw_table}"
+    return f"sources/healthdata_gov/{cfg.raw_table}"
 
 
 def _table_key(cfg: DatasetConfig) -> str:
-    return f"healthdata_gov/{cfg.raw_table}"
+    return f"ingestion/healthdata_gov/{cfg.raw_table}"
 
 
 def test_scraper_has_run() -> None:
@@ -125,5 +125,5 @@ def test_three_cadence_jobs_and_schedules_regardless_of_enabled_set() -> None:
         if j.name in hd_jobs
     }
     for cadence in ("daily", "weekly", "monthly"):
-        want = {f"healthdata_gov/{c.raw_table}" for c in enabled if c.cadence == cadence}
+        want = {_table_key(c) for c in enabled if c.cadence == cadence}
         assert per_job[f"healthdata_gov_{cadence}_ingest"] == want

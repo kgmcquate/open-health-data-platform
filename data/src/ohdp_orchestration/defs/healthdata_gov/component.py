@@ -7,13 +7,14 @@
   (``datasets/<slug>/defs.yaml``). Its schema is the ``DatasetConfig`` contract
   plus two knobs. Each instance emits:
 
-  - a **catalog asset** ``healthdata_gov/catalog/<raw_table>`` (unexecutable
+  - a **catalog asset** ``sources/healthdata_gov/<raw_table>`` (unexecutable
     ``AssetSpec``, kind ``socrata``) — always;
-  - a **table asset** ``healthdata_gov/<raw_table>`` (a ``@dlt_assets``-decorated
-    dlt pipeline, ``deps=[catalog asset]``, kind ``dlt`` + whatever the
-    destination actually is that run) — only when ``enabled: true``. The run
-    itself goes through ``ohdp_orchestration.resources.dlt.DLT_RESOURCE`` — see
-    that module for why a plain ``dlt.run()`` isn't safe here.
+  - a **table asset** ``ingestion/healthdata_gov/<raw_table>`` (a
+    ``@dlt_assets``-decorated dlt pipeline, ``deps=[catalog asset]``, kind
+    ``dlt`` + whatever the destination actually is that run) — only when
+    ``enabled: true``. The run itself goes through
+    ``ohdp_orchestration.resources.dlt.DLT_RESOURCE`` — see that module for
+    why a plain ``dlt.run()`` isn't safe here.
 
 * ``HealthDataGovCadenceSchedules`` — one instance (``schedules/defs.yaml``).
   Builds exactly three asset jobs + schedules, one per cadence, selecting table
@@ -56,6 +57,13 @@ _SOURCE = "healthdata_gov"
 _RAW_NS = naming.namespace("raw", _SOURCE)  # "RAW.healthdata_gov" (ADR-0013)
 _CADENCES: tuple[Cadence, ...] = ("daily", "weekly", "monthly")
 
+# Asset-key prefixes: unexecutable source-catalog specs live under `sources/`,
+# the dlt-ingested table assets under `ingestion/` — kept distinct from
+# `_WAREHOUSE_PREFIX` below and from each other so the graph reads
+# source -> ingestion -> warehouse left to right.
+_SOURCES_PREFIX = "sources"
+_INGESTION_PREFIX = "ingestion"
+
 # Must match warehouse/defs.yaml's `key_prefix` — there's no shared constant for
 # it since the two components are independently configured, but the dbt
 # translator's `get_asset_key` (warehouse/component.py) computes
@@ -97,11 +105,11 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
     # --- keys ---------------------------------------------------------------
     @property
     def catalog_key(self) -> AssetKey:
-        return AssetKey([_DOMAIN, "catalog", self.raw_table])
+        return AssetKey([_SOURCES_PREFIX, _DOMAIN, self.raw_table])
 
     @property
     def table_key(self) -> AssetKey:
-        return AssetKey([_DOMAIN, self.raw_table])
+        return AssetKey([_INGESTION_PREFIX, _DOMAIN, self.raw_table])
 
     def _warehouse_raw_key(self, table: str) -> AssetKey:
         """Label for where a physical table lives in the warehouse's RAW
@@ -155,7 +163,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
 
         return AssetSpec(
             key=self.catalog_key,
-            group_name=f"{self.group_name}_catalog",
+            group_name=f"{_SOURCES_PREFIX}_{self.group_name}",
             description=self.description or self.name,
             metadata=metadata,
             tags={"ohdp/domain": _DOMAIN, "ohdp/enabled": str(self.enabled).lower()},
@@ -182,7 +190,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         return AssetSpec(
             key=self.table_key,
             deps=[self.catalog_key],
-            group_name=self.group_name,
+            group_name=f"{_INGESTION_PREFIX}_{self.group_name}",
             description=(f"{self.name} — appended to {_RAW_NS}.{self.raw_table} by dlt."),
             metadata=metadata,
             # ohdp/cadence lives only on the table asset: it is what the cadence
