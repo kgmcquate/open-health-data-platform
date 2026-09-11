@@ -13,7 +13,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from dagster import materialize
+from dagster import AssetKey, DagsterInstance, materialize
 from dagster_dlt import dlt_assets
 
 from ohdp_ingestion.healthdata_gov.source import build_pipeline, socrata_source
@@ -150,3 +150,37 @@ def test_quiet_run_leaves_the_table_alone(lake: Any, monkeypatch: pytest.MonkeyP
 
     rows = _rows(lake, "healthdata_gov", "full")
     assert rows["v"] == [1]
+
+
+def test_nested_json_reports_a_materialization_per_child_table(
+    lake: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """dlt normalizes a nested array into its own `<table>__<field>` table.
+    `HealthDataGovDataset._table_asset()` (healthdata_gov/component.py) reports
+    a runless materialization for each one, not just the parent — reading the
+    table names back off dlt's own event metadata, since re-querying the dlt
+    pipeline's schema *after* the run comes back empty (confirmed empirically).
+    """
+    from ohdp_orchestration.defs.healthdata_gov.component import HealthDataGovDataset
+
+    _stub_socrata(
+        monkeypatch,
+        [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": 1, "tags": ["x", "y"]}]],
+    )
+    ds = HealthDataGovDataset(
+        id="abcd-1234",
+        name="Nested",
+        raw_table="nested",
+        cadence="daily",
+        enabled=True,
+        incremental_cursor="socrata_updated_at",
+    )
+    instance = DagsterInstance.ephemeral()
+    result = materialize(
+        [ds._table_asset()], resources={"dlt": CustomDagsterDltResource()}, instance=instance
+    )
+    assert result.success
+
+    for table in ("nested", "nested__tags"):
+        key = AssetKey(["warehouse", "RAW", "healthdata_gov", table])
+        assert instance.get_latest_materialization_event(key) is not None, table

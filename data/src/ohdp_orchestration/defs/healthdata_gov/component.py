@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from dagster import (
     AssetKey,
     AssetMaterialization,
+    AssetsDefinition,
     AssetSelection,
     AssetSpec,
     DefaultScheduleStatus,
@@ -103,27 +104,31 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
     def table_key(self) -> AssetKey:
         return AssetKey([_DOMAIN, self.raw_table])
 
-    @property
-    def warehouse_raw_key(self) -> AssetKey:
-        """Best-effort label for where this table lives in the warehouse's RAW
-        layer — `[prefix, "RAW", schema, table]`, via the same `ohdp_ingestion.
-        naming` module the raw loader itself uses. This does **not** currently
-        equal dbt's actual compiled source-node asset key: that key comes from
-        whatever target `dbt/target/manifest.json` was last parsed against
-        (`ci`/`local`, both DuckDB — see Dockerfile/ci.yml, neither ever
-        `prod`), so dbt's source lands at e.g. `warehouse/ci_build/healthdata_gov/
-        <table>` instead. Making these line up for real needs either reading the
-        compiled manifest here instead of guessing, or baking the image's
-        manifest with `--target prod` — neither is done yet.
+    def _warehouse_raw_key(self, table: str) -> AssetKey:
+        """Best-effort label for where a physical table lives in the
+        warehouse's RAW layer — `[prefix, "RAW", schema, table]`, via the same
+        `ohdp_ingestion.naming` module the raw loader itself uses. Takes an
+        explicit table name (not always `self.raw_table`) because one dlt run
+        can normalize nested JSON into several physical tables —
+        `<raw_table>__<nested_field>`, one per array/object dlt flattens — and
+        each gets its own key here; see `_assets()` below.
+
+        This does **not** currently equal dbt's actual compiled source-node
+        asset key: that key comes from whatever target `dbt/target/manifest.json`
+        was last parsed against (`ci`/`local`, both DuckDB — see
+        Dockerfile/ci.yml, neither ever `prod`), so dbt's source lands at e.g.
+        `warehouse/ci_build/healthdata_gov/<table>` instead. Making these line
+        up for real needs either reading the compiled manifest here instead of
+        guessing, or baking the image's manifest with `--target prod` —
+        neither is done yet.
         """
         return AssetKey(
-            [
-                _WAREHOUSE_PREFIX,
-                naming.database("raw"),
-                naming.schema("raw", _SOURCE),
-                self.raw_table,
-            ]
+            [_WAREHOUSE_PREFIX, naming.database("raw"), naming.schema("raw", _SOURCE), table]
         )
+
+    @property
+    def warehouse_raw_key(self) -> AssetKey:
+        return self._warehouse_raw_key(self.raw_table)
 
     # --- specs -------------------------------------------------------------
     def _advertised_schema(self) -> TableSchema | None:
@@ -209,7 +214,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         )
 
     # --- defs ------------------------------------------------------------------
-    def _table_asset(self):
+    def _table_asset(self) -> AssetsDefinition:
         cfg = self
         translator = _TableTranslator(spec=self._table_spec())
 
@@ -226,16 +231,30 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             op_tags={"ohdp/cadence": cfg.cadence},
         )
         def _assets(context, dlt: DagsterDltResource):
-            yield from dlt.run(context=context, loader_file_format="parquet")
-            # `warehouse_raw_key` has no op of its own (`_warehouse_raw_spec` is
-            # unexecutable) — report it materialized here, since this run is
-            # exactly what freshens the table dbt's source reads.
-            context.instance.report_runless_asset_event(
-                AssetMaterialization(
-                    asset_key=cfg.warehouse_raw_key,
-                    description="Represents data copied into the raw layer.",
+            # dlt normalizes nested JSON (arrays/objects) into their own child
+            # tables — `<raw_table>__<nested_field>`, dlt's own naming scheme —
+            # so one run can freshen several physical tables, not just
+            # `raw_table` itself. `CustomDagsterDltResource.extract_resource_metadata`
+            # (ohdp_orchestration/resources/dlt.py) already discovers them
+            # (`metadata["table_names"]`) at the one point that's actually
+            # reliable — inside the run, right after `dlt_pipeline.load()`.
+            # Re-deriving it here from the pipeline object afterward silently
+            # comes back empty (confirmed empirically: dlt's live schema isn't
+            # queryable the same way once `_run`'s extract/normalize/load
+            # sequence has returned), so read it back off the event instead.
+            for event in dlt.run(context=context, loader_file_format="parquet"):
+                yield event
+                raw_table_names = (event.metadata or {}).get("table_names")
+                table_names = (
+                    raw_table_names if isinstance(raw_table_names, list) else [cfg.raw_table]
                 )
-            )
+                for table_name in table_names:
+                    context.instance.report_runless_asset_event(
+                        AssetMaterialization(
+                            asset_key=cfg._warehouse_raw_key(table_name),
+                            description="Represents data copied into the raw layer.",
+                        )
+                    )
 
         return _assets
 
