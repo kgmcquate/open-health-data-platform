@@ -38,4 +38,8 @@ provider "snowflake" {
   authenticator     = "SNOWFLAKE_JWT"
   organization_name = var.snowflake_organization_name
   account_name      = var.snowflake_account_name
+
+  preview_features_enabled = [
+    "snowflake_network_policy_attachment_resource"
+  ]
 }
