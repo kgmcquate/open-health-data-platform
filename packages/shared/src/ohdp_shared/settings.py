@@ -47,7 +47,8 @@ class Settings(BaseSettings):
     )
     snowflake_role: str = "OHDP_PIPELINE"
     snowflake_warehouse: str = "OHDP_WH"
-    snowflake_database: str = "OHDP"
+    # Database names are fixed per medallion layer (ohdp_ingestion.naming,
+    # ADR-0013), not configured here — RAW is what dlt's raw loader connects to.
 
     # The one local DuckDB file both local/CI dlt ingestion and the local/ci dbt
     # targets read and write, so dbt sources resolve against what dlt just

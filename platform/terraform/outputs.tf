@@ -45,9 +45,12 @@ output "warehouse_bucket" {
 
 # ---------------------------------------------------------------------------
 # Snowflake connection (ADR-0012). These are exactly the OHDP_SNOWFLAKE_*
-# settings the pipeline reads; account/user/role/warehouse/database are
-# non-secret and live in the `ohdp-pipeline-config` ConfigMap, the password is
-# a repo secret.
+# settings the pipeline reads; account/user/role/warehouse are non-secret and
+# live in the `ohdp-pipeline-config` ConfigMap, the password is a repo secret.
+# There is no OHDP_SNOWFLAKE_DATABASE: the medallion layer databases
+# (RAW/CLEAN/CURATED, ADR-0013) are fixed names the pipeline code
+# (ohdp_ingestion.naming) and dbt config (dbt_project.yml's `+database`) both
+# read directly, not passed through the environment.
 # ---------------------------------------------------------------------------
 output "snowflake_account" {
   description = "OHDP_SNOWFLAKE_ACCOUNT — the <organization>-<account> identifier dlt/dbt-snowflake connect to."
@@ -67,11 +70,6 @@ output "snowflake_role" {
 output "snowflake_warehouse" {
   description = "OHDP_SNOWFLAKE_WAREHOUSE — the virtual warehouse (compute) for dlt loads and dbt-snowflake builds."
   value       = snowflake_warehouse.ohdp.name
-}
-
-output "snowflake_database" {
-  description = "OHDP_SNOWFLAKE_DATABASE — the Snowflake database holding the medallion schemas."
-  value       = snowflake_database.ohdp.name
 }
 
 output "snowflake_private_key" {

@@ -1,6 +1,6 @@
 # Terraform — DigitalOcean Kubernetes + Snowflake
 
-Provisions the managed cluster, the Spaces bucket and the Snowflake data warehouse (ADR-0012), then leaves the application stack to Helm. The old self-hosted k3s-on-droplet bootstrap has been removed.
+Provisions the managed cluster, the Spaces bucket and the Snowflake data warehouse (ADR-0012, ADR-0013), then leaves the application stack to Helm. The old self-hosted k3s-on-droplet bootstrap has been removed.
 
 DNS lives in Cloudflare (`kevinmcquate.com` is a Cloudflare zone). This stack manages the `*.ohdp.kevinmcquate.com` A records through the `cloudflare` provider, DNS-only (not proxied), pointing each host at the Traefik load balancer IP configured in `loadbalancer_ip`. There is no reserved DigitalOcean IP fallback here; the value must be set explicitly in `terraform.tfvars` or via `TF_VAR_loadbalancer_ip`.
 
@@ -12,7 +12,7 @@ DNS lives in Cloudflare (`kevinmcquate.com` is a Cloudflare zone). This stack ma
 | `digitalocean_kubernetes_node_pool` | Default worker pool (`size`, `node_count`) |
 | `digitalocean_spaces_bucket` | `ohdp-warehouse` for backups + the mirrored Snowflake key |
 | `cloudflare_dns_record` | One A record per `dns_hostnames` entry under `dns_base`, once `loadbalancer_ip` is set |
-| `snowflake_database` + `snowflake_schema` | The warehouse: one database, one schema per medallion layer ([ADR-0012](../../docs/decisions/0012-native-snowflake-tables.md)) |
+| `snowflake_database` + `snowflake_schema` | The warehouse: one database per medallion layer (RAW/CLEAN/CURATED), one schema per source or mart ([ADR-0013](../../docs/decisions/0013-per-layer-snowflake-databases.md)) |
 | `snowflake_account_role` + grants | `OHDP_PIPELINE` — read/write on the warehouse |
 | `snowflake_service_user` + `snowflake_network_policy` | The pipeline identity |
 | `tls_private_key` | Generates the pipeline's RSA key pair — SERVICE users don't accept password auth |
@@ -72,9 +72,12 @@ terraform output -raw snowflake_private_key | gh secret set SNOWFLAKE_PIPELINE_P
 ```
 
 The other settings (`snowflake_account`, `snowflake_user`, `snowflake_role`,
-`snowflake_warehouse`, `snowflake_database`) are non-secret and live in
-`pipelineConfig` in `platform/helm/charts/platform-base/values.yaml` — keep
-them in sync with those outputs.
+`snowflake_warehouse`) are non-secret and live in `pipelineConfig` in
+`platform/helm/charts/platform-base/values.yaml` — keep them in sync with
+those outputs. There's no `snowflake_database` output/setting: the medallion
+layer databases (RAW/CLEAN/CURATED) are fixed names shared by
+`ohdp_ingestion.naming` and `dbt_project.yml`, not passed through the
+environment (ADR-0013).
 
 ### Things that will bite you here too
 

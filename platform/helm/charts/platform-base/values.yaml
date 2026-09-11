@@ -36,12 +36,14 @@ pipelineConfig:
   # Snowflake data warehouse (ADR-0012). These come from `terraform output` in
   # platform/terraform; the matching private key (OHDP_SNOWFLAKE_PRIVATE_KEY —
   # SERVICE users don't accept password auth) is the one secret half and
-  # arrives in `ohdp-pipeline-secrets` from deploy-platform.yml.
+  # arrives in `ohdp-pipeline-secrets` from deploy-platform.yml. No
+  # OHDP_SNOWFLAKE_DATABASE: the medallion layer databases (RAW/CLEAN/CURATED,
+  # ADR-0013) are fixed names read directly from ohdp_ingestion.naming and
+  # dbt_project.yml, not passed through the environment.
   OHDP_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
   OHDP_SNOWFLAKE_USER: "OHDP_PIPELINE"
   OHDP_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
   OHDP_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
-  OHDP_SNOWFLAKE_DATABASE: "OHDP"
 
 postgres:
   image: postgres:16.4-bookworm

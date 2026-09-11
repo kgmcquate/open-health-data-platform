@@ -82,7 +82,7 @@ def test_incremental_load_appends_history(lake: Any, monkeypatch: pytest.MonkeyP
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-02-01", "v": 2}]])
     load_raw_table(resource_id="abcd-1234", table_name="demo", source="healthdata_gov")
 
-    rows = _rows(lake, "raw_healthdata_gov", "demo")
+    rows = _rows(lake, "healthdata_gov", "demo")
     assert sorted(rows["v"]) == [1, 2]
 
 
@@ -100,7 +100,7 @@ def test_new_columns_evolve_the_schema(lake: Any, monkeypatch: pytest.MonkeyPatc
     )
     load_raw_table(resource_id="abcd-1234", table_name="drift", source="healthdata_gov")
 
-    rows = _rows(lake, "raw_healthdata_gov", "drift")
+    rows = _rows(lake, "healthdata_gov", "drift")
     assert "added" in rows
     assert sorted(zip(rows["v"], rows["added"], strict=True)) == [(1, None), (2, "new")]
 
@@ -132,5 +132,5 @@ def test_quiet_run_leaves_the_table_alone(lake: Any, monkeypatch: pytest.MonkeyP
 
     assert quiet.rows == 0
     assert quiet.load_ids == []
-    rows = _rows(lake, "raw_healthdata_gov", "full")
+    rows = _rows(lake, "healthdata_gov", "full")
     assert rows["v"] == [1]

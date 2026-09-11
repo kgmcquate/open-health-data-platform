@@ -48,7 +48,7 @@ flowchart TB
     end
 
     subgraph storage["Snowflake data warehouse"]
-        SNOW["Medallion schemas<br/>raw / clean / core / marts"]
+        SNOW["RAW / CLEAN / CURATED databases<br/>schema per source or mart"]
     end
 
     subgraph serving["Serving"]

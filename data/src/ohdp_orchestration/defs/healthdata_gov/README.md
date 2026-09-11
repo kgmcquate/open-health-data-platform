@@ -51,8 +51,8 @@ Two assets per dataset, so lineage is explicit:
 | **table asset** | `healthdata_gov/<raw_table>` | `healthdata_gov` | `dlt`, `snowflake` | yes | `enabled: true` |
 
 The table asset is `deps=[catalog asset]` → `catalog -> raw table ->
-(dbt clean → core → marts)`. dlt **appends** to `raw_healthdata_gov.<raw_table>`
-(ADR-0012) — full history, schema auto-evolves; `incremental_cursor: null`
+(dbt clean → core → marts)`. dlt **appends** to `RAW.healthdata_gov.<raw_table>`
+(ADR-0013) — full history, schema auto-evolves; `incremental_cursor: null`
 datasets `replace` instead. The catalog asset carries the Socrata column
 schema + publisher / URL / keywords / cadence / page-views metadata for the
 OpenMetadata Dagster ingestion; the table asset gets dlt's load ids and rows

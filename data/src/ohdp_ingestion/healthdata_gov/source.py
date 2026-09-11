@@ -2,8 +2,9 @@
 # reject a Destination object in the `destination` position; both are the
 # documented usage. Relax only this module.
 # mypy: disable-error-code="no-untyped-def, untyped-decorator, call-overload, no-any-return"
-"""A ``dlt`` source over one Socrata dataset, landing a native table in `raw`
-(ADR-0012). dlt writes straight to the destination — Snowflake in prod, a local
+"""A ``dlt`` source over one Socrata dataset, landing a native table in the
+``RAW`` database (ADR-0013, building on ADR-0012). dlt writes straight to the
+destination — Snowflake in prod, a local
 DuckDB file in dev/CI (``ohdp_shared.settings.is_snowflake_configured``) — and
 handles schema evolution and the incremental cursor itself; there is no
 separate staging step or catalog-commit call. dlt keeps its own pipeline state
@@ -32,7 +33,7 @@ from typing import Any, Literal
 import dlt
 from dlt.sources.helpers import requests
 
-from ohdp_ingestion.naming import namespace
+from ohdp_ingestion import naming
 from ohdp_shared import get_logger
 from ohdp_shared.settings import is_snowflake_configured, settings
 
@@ -134,7 +135,7 @@ def _destination() -> Any:
     if is_snowflake_configured():
         return dlt.destinations.snowflake(
             credentials={
-                "database": settings.snowflake_database,
+                "database": naming.database("raw"),
                 "host": settings.snowflake_account,
                 "username": settings.snowflake_user,
                 "private_key": settings.snowflake_private_key,
@@ -148,14 +149,14 @@ def _destination() -> Any:
 def build_pipeline(*, pipeline_name: str, source: str) -> dlt.Pipeline:
     """A dlt pipeline that stages one source's deltas as Parquet.
 
-    ``load_raw_table`` runs it and commits the result to ``raw_<source>``; dbt
-    reads the tables as dbt sources (the generated
-    ``_healthdata_gov__sources.yml``).
+    ``load_raw_table`` runs it and commits the result to
+    ``RAW.<source>`` (ADR-0013); dbt reads the tables as dbt sources (the
+    generated ``_healthdata_gov__sources.yml``).
     """
     return dlt.pipeline(
         pipeline_name=pipeline_name,
         destination=_destination(),
-        dataset_name=namespace("raw", source),
+        dataset_name=naming.schema("raw", source),
         progress=None,
     )
 
@@ -177,7 +178,7 @@ def load_raw_table(
     incremental_cursor: str | None = "socrata_updated_at",
     row_limit: int | None = None,
 ) -> RawLoad:
-    """Fetch one Socrata dataset and land it in ``raw_<source>.<table_name>``.
+    """Fetch one Socrata dataset and land it in ``RAW.<source>.<table_name>``.
 
     Extract/normalize/load are run as separate steps (rather than a single
     ``pipeline.run()``) so the load step can be skipped on a zero-row extract —

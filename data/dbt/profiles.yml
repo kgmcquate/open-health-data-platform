@@ -1,7 +1,8 @@
 # dbt-snowflake is the compute engine in prod; dbt-duckdb (`local`/`ci`) stays
 # for local dev and CI, fully offline, no live Snowflake credentials needed
 # (ADR-0012, which supersedes the Iceberg-via-dbt-duckdb-plugin setup in
-# ADR-0010/0011).
+# ADR-0010/0011; ADR-0013 then split the single database into one per
+# medallion layer).
 #
 # Requires the project venv: `cd data && uv run dbt ...`
 ohdp:
@@ -25,9 +26,9 @@ ohdp:
       # supported mechanism. PKCS#8 PEM, read straight from the env var.
       private_key: "{{ env_var('OHDP_SNOWFLAKE_PRIVATE_KEY') }}"
       role: "{{ env_var('OHDP_SNOWFLAKE_ROLE') }}"
-      database: "{{ env_var('OHDP_SNOWFLAKE_DATABASE') }}"
+      # Required fallback; every model overrides both via `+database`/`+schema`
+      # (generate_database_name.sql / generate_schema_name.sql, ADR-0013).
+      database: "CLEAN"
       warehouse: "{{ env_var('OHDP_SNOWFLAKE_WAREHOUSE') }}"
-      # Required fallback; every model overrides it via `+schema` /
-      # generate_schema_name.sql.
       schema: "core"
       threads: 4

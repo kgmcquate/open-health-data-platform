@@ -88,28 +88,31 @@ variable "snowflake_account_name" {
   type        = string
 }
 
-variable "snowflake_database" {
-  description = "Snowflake database backing the warehouse."
-  type        = string
-  default     = "OHDP"
-}
-
 variable "snowflake_warehouse" {
   description = "Virtual warehouse (compute) for the pipeline's dlt loads and dbt-snowflake builds."
   type        = string
   default     = "OHDP_WH"
 }
 
-variable "snowflake_namespaces" {
+variable "snowflake_sources" {
   description = <<-EOT
-    Schemas to create, one per medallion layer, matching what the pipeline's
-    dlt loads and dbt-snowflake builds target (ohdp_ingestion.naming.namespace,
-    and dbt_project.yml's per-folder `+schema`). Marts can also appear on
-    their own via dbt-snowflake's `CREATE SCHEMA IF NOT EXISTS`; list one here
-    to bring it under Terraform.
+    Ingestion sources. Each gets a same-named schema in both the RAW and CLEAN
+    databases (ADR-0013), matching ohdp_ingestion.naming.schema() and
+    dbt_project.yml's per-folder `+schema`.
   EOT
   type        = list(string)
-  default     = ["raw_healthdata_gov", "clean_healthdata_gov", "core"]
+  default     = ["healthdata_gov"]
+}
+
+variable "snowflake_marts" {
+  description = <<-EOT
+    Presentation-layer marts. Each gets a same-named schema in the CURATED
+    database, alongside the always-present "core" schema (ADR-0013). A mart
+    can also appear on its own via dbt-snowflake's `CREATE SCHEMA IF NOT
+    EXISTS`; list one here to bring it under Terraform.
+  EOT
+  type        = list(string)
+  default     = ["respiratory"]
 }
 
 variable "snowflake_data_retention_days" {

@@ -1,5 +1,12 @@
-"""Medallion-layer naming, shared by the raw loader and dbt's schema config
-(ADR-0012). Pure string logic, no destination/warehouse dependency."""
+"""Medallion-layer naming (ADR-0013), shared by the raw loader and dbt's
+schema/database config, so names stay in sync across the write and read
+sides. Pure string logic, no destination/warehouse dependency.
+
+Snowflake gets one database per layer (RAW/CLEAN/CURATED) with a schema per
+source or mart. DuckDB (local/CI) is a single-file catalog with no such
+split — only the schema half of this applies there; see
+generate_database_name.sql, which no-ops the database override off Snowflake.
+"""
 
 from __future__ import annotations
 
@@ -7,15 +14,30 @@ from typing import Literal
 
 Layer = Literal["raw", "clean", "curated"]
 
+_DATABASES: dict[Layer, str] = {"raw": "RAW", "clean": "CLEAN", "curated": "CURATED"}
 
-def namespace(layer: Layer, source: str | None = None) -> str:
-    """Schema name for a layer.
 
-    raw/clean -> ``<layer>_<source>`` (``raw_healthdata_gov``);
-    curated   -> ``core`` or ``mart_<source>`` (source treated as the mart name).
+def database(layer: Layer) -> str:
+    """Snowflake database for a medallion layer: raw -> RAW, clean -> CLEAN,
+    curated -> CURATED."""
+    return _DATABASES[layer]
+
+
+def schema(layer: Layer, source: str | None = None) -> str:
+    """Schema name within a layer's database.
+
+    raw/clean -> ``<source>`` (e.g. "healthdata_gov");
+    curated   -> ``<mart>`` (source treated as the mart name), or "core" when
+    no mart is given.
     """
     if layer == "curated":
-        return f"mart_{source}" if source else "core"
+        return source or "core"
     if not source:
         raise ValueError(f"layer {layer!r} needs a source")
-    return f"{layer}_{source}"
+    return source
+
+
+def namespace(layer: Layer, source: str | None = None) -> str:
+    """Fully qualified ``DATABASE.schema`` for a layer, e.g.
+    ``"RAW.healthdata_gov"`` or ``"CURATED.core"``."""
+    return f"{database(layer)}.{schema(layer, source)}"
