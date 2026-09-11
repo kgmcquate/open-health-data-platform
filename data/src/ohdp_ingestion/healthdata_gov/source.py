@@ -202,6 +202,4 @@ def load_raw_table(
     else:
         log.info("no new rows extracted; leaving the raw table alone", table=table_name)
 
-    return RawLoad(
-        load_ids=load_ids, rows=rows, strategy=write_disposition(incremental_cursor)
-    )
+    return RawLoad(load_ids=load_ids, rows=rows, strategy=write_disposition(incremental_cursor))

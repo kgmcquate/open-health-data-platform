@@ -45,10 +45,10 @@ locals {
   # one schema per mart. Matches ohdp_ingestion.naming.schema() and
   # dbt_project.yml's per-folder `+schema`.
   snowflake_schemas = merge(
-    { for s in var.snowflake_sources : "raw.${s}" => { layer = "raw", schema = s } },
-    { for s in var.snowflake_sources : "clean.${s}" => { layer = "clean", schema = s } },
-    { "curated.core" = { layer = "curated", schema = "core" } },
-    { for m in var.snowflake_marts : "curated.${m}" => { layer = "curated", schema = m } },
+    # { for s in var.snowflake_sources : upper("raw.${s}") => { layer = "raw", schema = s } },
+    # { for s in var.snowflake_sources : upper("clean.${s}") => { layer = "clean", schema = s } },
+    # { upper("curated.core") = { layer = "curated", schema = "core" } },
+    # { for m in var.snowflake_marts : upper("curated.${m}") => { layer = "curated", schema = m } },
   )
 }
 
@@ -78,20 +78,20 @@ resource "snowflake_database" "layer" {
   data_retention_time_in_days = var.snowflake_data_retention_days
 }
 
-resource "snowflake_schema" "namespace" {
-  for_each = local.snowflake_schemas
+# resource "snowflake_schema" "namespace" {
+#   for_each = local.snowflake_schemas
 
-  database = snowflake_database.layer[each.value.layer].name
-  name     = each.value.schema
-  comment  = "Schema ${each.value.schema} in the ${each.value.layer} layer database (ADR-0013)."
+#   database = snowflake_database.layer[each.value.layer].name
+#   name     = each.value.schema
+#   comment  = "Schema ${each.value.schema} in the ${each.value.layer} layer database (ADR-0013)."
 
-  # dbt's CREATE SCHEMA IF NOT EXISTS can open a new mart schema ahead of a
-  # Terraform run; adding it to snowflake_marts later adopts it rather than
-  # fighting over it.
-  lifecycle {
-    ignore_changes = [comment]
-  }
-}
+#   # dbt's CREATE SCHEMA IF NOT EXISTS can open a new mart schema ahead of a
+#   # Terraform run; adding it to snowflake_marts later adopts it rather than
+#   # fighting over it.
+#   lifecycle {
+#     ignore_changes = [comment]
+#   }
+# }
 
 # ---------------------------------------------------------------------------
 # Compute for dlt loads and dbt-snowflake builds. XS, suspended after a
