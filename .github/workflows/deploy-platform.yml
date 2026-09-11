@@ -97,8 +97,9 @@ jobs:
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET"
 
-          # OHDP_ICEBERG_CREDENTIAL is the Horizon Catalog PAT pair, "<user>:<pat>".
-          # Terraform mints it; publish it with:
+          # OHDP_ICEBERG_CREDENTIAL is the bare Horizon Catalog PAT — NOT
+          # "<user>:<pat>", Snowflake's token endpoint 400s (invalid_scope) if a
+          # client_id rides along. Terraform mints it; publish it with:
           #   terraform output -raw iceberg_credential | gh secret set SNOWFLAKE_ICEBERG_CREDENTIAL
           # Snowflake caps a PAT at 365 days — when it expires every asset in the
           # run 401s, so rotate (bump `snowflake_pat_keeper`, re-apply, re-set the

@@ -62,8 +62,11 @@ def catalog_properties() -> dict[str, Any]:
         "warehouse": settings.iceberg_warehouse or settings.iceberg_catalog_name,
         "uri": settings.iceberg_catalog_uri,
         # OAuth2 client_credentials against <uri>/v1/oauth/tokens. The credential
-        # is "<snowflake_user>:<pat>" and the scope names the role the catalog
-        # session assumes — both come straight from Terraform outputs.
+        # is the bare PAT (not "<snowflake_user>:<pat>" — pyiceberg would split
+        # that into a client_id it sends alongside client_secret, and Snowflake's
+        # token endpoint 400s with invalid_scope the moment a client_id shows up)
+        # and the scope names the role the catalog session assumes — both come
+        # straight from Terraform outputs.
         "scope": settings.iceberg_scope,
         # Take Snowflake up on credential vending: it hands back per-table,
         # time-limited storage credentials with the table metadata, so the

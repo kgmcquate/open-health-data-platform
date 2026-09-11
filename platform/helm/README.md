@@ -72,8 +72,9 @@ kubectl -n data create secret generic ohdp-pipeline-secrets \
   --from-literal=OHDP_OPENMETADATA_JWT= \        # fill after OpenMetadata's first boot
   --from-literal=OHDP_ICEBERG_CREDENTIAL="$(cd ../terraform && terraform output -raw iceberg_credential)"
 
-# OHDP_ICEBERG_CREDENTIAL is the Horizon Catalog PAT pair, "<snowflake_user>:<pat>",
-# minted by Terraform (ADR-0011). The non-secret half — catalog URI, database,
+# OHDP_ICEBERG_CREDENTIAL is the bare Horizon Catalog PAT (not "<user>:<pat>" —
+# Snowflake's token endpoint rejects a client_id with invalid_scope), minted by
+# Terraform (ADR-0011). The non-secret half — catalog URI, database,
 # scope — is in data/ohdp-pipeline-config, so when you `terraform apply` a new
 # account or database, update `pipelineConfig` in charts/platform-base/values.yaml
 # to match the `iceberg_*` outputs.

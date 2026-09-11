@@ -65,9 +65,10 @@ output "iceberg_scope" {
 
 output "iceberg_credential" {
   description = <<-EOT
-    OHDP_ICEBERG_CREDENTIAL — "<user>:<pat>", the client_credentials pair
-    pyiceberg exchanges for an access token. Store it as the repo secret
-    SNOWFLAKE_ICEBERG_CREDENTIAL, which deploy-platform.yml reads.
+    OHDP_ICEBERG_CREDENTIAL — the bare PAT pyiceberg exchanges for an access
+    token as client_secret. NOT "<user>:<pat>": Snowflake's token endpoint
+    400s with invalid_scope if a client_id rides along. Store it as the repo
+    secret SNOWFLAKE_ICEBERG_CREDENTIAL, which deploy-platform.yml reads.
   EOT
   value       = local.iceberg_credential
   sensitive   = true

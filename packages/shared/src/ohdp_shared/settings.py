@@ -41,8 +41,10 @@ class Settings(BaseSettings):
     iceberg_credential: str = Field(
         default="",
         description=(
-            "OAuth2 client_credentials pair for the catalog: '<snowflake_user>:<pat>'. "
-            "Terraform's iceberg_credential output."
+            "Bare PAT used as the OAuth2 client_secret against the catalog — NOT "
+            "'<snowflake_user>:<pat>'; Snowflake's token endpoint 400s with "
+            "invalid_scope if a client_id rides along. Terraform's iceberg_credential "
+            "output."
         ),
     )
     iceberg_scope: str = Field(

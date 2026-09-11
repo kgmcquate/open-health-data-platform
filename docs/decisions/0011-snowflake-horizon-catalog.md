@@ -62,19 +62,30 @@ Spaces keeps its other two jobs: the published DuckDB snapshots + `current.json`
 
 ### Auth: a PAT on a SERVICE user
 
-`OHDP_ICEBERG_CREDENTIAL` is `"<user>:<pat>"` and `OHDP_ICEBERG_SCOPE` is
+`OHDP_ICEBERG_CREDENTIAL` is the bare PAT and `OHDP_ICEBERG_SCOPE` is
 `session:role:OHDP_PIPELINE`. pyiceberg's existing OAuth2 `client_credentials`
 exchange handles it unchanged — the settings kept their names and only their
 values moved. Key-pair JWT was the alternative; it needs a `grant_type=jwt-bearer`
 exchange pyiceberg does not implement, so it would have meant a custom token shim.
 
-Two consequences worth writing down:
+Three consequences worth writing down:
 
-- **Snowflake refuses to issue or accept a PAT for a SERVICE user that is not
-  subject to a network policy.** `snowflake_network_policy.pipeline` exists for
-  that reason and defaults to `0.0.0.0/0`. Narrowing it to the DOKS egress IPs
-  needs a stable egress first — node recycles and pool resizes change those
-  addresses, and a stale entry 401s every asset in the run.
+- **The credential must be the bare PAT, not `"<user>:<pat>"`.** pyiceberg's
+  legacy OAuth2 manager splits a colon-bearing credential into
+  `client_id`/`client_secret` and sends both; Snowflake's token endpoint only
+  documents (and accepts) a `client_secret`-only request and 400s with
+  `invalid_scope: The scope is invalid` the moment a `client_id` rides along —
+  confirmed by hand against `/polaris/api/catalog/v1/oauth/tokens`.
+- **The network policy has to be attached at the account level, not the user
+  level.** Snowflake's own Horizon Catalog docs for external-engine access say
+  a user-level policy "isn't supported with this feature" and it fails the
+  same way — `invalid_scope` on token exchange — even though PATs are
+  otherwise fine with either. `snowflake_network_policy_attachment.pipeline`
+  (`set_for_account = true`) exists for that reason; `snowflake_allowed_ips`
+  now gates every session in the account, not just this service user, and
+  defaults to `0.0.0.0/0`. Narrowing it to the DOKS egress IPs needs a stable
+  egress first — node recycles and pool resizes change those addresses, and a
+  stale entry now locks out everyone, not just the pipeline.
 - **A PAT expires, at 365 days maximum.** Rotation is a standing calendar item:
   bump `snowflake_pat_keeper`, apply, re-set the `SNOWFLAKE_ICEBERG_CREDENTIAL`
   repo secret, re-deploy.

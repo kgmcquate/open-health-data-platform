@@ -27,10 +27,15 @@ locals {
   snowflake_account_identifier = "${var.snowflake_organization_name}-${var.snowflake_account_name}"
   snowflake_catalog_uri        = "https://${local.snowflake_account_identifier}.snowflakecomputing.com/polaris/api/catalog"
 
-  # "<user>:<pat>" — the client_credentials pair pyiceberg exchanges for a
-  # token. Shared by the iceberg_credential output and the Spaces object in
-  # r2.tf so there is exactly one place this gets assembled.
-  iceberg_credential = "${snowflake_service_user.pipeline.name}:${snowflake_user_programmatic_access_token.pipeline.token}"
+  # The bare PAT — NOT "<user>:<pat>". pyiceberg's legacy OAuth2 manager splits
+  # on the first colon into client_id/client_secret; Snowflake's token endpoint
+  # only accepts the documented client_secret-only form (confirmed by hand: a
+  # client_credentials request that includes client_id gets a 400
+  # invalid_scope, the identical request without it succeeds) — so a "user:"
+  # prefix here breaks every catalog call. Shared by the iceberg_credential
+  # output and the Spaces object in r2.tf so there is exactly one place this
+  # gets assembled.
+  iceberg_credential = snowflake_user_programmatic_access_token.pipeline.token
 }
 
 # ---------------------------------------------------------------------------
