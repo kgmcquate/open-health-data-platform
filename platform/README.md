@@ -42,7 +42,7 @@ with `make dagster TAG=sha-…` to roll back.
 
 ## Non-negotiables
 
-- Memory **limits** on every pod (§4). An unbounded DuckDB query otherwise takes the cluster down. Both of our charts set them; the values files set them for the upstream charts.
+- Memory **limits** on every pod (§4). An unbounded in-pod query otherwise takes the cluster down. Both of our charts set them; the values files set them for the upstream charts.
 - Single node pool, single replica. No HA, no autoscaling, no second Postgres (§9).
 - The Dagster Service is never exposed directly — only through oauth2-proxy and the authz proxy (§5). An Ingress pointing at `dagster-webserver` would bypass the read-only control entirely.
 - Nothing in the Dagster UI you would not put on a public webpage (§9).

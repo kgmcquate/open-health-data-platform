@@ -50,7 +50,7 @@ ingress:
   className: traefik
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-  host: dagster.ohdp.kevinmcquate.com
+  host: dagster.open-health-data-platform.org
   path: /
   pathType: Prefix
   tls:

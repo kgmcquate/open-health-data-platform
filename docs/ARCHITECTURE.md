@@ -98,7 +98,7 @@ flowchart TB
 |---|---|---|
 | Hub app | Signup, billing, chat UI, embedded dashboards, links to every tool | The only thing most users see first |
 | Dagster | Ingestion, dbt orchestration, ML inference, alert checks | Publicly visible, hardened (§5) |
-| dbt | SQL transformation and tests | Snowflake in prod, DuckDB in local dev/CI (ADR-0012) |
+| dbt | SQL transformation and tests | Snowflake only (ADR-0014) |
 | Snowflake | Compute and storage for the medallion warehouse | dlt loads, dbt-snowflake builds |
 | Cube Core | Semantic layer: measures, dimensions, access control, MCP endpoint | Single definition of every metric, queries Snowflake directly |
 | Superset | Dashboards, embedded and standalone | Queries Cube, not Snowflake |
@@ -202,7 +202,7 @@ flowchart TB
 > **DNS / edge, as built.** One DigitalOcean load balancer fronts everything
 > (Traefik `Service type: LoadBalancer`); Ingresses route by hostname. Public
 > hosts are `app`, `dagster`, `catalog`, `cube`, `superset` under
-> `ohdp.kevinmcquate.com`. `kevinmcquate.com` is a Cloudflare zone; the records
+> `open-health-data-platform.org`. `open-health-data-platform.org` is a Cloudflare zone; the records
 > are managed by Terraform (`platform/terraform/dns.tf`, `cloudflare` provider)
 > but are **DNS-only** — Cloudflare is not in the request path, so TLS is Let's
 > Encrypt at the origin (cert-manager, HTTP-01) and there is no edge WAF or rate
@@ -228,8 +228,8 @@ Steady state ~13 GB, burst ~15 GB during a build.
 | k3s system | 1 GB | |
 | pipeline pod | 1.5 GB | Burst only, concurrency capped at 1; compute is Snowflake, not this pod |
 
-Set memory **limits** on every pod. An unbounded DuckDB query will otherwise take
-down the node.
+Set memory **limits** on every pod. An unbounded in-pod query (opensearch,
+cube, ...) will otherwise take down the node.
 
 ### Cost
 
@@ -332,7 +332,7 @@ health-data-platform/
 │   │   │   ├── jobs/
 │   │   │   ├── schedules/
 │   │   │   ├── sensors/
-│   │   │   └── resources/      # R2, DuckDB, Cube, OpenMetadata, k8s clients
+│   │   │   └── resources/      # R2, dlt/dbt Snowflake, Cube, OpenMetadata, k8s clients
 │   │   └── ohdp_ml/
 │   │       ├── anomaly/        # EARS C1-C3, Farrington, STL + robust z-score
 │   │       ├── forecast/       # FluSight-style quantile forecasts, WIS scoring
@@ -387,9 +387,10 @@ Each milestone should be independently demoable. Do not start the next until the
 previous is green for a week.
 
 **M0 — Pipeline spine**
-Two sources (OpenAQ, one CDC surveillance dataset). dbt against local DuckDB in
-dev/CI, Snowflake in prod (ADR-0012). Dagster running the build. No auth, no UI,
-no catalog. Goal: prove dlt loads + dbt-snowflake builds stay green.
+Two sources (OpenAQ, one CDC surveillance dataset). dbt against Snowflake
+(ADR-0012, later made the only target by ADR-0014). Dagster running the build.
+No auth, no UI, no catalog. Goal: prove dlt loads + dbt-snowflake builds stay
+green.
 
 **M1 — Platform on k3s**
 Provision the VM, k3s, Postgres, ingress, TLS. Deploy Dagster with oauth2-proxy and

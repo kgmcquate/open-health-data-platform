@@ -3,9 +3,7 @@ schema/database config, so names stay in sync across the write and read
 sides. Pure string logic, no destination/warehouse dependency.
 
 Snowflake gets one database per layer (RAW/CLEAN/CURATED) with a schema per
-source or mart. DuckDB (local/CI) is a single-file catalog with no such
-split — only the schema half of this applies there; see
-generate_database_name.sql, which no-ops the database override off Snowflake.
+source or mart.
 """
 
 from __future__ import annotations

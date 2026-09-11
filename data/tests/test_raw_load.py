@@ -1,5 +1,8 @@
-"""The raw loader writes straight to the destination — a local DuckDB file in
-tests, Snowflake in prod (ADR-0012). Socrata is stubbed.
+"""The raw loader writes straight to Snowflake in prod (ADR-0014). Socrata is
+stubbed; the destination is stubbed too, to a local SQLite file via dlt's
+generic ``sqlalchemy`` destination — a real SQL engine (schema evolution,
+``replace``'s truncate, nested-array flattening all behave the same as a real
+warehouse) with no external service and no DuckDB dependency.
 
 Exercises ``CustomDagsterDltResource`` (the actual production code path —
 ``ohdp_orchestration.defs.healthdata_gov.component`` runs every table asset
@@ -11,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import duckdb
+import dlt
 import pytest
 from dagster import AssetKey, DagsterInstance, materialize
 from dagster_dlt import dlt_assets
@@ -21,27 +24,35 @@ from ohdp_orchestration.resources.dlt import CustomDagsterDltResource
 
 
 @pytest.fixture
-def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    """Point the local DuckDB destination and dlt's own state dir at tmp_path."""
-    monkeypatch.setenv("OHDP_SNOWFLAKE_ACCOUNT", "")
-    monkeypatch.setenv("OHDP_DUCKDB_PATH", str(tmp_path / "build.duckdb"))
+def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Stub the raw loader's Snowflake destination with a local SQLite file,
+    and point dlt's own state dir at tmp_path too."""
+    db_path = tmp_path / "raw.db"
     # dlt keeps pipeline state (the incremental cursor) here.
     monkeypatch.setenv("DLT_DATA_DIR", str(tmp_path / "dlt"))
 
     import ohdp_ingestion.healthdata_gov.source as src
-    from ohdp_shared.settings import Settings
 
-    settings = Settings()
-    monkeypatch.setattr(src, "settings", settings)
-    return settings
+    monkeypatch.setattr(
+        src,
+        "_destination",
+        lambda: dlt.destinations.sqlalchemy(credentials=f"sqlite:///{db_path}"),
+    )
+    return db_path
 
 
-def _rows(settings: Any, schema: str, table: str) -> dict[str, Any]:
-    con = duckdb.connect(settings.duckdb_path, read_only=True)
-    try:
-        return con.sql(f'select * from "{schema}"."{table}"').to_arrow_table().to_pydict()
-    finally:
-        con.close()
+def _rows(db_path: Path, schema: str, table: str) -> dict[str, Any]:
+    # A fresh, throwaway pipeline pointed at the same file/dataset reads back
+    # whatever any other pipeline loaded there — dlt's dataset API queries the
+    # live destination schema, not this pipeline's own local state.
+    reader = dlt.pipeline(
+        pipeline_name="test_reader",
+        destination=dlt.destinations.sqlalchemy(credentials=f"sqlite:///{db_path}"),
+        dataset_name=schema,
+    )
+    arrow_table = reader.dataset()[table].arrow()
+    assert arrow_table is not None
+    return dict(arrow_table.to_pydict())
 
 
 def _stub_socrata(monkeypatch: pytest.MonkeyPatch, pages: list[list[dict[str, Any]]]) -> None:
@@ -100,7 +111,7 @@ def test_write_disposition_follows_the_cursor() -> None:
     assert write_disposition(None) == "replace"
 
 
-def test_incremental_load_appends_history(lake: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_incremental_load_appends_history(lake: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": 1}]])
     result = _load(resource_id="abcd-1234", table_name="demo")
     assert result.success
@@ -114,7 +125,7 @@ def test_incremental_load_appends_history(lake: Any, monkeypatch: pytest.MonkeyP
     assert sorted(rows["v"]) == [1, 2]
 
 
-def test_new_columns_evolve_the_schema(lake: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_new_columns_evolve_the_schema(lake: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": 1}]])
     assert _load(resource_id="abcd-1234", table_name="drift").success
 
@@ -131,7 +142,7 @@ def test_new_columns_evolve_the_schema(lake: Any, monkeypatch: pytest.MonkeyPatc
     assert sorted(zip(rows["v"], rows["added"], strict=True)) == [(1, None), (2, "new")]
 
 
-def test_quiet_run_leaves_the_table_alone(lake: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_quiet_run_leaves_the_table_alone(lake: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A wholesale-refresh dataset that returns nothing must not be emptied.
 
     `replace` on a zero-row extract would wipe the raw history, and "upstream
@@ -153,7 +164,7 @@ def test_quiet_run_leaves_the_table_alone(lake: Any, monkeypatch: pytest.MonkeyP
 
 
 def test_nested_json_reports_a_materialization_per_child_table(
-    lake: Any, monkeypatch: pytest.MonkeyPatch
+    lake: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """dlt normalizes a nested array into its own `<table>__<field>` table.
     `HealthDataGovDataset._table_asset()` (healthdata_gov/component.py) reports

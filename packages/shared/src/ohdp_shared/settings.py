@@ -26,9 +26,7 @@ class Settings(BaseSettings):
     spaces_region: str = "nyc3"
     spaces_bucket: str = "ohdp-warehouse"
 
-    # Snowflake data warehouse (ADR-0012). Plain tables, no REST catalog. Empty
-    # snowflake_account means local dev/CI — see is_snowflake_configured() below,
-    # which callers use to fall back to the local DuckDB path instead.
+    # Snowflake data warehouse (ADR-0012/0014). Plain tables, no REST catalog.
     snowflake_account: str = Field(
         default="",
         description=(
@@ -49,11 +47,6 @@ class Settings(BaseSettings):
     snowflake_warehouse: str = "OHDP_WH"
     # Database names are fixed per medallion layer (ohdp_ingestion.naming,
     # ADR-0013), not configured here — RAW is what dlt's raw loader connects to.
-
-    # The one local DuckDB file both local/CI dlt ingestion and the local/ci dbt
-    # targets read and write, so dbt sources resolve against what dlt just
-    # loaded. Must match profiles.yml's OHDP_DUCKDB_PATH default.
-    duckdb_path: str = "data/warehouse/build.duckdb"
 
     # Postgres (single instance, 4 logical databases)
     postgres_host: str = "localhost"
@@ -77,8 +70,3 @@ def _load() -> Settings:
 
 
 settings: Settings = _load()
-
-
-def is_snowflake_configured() -> bool:
-    """False in local dev/CI (falls back to the local DuckDB path), true in prod."""
-    return bool(settings.snowflake_account)

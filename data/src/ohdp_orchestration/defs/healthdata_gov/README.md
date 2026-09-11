@@ -75,10 +75,9 @@ are created **stopped** (`default_status` in `schedules/defs.yaml`).
   `socrata_updated_at`.
 - The `columns` block is Socrata's *advertised* schema; dlt infers the real
   loaded types at materialization.
-- Local dev / CI write to a local DuckDB file (`OHDP_DUCKDB_PATH`); prod
-  writes to Snowflake directly, set via `OHDP_SNOWFLAKE_ACCOUNT` and friends.
-  dlt picks the destination itself
-  (`ohdp_shared.settings.is_snowflake_configured`). See
-  [ADR-0012](../../../../../../docs/decisions/0012-native-snowflake-tables.md).
+- dlt writes to Snowflake directly, set via `OHDP_SNOWFLAKE_ACCOUNT` and
+  friends. See
+  [ADR-0012](../../../../../../docs/decisions/0012-native-snowflake-tables.md)
+  and [ADR-0014](../../../../../../docs/decisions/0014-snowflake-only-compilation.md).
 - Optional `OHDP_HEALTHDATA_APP_TOKEN` raises Socrata rate limits.
 - Schedules fire at 07:00 UTC, before the 08:00 dbt build.

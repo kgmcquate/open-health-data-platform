@@ -3,13 +3,11 @@
 # documented usage. Relax only this module.
 # mypy: disable-error-code="no-untyped-def, untyped-decorator, call-overload, no-any-return"
 """A ``dlt`` source over one Socrata dataset, landing a native table in the
-``RAW`` database (ADR-0013, building on ADR-0012). dlt writes straight to the
-destination — Snowflake in prod, a local
-DuckDB file in dev/CI (``ohdp_shared.settings.is_snowflake_configured``) — and
-handles schema evolution and the incremental cursor itself; there is no
-separate staging step or catalog-commit call. dlt keeps its own pipeline state
-in the destination dataset, which is what makes the cursor survive a pod
-restart.
+``RAW`` database (ADR-0013, building on ADR-0014). dlt writes straight to
+Snowflake and handles schema evolution and the incremental cursor itself;
+there is no separate staging step or catalog-commit call. dlt keeps its own
+pipeline state in the destination dataset, which is what makes the cursor
+survive a pod restart.
 
 Every row carries two system columns we alias in explicitly:
 
@@ -33,7 +31,7 @@ import dlt
 from dlt.sources.helpers import requests
 
 from ohdp_ingestion import naming
-from ohdp_shared.settings import is_snowflake_configured, settings
+from ohdp_shared.settings import settings
 
 WriteDisposition = Literal["append", "replace"]
 
@@ -125,21 +123,19 @@ def write_disposition(incremental_cursor: str | None) -> WriteDisposition:
 
 
 def _destination() -> Any:
-    """dlt destination for the raw table: Snowflake in prod, local DuckDB
-    otherwise (ADR-0012). dlt writes straight here — schema evolution and the
-    incremental cursor's pipeline state are both handled natively."""
-    if is_snowflake_configured():
-        return dlt.destinations.snowflake(
-            credentials={
-                "database": naming.database("raw"),
-                "host": settings.snowflake_account,
-                "username": settings.snowflake_user,
-                "private_key": settings.snowflake_private_key,
-                "warehouse": settings.snowflake_warehouse,
-                "role": settings.snowflake_role,
-            }
-        )
-    return dlt.destinations.duckdb(credentials=settings.duckdb_path)
+    """dlt destination for the raw table (ADR-0014). dlt writes straight to
+    Snowflake — schema evolution and the incremental cursor's pipeline state
+    are both handled natively."""
+    return dlt.destinations.snowflake(
+        credentials={
+            "database": naming.database("raw"),
+            "host": settings.snowflake_account,
+            "username": settings.snowflake_user,
+            "private_key": settings.snowflake_private_key,
+            "warehouse": settings.snowflake_warehouse,
+            "role": settings.snowflake_role,
+        }
+    )
 
 
 def build_pipeline(*, pipeline_name: str, source: str) -> dlt.Pipeline:

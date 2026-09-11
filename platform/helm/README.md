@@ -88,7 +88,7 @@ kubectl -n app create secret generic hub-api-secrets \
 # oauth2-proxy (ADR-0007) — merge the Google client creds into the Secret
 # platform-base created (it already holds the generated `cookie-secret`).
 # `make base` must have run first. Google Cloud console: a "Web application"
-# OAuth client, redirect URI https://dagster.ohdp.kevinmcquate.com/oauth2/callback
+# OAuth client, redirect URI https://dagster.open-health-data-platform.org/oauth2/callback
 kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$(printf \
   '{"data":{"client-id":"%s","client-secret":"%s"}}' \
   "$(printf %s "$DAGSTER_OIDC_CLIENT_ID" | base64 -w0)" \

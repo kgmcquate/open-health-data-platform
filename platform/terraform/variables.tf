@@ -42,9 +42,9 @@ variable "cloudflare_zone_id" {
 }
 
 variable "dns_base" {
-  description = "Base under which per-service A records are created, e.g. ohdp.kevinmcquate.com -> app.ohdp.kevinmcquate.com."
+  description = "Base under which per-service A records are created, e.g. open-health-data-platform.org -> app.open-health-data-platform.org."
   type        = string
-  default     = "ohdp.kevinmcquate.com"
+  default     = "open-health-data-platform.org"
 }
 
 variable "dns_hostnames" {

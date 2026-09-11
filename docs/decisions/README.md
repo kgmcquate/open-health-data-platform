@@ -19,3 +19,4 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0011](0011-snowflake-horizon-catalog.md) | Snowflake Horizon Catalog replaces Polaris; Terraform-managed | Superseded by [0012](0012-native-snowflake-tables.md) |
 | [0012](0012-native-snowflake-tables.md) | Native Snowflake tables replace the Iceberg lake | Accepted |
 | [0013](0013-per-layer-snowflake-databases.md) | One Snowflake database per medallion layer (RAW/CLEAN/CURATED) | Accepted |
+| [0014](0014-snowflake-only-compilation.md) | Snowflake-only: drop the local/CI DuckDB targets | Accepted |

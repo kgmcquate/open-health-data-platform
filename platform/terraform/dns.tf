@@ -1,5 +1,5 @@
-# Platform hostnames. kevinmcquate.com is a Cloudflare zone, so the records live
-# there rather than in DigitalOcean DNS.
+# Platform hostnames. open-health-data-platform.org is a Cloudflare zone, so the
+# records live there rather than in DigitalOcean DNS.
 #
 # DNS-only (proxied = false): Cloudflare is not in the request path, so TLS stays
 # at the origin (cert-manager HTTP-01 through Traefik). Flipping a record to

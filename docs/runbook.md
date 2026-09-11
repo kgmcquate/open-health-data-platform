@@ -10,8 +10,8 @@ model, *then* runs its tests, so a test failure means the (possibly bad) data
 is already in the table by the time you find out. Triage:
 
 1. Open the failed Dagster run. Logs are redacted — if you need raw output, run
-   `dbt build` locally against a fresh DuckDB (`--target local`/`--target ci`)
-   or, with credentials, `--target prod`.
+   `dbt build` locally with Snowflake credentials (`OHDP_SNOWFLAKE_*`,
+   `.env.example`).
 2. If an upstream API changed shape, fix the ingestion schema contract and the
    staging model in the same PR.
 3. If the bad data is already visible downstream, the fix is a new green

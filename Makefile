@@ -21,7 +21,7 @@ test: ## pytest
 	uv run pytest
 
 dbt-parse: ## Parse dbt models (no warehouse required)
-	cd data/dbt && uv run dbt deps && uv run dbt parse --target ci
+	cd data/dbt && uv run dbt deps && uv run dbt parse
 
 dagster-dev: ## Run the Dagster webserver against the local code location
 	cd data && uv run dagster dev -m ohdp_orchestration.definitions

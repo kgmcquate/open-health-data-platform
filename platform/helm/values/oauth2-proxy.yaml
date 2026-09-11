@@ -28,7 +28,7 @@ image:
 #   client-id / client-secret — patched in by deploy-platform.yml from the repo
 #                    secrets DAGSTER_OIDC_CLIENT_ID / DAGSTER_OIDC_CLIENT_SECRET.
 #                    (Google Cloud console: a "Web application" OAuth client with
-#                    redirect URI https://dagster.ohdp.kevinmcquate.com/oauth2/callback)
+#                    redirect URI https://dagster.open-health-data-platform.org/oauth2/callback)
 # ---------------------------------------------------------------------------
 config:
   existingSecret: oauth2-proxy-secret
@@ -39,7 +39,7 @@ config:
     provider = "google"
     email_domains = [ "*" ]
     upstreams = [ "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80" ]
-    redirect_url = "https://dagster.ohdp.kevinmcquate.com/oauth2/callback"
+    redirect_url = "https://dagster.open-health-data-platform.org/oauth2/callback"
     # Traefik terminates TLS and sets X-Forwarded-Proto; trust it so the derived
     # redirect/callback URLs are https and the real client IP is logged.
     reverse_proxy = true
@@ -62,11 +62,11 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - dagster.ohdp.kevinmcquate.com
+    - dagster.open-health-data-platform.org
   tls:
     - secretName: dagster-tls
       hosts:
-        - dagster.ohdp.kevinmcquate.com
+        - dagster.open-health-data-platform.org
 
 service:
   type: ClusterIP

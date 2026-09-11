@@ -4,7 +4,7 @@
 #
 # `data/` is a standalone uv project; `ohdp-shared` is a path dependency at
 # ../packages/shared. K8sRunLauncher launches this image for each run, so it
-# carries dbt + DuckDB + pyiceberg as well as the Dagster definitions.
+# carries dbt as well as the Dagster definitions.
 
 FROM ghcr.io/astral-sh/uv:0.5-python3.12-bookworm-slim AS builder
 
@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # manifest.json for the `warehouse` Dagster component (ADR-0010). `dbt parse` is
 # offline — no catalog or Spaces creds needed.
 RUN /app/.venv/bin/dbt deps --project-dir dbt \
- && /app/.venv/bin/dbt parse --project-dir dbt --profiles-dir dbt --target ci
+ && /app/.venv/bin/dbt parse --project-dir dbt --profiles-dir dbt
 
 
 FROM python:3.12-slim-bookworm AS runtime
@@ -55,11 +55,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
     DAGSTER_HOME=/opt/dagster/dagster_home \
     DBT_PROJECT_DIR=/app/dbt \
     DBT_PROFILES_DIR=/app/dbt \
-    OHDP_DUCKDB_PATH=/tmp/warehouse/build.duckdb \
     OHDP_DBT_STAGE_DIR=/tmp/ohdp_dbt_stage
 
-RUN mkdir -p /opt/dagster/dagster_home /tmp/warehouse /tmp/ohdp_dbt_stage \
- && chown -R 10001:10001 /opt/dagster /tmp/warehouse /tmp/ohdp_dbt_stage
+RUN mkdir -p /opt/dagster/dagster_home /tmp/ohdp_dbt_stage \
+ && chown -R 10001:10001 /opt/dagster /tmp/ohdp_dbt_stage
 
 USER 10001
 

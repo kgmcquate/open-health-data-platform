@@ -73,7 +73,7 @@ openmetadata:
     # Google SSO. Public (PKCE) client — the OAuth client ID is not a secret,
     # so it lives here; there is no client secret in this flow. The client is a
     # "Web application" OAuth client in Google Cloud console with redirect URI
-    # https://catalog.ohdp.kevinmcquate.com/callback.
+    # https://catalog.open-health-data-platform.org/callback.
     authentication:
       enabled: true
       provider: "google"
@@ -83,7 +83,7 @@ openmetadata:
         - "http://openmetadata:8585/api/v1/system/config/jwks"
       authority: "https://accounts.google.com"
       clientId: "794040254723-nsc8s54o5f60irflb846dm31oi546n94.apps.googleusercontent.com"
-      callbackUrl: "https://catalog.ohdp.kevinmcquate.com/callback"
+      callbackUrl: "https://catalog.open-health-data-platform.org/callback"
       jwtPrincipalClaims:
         - "email"
         - "preferred_username"
@@ -122,14 +122,14 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: catalog.ohdp.kevinmcquate.com
+    - host: catalog.open-health-data-platform.org
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: openmetadata-tls
       hosts:
-        - catalog.ohdp.kevinmcquate.com
+        - catalog.open-health-data-platform.org
 
 # §4 budgets 2 GB. This is a JVM — the limit must leave room above the heap or
 # the pod is OOMKilled by the kernel rather than throwing a Java OOM.

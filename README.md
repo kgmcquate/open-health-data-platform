@@ -18,7 +18,7 @@ as a product.
 | `apps/api` | FastAPI — chat orchestration, entitlements, Stripe webhooks |
 | `data/src/ohdp_ingestion` | One typed client per public source |
 | `data/src/ohdp_orchestration` | Dagster: ingestion, dbt build, snapshot publish, alerts |
-| `data/dbt` | SQL transformation + tests against DuckDB (source of truth for models) |
+| `data/dbt` | SQL transformation + tests against Snowflake (source of truth for models) |
 | `data/src/ohdp_ml` | Anomaly detection and forecasting, classical baselines first |
 | `semantic/cube` | Cube Core semantic layer — one definition per metric |
 | `catalog/openmetadata` | Catalog sync (Cube → metrics, dbt → lineage) and seed data |

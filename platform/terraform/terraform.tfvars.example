@@ -13,7 +13,7 @@ snapshot_bucket = "ohdp-warehouse"
 cloudflare_zone_id = ""
 
 # Left-most labels created as A records under dns_base.
-dns_base      = "ohdp.kevinmcquate.com"
+dns_base      = "open-health-data-platform.org"
 dns_hostnames = ["app", "dagster", "catalog", "cube", "superset"]
 
 # Public IPv4 of the Traefik ingress. Set this explicitly here (or in the

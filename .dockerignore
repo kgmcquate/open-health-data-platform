@@ -7,11 +7,9 @@
 **/.ruff_cache
 
 # Local data + dbt artifacts (regenerated in the build)
-data/warehouse/
 data/dbt/target/
 data/dbt/dbt_packages/
 data/dbt/logs/
-*.duckdb
 
 # Node / web
 **/node_modules

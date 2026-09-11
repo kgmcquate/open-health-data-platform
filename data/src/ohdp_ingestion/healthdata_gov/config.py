@@ -18,8 +18,9 @@ if TYPE_CHECKING:
 
 Cadence = Literal["daily", "weekly", "monthly"]
 
-# dlt/DuckDB schema that every healthdata.gov table lands in. Kept separate from
-# the M0 `main` schema so a generated table can never shadow a hand-written one.
+# dlt/Snowflake schema that every healthdata.gov table lands in. Kept separate
+# from the M0 `main` schema so a generated table can never shadow a hand-written
+# one.
 DATASET_SCHEMA = "healthdata_gov"
 
 

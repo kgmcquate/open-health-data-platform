@@ -50,10 +50,10 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups --frozen
-      - name: dbt parse (offline — no catalog or Spaces needed)
+      - name: dbt parse (offline — compiles without a live Snowflake connection)
         run: |
           uv run dbt deps --project-dir dbt
-          uv run dbt parse --project-dir dbt --profiles-dir dbt --target ci
+          uv run dbt parse --project-dir dbt --profiles-dir dbt
 
   web:
     runs-on: ubuntu-latest

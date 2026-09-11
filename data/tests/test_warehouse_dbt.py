@@ -33,11 +33,10 @@ def test_dbt_sources_are_warehouse_prefixed() -> None:
     """dbt's `healthdata_gov` source no longer resolves to the flat
     `healthdata_gov/<raw_table>` ingestion key (that mapping was removed when
     `_Translator.get_asset_key` switched to `[prefix, database, schema, name]`
-    for every resource type). The source's parent is now a `warehouse/...` key
-    computed from whatever target `dbt/target/manifest.json` was parsed
-    against — not necessarily the same key `_warehouse_raw_spec()` below
-    predicts, since that manifest is baked with `--target ci`/`local`, never
-    `prod` (see `HealthDataGovDataset.warehouse_raw_key`'s docstring)."""
+    for every resource type). The source's parent is a `warehouse/RAW/...` key
+    — now always compiled against the one Snowflake target (ADR-0014), so it
+    equals `HealthDataGovDataset.warehouse_raw_key` exactly rather than just
+    sharing a prefix/suffix with it."""
     from ohdp_orchestration.definitions import defs
 
     graph = defs.resolve_asset_graph()
@@ -46,19 +45,17 @@ def test_dbt_sources_are_warehouse_prefixed() -> None:
     stg_key = next(k for k in by_str if k.endswith("stg_healthdata_gov__hospital_capacity_by_state"))
     stg = graph.get(by_str[stg_key])
     parents = {p.to_user_string() for p in stg.parent_keys}
-    assert len(parents) == 1
-    (source_parent,) = parents
-    assert source_parent.startswith("warehouse/")
-    assert source_parent.endswith(
-        "healthdata_gov/covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
-    )
+    assert parents == {
+        "warehouse/RAW/healthdata_gov/"
+        "covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
+    }
 
 
 def test_healthdata_gov_bridges_the_dlt_table_to_a_warehouse_raw_asset() -> None:
     """`HealthDataGovDataset._warehouse_raw_spec()` (healthdata_gov/component.py)
     puts an unexecutable `warehouse/RAW/<schema>/<table>` asset downstream of
-    the dlt table — a best-effort RAW-layer label, not (yet) dbt's actual
-    compiled source key; see `warehouse_raw_key`'s docstring for why."""
+    the dlt table — and, per the test above, dbt's actual compiled source node
+    now resolves to that same key."""
     from ohdp_orchestration.definitions import defs
 
     graph = defs.resolve_asset_graph()

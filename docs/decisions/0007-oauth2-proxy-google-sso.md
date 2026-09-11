@@ -33,7 +33,7 @@ Cloudflare -> Traefik -> Ingress(dagster.ohdp) -> oauth2-proxy -> graphql-authz-
   job: `kgmcquate@gmail.com` → `admin`, every other authenticated user →
   `public-viewer` (the same read-only allowlist as before).
 - **A dedicated OAuth client**, not the OpenMetadata one. Redirect URI
-  `https://dagster.ohdp.kevinmcquate.com/oauth2/callback`.
+  `https://dagster.open-health-data-platform.org/oauth2/callback`.
 - **Secret split follows the existing rule.** `platform-base` generates the
   session-cookie key (`data/oauth2-proxy-secret`, key `cookie-secret`, read back
   on every upgrade so sessions survive a redeploy). The `External secrets` step

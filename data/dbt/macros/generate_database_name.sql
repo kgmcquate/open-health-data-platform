@@ -1,14 +1,10 @@
 {#
-    Snowflake gets one database per medallion layer (RAW/CLEAN/CURATED,
-    ADR-0013) via each model's `+database` config. DuckDB (local/CI) is a
-    single-file catalog with no such split — applying `+database` there
-    would just rename the one catalog per model and break cross-model refs,
-    so this macro only takes effect on the snowflake target; DuckDB always
-    resolves to target.database, same as dbt's own default behavior with no
-    override.
+    One database per medallion layer (RAW/CLEAN/CURATED, ADR-0013) via each
+    model's `+database` config; falls back to target.database (dbt's own
+    default behavior) when a node doesn't set one.
 #}
 {% macro generate_database_name(custom_database_name=none, node=none) -%}
-    {%- if custom_database_name is none or target.type != 'snowflake' -%}
+    {%- if custom_database_name is none -%}
         {{ target.database }}
     {%- else -%}
         {{ custom_database_name | trim }}

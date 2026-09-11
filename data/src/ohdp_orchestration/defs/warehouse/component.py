@@ -1,9 +1,9 @@
 # mypy: disable-error-code="no-untyped-def, no-untyped-call, type-arg, arg-type, override"
 """The dbt medallion project as Dagster assets, under the ``warehouse/`` prefix
-(ADR-0012 — dbt-snowflake in prod, dbt-duckdb in local dev/CI).
+(dbt-snowflake only, ADR-0014).
 
-* models  -> ``warehouse/<model_name>``, grouped ``warehouse_<layer>``
-  (`clean` / `core` / `marts`), kinds ``dbt`` + ``snowflake``.
+* models  -> ``warehouse/<database>/<schema>/<model_name>``, grouped
+  ``warehouse_<layer>`` (`clean` / `core` / `marts`), kinds ``dbt`` + ``snowflake``.
 * dbt **sources** map back to the keys the ingestion components already own —
   ``healthdata_gov/<raw_table>`` — so the graph is continuous:
 
@@ -25,7 +25,6 @@ from dagster.components import Component, ComponentLoadContext, Model, Resolvabl
 from dagster_dbt import DagsterDbtTranslator, DbtCliResource, DbtProject, dbt_assets
 
 from ohdp_shared import get_logger
-from ohdp_shared.settings import settings
 
 log = get_logger(__name__)
 
@@ -52,7 +51,8 @@ class _Translator(DagsterDbtTranslator):
         if hardcoded_asset_key:
             return super().get_asset_key(dbt_resource_props)
 
-        # Set the asset key to match the structure of the Snowflake catalog
+        # Match the structure of the Snowflake catalog: one database per
+        # medallion layer (ADR-0013), a schema per source/mart within it.
         return AssetKey(
             [
                 self._prefix,
@@ -178,11 +178,6 @@ class DbtWarehouse(Component, Model, Resolvable):
         translator = _Translator(
             self.key_prefix
         )
-        # `environment`, not credential-presence: a misconfigured prod pod
-        # should fail loudly rather than silently build a throwaway local
-        # DuckDB file inside the pod.
-        target = "prod" if settings.environment == "prod" else "local"
-        command = [*self.dbt_command, "--target", target]
 
         @dbt_assets(
             manifest=project.manifest_path,
@@ -191,6 +186,6 @@ class DbtWarehouse(Component, Model, Resolvable):
             name="warehouse_dbt",
         )
         def _assets(context, dbt: DbtCliResource):
-            yield from dbt.cli(command, context=context).stream()
+            yield from dbt.cli(self.dbt_command, context=context).stream()
 
         return Definitions(assets=[_assets], resources={"dbt": DbtCliResource(project_dir=project)})

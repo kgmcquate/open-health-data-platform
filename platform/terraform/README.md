@@ -2,7 +2,7 @@
 
 Provisions the managed cluster, the Spaces bucket and the Snowflake data warehouse (ADR-0012, ADR-0013), then leaves the application stack to Helm. The old self-hosted k3s-on-droplet bootstrap has been removed.
 
-DNS lives in Cloudflare (`kevinmcquate.com` is a Cloudflare zone). This stack manages the `*.ohdp.kevinmcquate.com` A records through the `cloudflare` provider, DNS-only (not proxied), pointing each host at the Traefik load balancer IP configured in `loadbalancer_ip`. There is no reserved DigitalOcean IP fallback here; the value must be set explicitly in `terraform.tfvars` or via `TF_VAR_loadbalancer_ip`.
+DNS lives in Cloudflare (`open-health-data-platform.org` is a Cloudflare zone). This stack manages the `*.open-health-data-platform.org` A records through the `cloudflare` provider, DNS-only (not proxied), pointing each host at the Traefik load balancer IP configured in `loadbalancer_ip`. There is no reserved DigitalOcean IP fallback here; the value must be set explicitly in `terraform.tfvars` or via `TF_VAR_loadbalancer_ip`.
 
 ## What it creates
 

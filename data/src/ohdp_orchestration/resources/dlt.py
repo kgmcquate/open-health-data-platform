@@ -52,9 +52,8 @@ def _table_paths(load_info: LoadInfo) -> dict[str, str]:
     """table name -> remote folder its load jobs landed in, for one run.
 
     Only file-staging destinations (Snowflake via internal stage, Spaces/S3,
-    ...) populate ``remote_url`` on a job; a local DuckDB destination (dev/CI,
-    ADR-0012) loads in-process and leaves it ``None`` — skip those jobs rather
-    than error.
+    ...) populate ``remote_url`` on a job; skip jobs that don't rather than
+    error.
     """
     table_paths: dict[str, str] = {}
     for _, load_metrics in load_info.metrics.items():

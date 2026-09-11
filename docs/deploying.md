@@ -54,8 +54,8 @@ Order matters, and two steps are deliberately manual.
    `build-images.yml` pushed). Pass `--input image_tag=sha-…` to pin an older
    build.
 
-6. **Point DNS at the load balancer.** `kevinmcquate.com` is a Cloudflare zone;
-   `deploy-infra` manages the `*.ohdp.kevinmcquate.com` A records there via the
+6. **Point DNS at the load balancer.** `open-health-data-platform.org` is a Cloudflare zone;
+   `deploy-infra` manages the `*.open-health-data-platform.org` A records there via the
    `cloudflare` provider. They are **DNS-only** (not proxied) so the Let's
    Encrypt HTTP-01 challenge reaches the origin unproxied.
 

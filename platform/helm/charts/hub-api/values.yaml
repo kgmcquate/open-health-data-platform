@@ -28,7 +28,7 @@ ingress:
   className: traefik
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-  host: app.ohdp.kevinmcquate.com
+  host: app.open-health-data-platform.org
   path: /api
   pathType: Prefix
   tls:

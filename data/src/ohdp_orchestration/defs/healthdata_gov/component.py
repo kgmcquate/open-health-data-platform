@@ -72,8 +72,7 @@ class _TableTranslator(DagsterDltTranslator):
     spec already carries the socrata-catalog dep, the cadence tag the
     schedules select on, and the advertised column schema. Left alone (from
     the base translator): ``automation_condition``, ``owners``, and
-    ``kinds`` — kinds default to ``{"dlt", <actual destination>}``, which
-    tracks dev (duckdb) vs. prod (snowflake) automatically.
+    ``kinds`` — kinds default to ``{"dlt", "snowflake"}``.
     """
 
     spec: AssetSpec
@@ -105,22 +104,16 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         return AssetKey([_DOMAIN, self.raw_table])
 
     def _warehouse_raw_key(self, table: str) -> AssetKey:
-        """Best-effort label for where a physical table lives in the
-        warehouse's RAW layer — `[prefix, "RAW", schema, table]`, via the same
-        `ohdp_ingestion.naming` module the raw loader itself uses. Takes an
-        explicit table name (not always `self.raw_table`) because one dlt run
-        can normalize nested JSON into several physical tables —
-        `<raw_table>__<nested_field>`, one per array/object dlt flattens — and
-        each gets its own key here; see `_assets()` below.
-
-        This does **not** currently equal dbt's actual compiled source-node
-        asset key: that key comes from whatever target `dbt/target/manifest.json`
-        was last parsed against (`ci`/`local`, both DuckDB — see
-        Dockerfile/ci.yml, neither ever `prod`), so dbt's source lands at e.g.
-        `warehouse/ci_build/healthdata_gov/<table>` instead. Making these line
-        up for real needs either reading the compiled manifest here instead of
-        guessing, or baking the image's manifest with `--target prod` —
-        neither is done yet.
+        """Label for where a physical table lives in the warehouse's RAW
+        layer — `[prefix, "RAW", schema, table]`, via the same
+        `ohdp_ingestion.naming` module the raw loader itself uses, and
+        matching dbt's actual compiled source-node asset key now that
+        `dbt/target/manifest.json` is always parsed against the one Snowflake
+        target (ADR-0014). Takes an explicit table name (not always
+        `self.raw_table`) because one dlt run can normalize nested JSON into
+        several physical tables — `<raw_table>__<nested_field>`, one per
+        array/object dlt flattens — and each gets its own key here; see
+        `_assets()` below.
         """
         return AssetKey(
             [_WAREHOUSE_PREFIX, naming.database("raw"), naming.schema("raw", _SOURCE), table]

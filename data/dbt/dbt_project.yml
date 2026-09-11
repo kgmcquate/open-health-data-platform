@@ -15,14 +15,11 @@ clean-targets: ["target", "dbt_packages"]
 
 # Medallion layers (ADR-0013, which replaces ADR-0012's single-database,
 # layer-prefixed-schema layout with one Snowflake database per layer). Plain
-# tables — Snowflake in prod, DuckDB in local/CI (profiles.yml).
+# tables, Snowflake only (ADR-0014).
 #
 # Schema and database are set per folder. generate_schema_name.sql makes the
 # schema land verbatim instead of dbt's default <target_schema>_<custom>
-# double-prefix. generate_database_name.sql applies `+database` only on the
-# snowflake target — DuckDB is a single-file catalog with no per-layer
-# database, so locally everything lands under these same schema names in the
-# one local file.
+# double-prefix. generate_database_name.sql applies `+database`.
 #
 #   clean/<source>/   -> CLEAN.<source>     (typed, deduped, per source)
 #   core/             -> CURATED.core       (conformed, cross-source)

@@ -9,17 +9,21 @@ from here and must never disagree (ARCHITECTURE.md §1.5).
 
 ## Local
 
+Cube queries Snowflake directly (ADR-0012/0014 — there is no local/offline
+warehouse target to point it at instead):
+
 ```bash
 docker run -p 4000:4000 \
   -v "$PWD:/cube/conf" \
   -e CUBEJS_DEV_MODE=true \
-  -e CUBEJS_DB_TYPE=duckdb \
-  -e CUBEJS_DB_DUCKDB_DATABASE_PATH=/data/warehouse.duckdb \
+  -e CUBEJS_DB_TYPE=snowflake \
+  -e CUBEJS_DB_SNOWFLAKE_ACCOUNT=$OHDP_SNOWFLAKE_ACCOUNT \
+  -e CUBEJS_DB_SNOWFLAKE_USER=$OHDP_SNOWFLAKE_USER \
+  -e CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY=$OHDP_SNOWFLAKE_PRIVATE_KEY \
+  -e CUBEJS_DB_SNOWFLAKE_ROLE=$OHDP_SNOWFLAKE_ROLE \
+  -e CUBEJS_DB_SNOWFLAKE_WAREHOUSE=$OHDP_SNOWFLAKE_WAREHOUSE \
   cubejs/cube:latest
 ```
-
-Point it at a **copy** of the warehouse snapshot (read replica pattern, §3) —
-never the file the dbt build is writing.
 
 ## Catalog sync
 

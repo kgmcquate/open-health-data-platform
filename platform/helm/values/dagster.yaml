@@ -97,7 +97,7 @@ runLauncher:
           cpu: 500m
           memory: 1Gi
         limits:
-          # §4 budgets 1.5 GB burst for the build pod. An unbounded DuckDB query
+          # §4 budgets 1.5 GB burst for the build pod. An unbounded query
           # would otherwise take the node down.
           cpu: "4"
           memory: 1536Mi
@@ -106,8 +106,9 @@ runLauncher:
           ttlSecondsAfterFinished: 3600
 
 # ---------------------------------------------------------------------------
-# Concurrency. maxConcurrentRuns: 1 is load-bearing — two concurrent builds
-# would both write the DuckDB file, which is exactly what §3 forbids.
+# Concurrency. maxConcurrentRuns: 1 is load-bearing — two concurrent
+# dbt-snowflake builds racing the same models/tables is exactly what §3
+# forbids.
 # ---------------------------------------------------------------------------
 concurrency:
   enabled: true

@@ -38,12 +38,6 @@ data/dbt/package-lock.yml
 kubeconfig_base64
 kubeconfig*.yaml
 
-# DuckDB local warehouse + snapshots
-*.duckdb
-*.duckdb.wal
-data/warehouse/
-data/snapshots/
-
 # Terraform (.terraform.lock.hcl IS committed — pin provider hashes)
 .terraform/
 *.tfstate

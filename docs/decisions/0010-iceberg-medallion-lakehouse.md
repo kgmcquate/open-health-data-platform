@@ -59,7 +59,7 @@ an image, so the chart is vendored (`platform/helm/vendor/polaris-console`, see
 its `VENDORED.md`) and the image is built from the same pinned commit by
 `build-polaris-console.yml`.
 
-It is served at `https://polaris.ohdp.kevinmcquate.com` behind a **second
+It is served at `https://polaris.open-health-data-platform.org` behind a **second
 oauth2-proxy** (`oauth2-proxy-polaris`) — a Google login wall with an *email
 allowlist* (unlike the any-Google-account Dagster wall, since the console exposes
 the catalog admin API). That same proxy reverse-proxies `/api/*` on the host to
@@ -120,7 +120,7 @@ to a replica — M0 curated data does not exist yet.)*
   `postgres.databases += polaris`.
 - Polaris console: a vendored chart (`vendor/polaris-console`), a GHCR image
   built off-cycle (`build-polaris-console.yml`), and a second `oauth2-proxy`
-  release at `polaris.ohdp.kevinmcquate.com` (new DNS record + a redirect URI on
+  release at `polaris.open-health-data-platform.org` (new DNS record + a redirect URI on
   the existing Google OAuth client). ~50 MB against §4's budget.
 - dbt must run in the project venv (`cd data && uv run dbt`) so the plugin
   module is importable — `uvx --from dbt-duckdb dbt` will not work. CI updates.
