@@ -29,8 +29,12 @@ def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 def _stub_socrata(monkeypatch: pytest.MonkeyPatch, pages: list[list[dict[str, Any]]]) -> None:
-    """Serve `pages` in order, then empty — the loop's stop condition."""
-    import ohdp_ingestion.healthdata_gov.source as src
+    """Serve `pages` in order, then empty — the loop's stop condition.
+
+    Patched on dlt's `requests` helper module itself, which is the same object
+    the loader holds, rather than through the loader's re-export of it.
+    """
+    from dlt.sources.helpers import requests
 
     remaining = list(pages)
 
@@ -47,7 +51,7 @@ def _stub_socrata(monkeypatch: pytest.MonkeyPatch, pages: list[list[dict[str, An
     def _get(url: str, params: dict[str, Any], headers: dict[str, str]) -> _Resp:
         return _Resp(remaining.pop(0) if remaining else [])
 
-    monkeypatch.setattr(src.requests, "get", _get)
+    monkeypatch.setattr(requests, "get", _get)
 
 
 def test_strategy_follows_the_cursor() -> None:
