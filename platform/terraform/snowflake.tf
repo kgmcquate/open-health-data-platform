@@ -1,11 +1,13 @@
-# Snowflake data warehouse for the medallion lake (ADR-0012, which supersedes
-# ADR-0010's Iceberg medallion lakehouse and ADR-0011's Horizon Catalog in
-# full). Plain Snowflake tables: dlt and dbt-snowflake talk to this database
-# directly over SQL, no REST catalog, no pyiceberg, no vended credentials.
+# Snowflake data warehouse for the medallion lake (ADR-0013, which replaces
+# ADR-0012's single database + layer-prefixed schemas with one database per
+# medallion layer; ADR-0012 itself supersedes ADR-0010's Iceberg medallion
+# lakehouse and ADR-0011's Horizon Catalog in full). Plain Snowflake tables:
+# dlt and dbt-snowflake talk to these databases directly over SQL, no REST
+# catalog, no pyiceberg, no vended credentials.
 #
-#   database -> OHDP below
-#   schema   -> one per medallion layer (raw_<source>, clean_<source>, core,
-#               mart_<name>)
+#   database -> one per medallion layer: RAW, CLEAN, CURATED
+#   schema   -> one per source (in RAW/CLEAN) or mart (in CURATED; "core"
+#               always exists there too)
 #   table    -> a plain Snowflake table in that schema
 
 locals {
@@ -27,6 +29,27 @@ locals {
   # the snowflake_private_key output and the Spaces object in r2.tf so there is
   # exactly one place this gets assembled.
   snowflake_private_key = tls_private_key.pipeline.private_key_pem_pkcs8
+
+  # One database per medallion layer (ADR-0013). Names match
+  # ohdp_ingestion.naming.database() exactly — that module, not this file, is
+  # what the pipeline reads at runtime, so a rename here must be mirrored
+  # there (and in dbt_project.yml's `+database` for clean/core/marts).
+  snowflake_layer_databases = {
+    raw     = "RAW"
+    clean   = "CLEAN"
+    curated = "CURATED"
+  }
+
+  # Schemas to create, keyed uniquely for a stable for_each. Every source gets
+  # a same-named schema in both RAW and CLEAN; CURATED always gets "core" plus
+  # one schema per mart. Matches ohdp_ingestion.naming.schema() and
+  # dbt_project.yml's per-folder `+schema`.
+  snowflake_schemas = merge(
+    { for s in var.snowflake_sources : "raw.${s}" => { layer = "raw", schema = s } },
+    { for s in var.snowflake_sources : "clean.${s}" => { layer = "clean", schema = s } },
+    { "curated.core" = { layer = "curated", schema = "core" } },
+    { for m in var.snowflake_marts : "curated.${m}" => { layer = "curated", schema = m } },
+  )
 }
 
 # Snowflake SERVICE users don't accept password auth (and PATs, which do, are
@@ -40,27 +63,30 @@ resource "tls_private_key" "pipeline" {
 }
 
 # ---------------------------------------------------------------------------
-# The warehouse: one database, one schema per medallion layer. Unquoted
-# lowercase names here fold to the same identifier in ad-hoc SQL either way —
-# Snowflake's ordinary case-insensitive resolution applies, unlike the old
-# Iceberg REST path where the catalog passed names through verbatim.
+# The warehouse: one database per medallion layer, one schema per source/mart
+# within it. Unquoted lowercase names here fold to the same identifier in
+# ad-hoc SQL either way — Snowflake's ordinary case-insensitive resolution
+# applies, unlike the old Iceberg REST path where the catalog passed names
+# through verbatim.
 # ---------------------------------------------------------------------------
-resource "snowflake_database" "ohdp" {
-  name    = var.snowflake_database
-  comment = "OHDP data warehouse — plain Snowflake tables (ADR-0012)."
+resource "snowflake_database" "layer" {
+  for_each = local.snowflake_layer_databases
+
+  name    = each.value
+  comment = "OHDP ${each.key} layer database — plain Snowflake tables (ADR-0013)."
 
   data_retention_time_in_days = var.snowflake_data_retention_days
 }
 
 resource "snowflake_schema" "namespace" {
-  for_each = toset(var.snowflake_namespaces)
+  for_each = local.snowflake_schemas
 
-  database = snowflake_database.ohdp.name
-  name     = each.value
-  comment  = "Schema ${each.value} (medallion layer, ADR-0012)."
+  database = snowflake_database.layer[each.value.layer].name
+  name     = each.value.schema
+  comment  = "Schema ${each.value.schema} in the ${each.value.layer} layer database (ADR-0013)."
 
   # dbt's CREATE SCHEMA IF NOT EXISTS can open a new mart schema ahead of a
-  # Terraform run; adding it to the variable later adopts it rather than
+  # Terraform run; adding it to snowflake_marts later adopts it rather than
   # fighting over it.
   lifecycle {
     ignore_changes = [comment]
@@ -85,40 +111,46 @@ resource "snowflake_warehouse" "ohdp" {
 # ---------------------------------------------------------------------------
 resource "snowflake_account_role" "pipeline" {
   name    = var.snowflake_pipeline_role
-  comment = "Read/write on the OHDP warehouse for the Dagster pipeline (dlt raw loads, dbt-snowflake builds)."
+  comment = "Read/write on the OHDP warehouse databases for the Dagster pipeline (dlt raw loads, dbt-snowflake builds)."
 }
 
-# USAGE lets the role see the database; CREATE SCHEMA lets the dbt plugin's
-# create_namespace_if_not_exists open a new `mart_<name>` without a Terraform run.
+# USAGE lets the role see each database; CREATE SCHEMA lets the dbt plugin's
+# create_namespace_if_not_exists open a new mart schema without a Terraform run.
 resource "snowflake_grant_privileges_to_account_role" "database" {
+  for_each = snowflake_database.layer
+
   account_role_name = snowflake_account_role.pipeline.name
   privileges        = ["USAGE", "CREATE SCHEMA"]
 
   on_account_object {
     object_type = "DATABASE"
-    object_name = snowflake_database.ohdp.name
+    object_name = each.value.name
   }
 }
 
 # Existing and future schemas. CREATE TABLE is what lets dbt-snowflake and dlt
 # create tables; USAGE is what lets them resolve the schema at all.
 resource "snowflake_grant_privileges_to_account_role" "schemas_existing" {
+  for_each = snowflake_database.layer
+
   account_role_name = snowflake_account_role.pipeline.name
   privileges        = ["USAGE", "CREATE TABLE"]
 
   on_schema {
-    all_schemas_in_database = snowflake_database.ohdp.fully_qualified_name
+    all_schemas_in_database = each.value.fully_qualified_name
   }
 
   depends_on = [snowflake_schema.namespace]
 }
 
 resource "snowflake_grant_privileges_to_account_role" "schemas_future" {
+  for_each = snowflake_database.layer
+
   account_role_name = snowflake_account_role.pipeline.name
   privileges        = ["USAGE", "CREATE TABLE"]
 
   on_schema {
-    future_schemas_in_database = snowflake_database.ohdp.fully_qualified_name
+    future_schemas_in_database = each.value.fully_qualified_name
   }
 }
 
@@ -129,13 +161,15 @@ resource "snowflake_grant_privileges_to_account_role" "schemas_future" {
 # dispositions between them exercise SELECT, INSERT, UPDATE, DELETE and
 # TRUNCATE.
 resource "snowflake_grant_privileges_to_account_role" "tables_existing" {
+  for_each = snowflake_database.layer
+
   account_role_name = snowflake_account_role.pipeline.name
   privileges        = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"]
 
   on_schema_object {
     all {
       object_type_plural = "TABLES"
-      in_database        = snowflake_database.ohdp.fully_qualified_name
+      in_database        = each.value.fully_qualified_name
     }
   }
 
@@ -143,13 +177,15 @@ resource "snowflake_grant_privileges_to_account_role" "tables_existing" {
 }
 
 resource "snowflake_grant_privileges_to_account_role" "tables_future" {
+  for_each = snowflake_database.layer
+
   account_role_name = snowflake_account_role.pipeline.name
   privileges        = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"]
 
   on_schema_object {
     future {
       object_type_plural = "TABLES"
-      in_database        = snowflake_database.ohdp.fully_qualified_name
+      in_database        = each.value.fully_qualified_name
     }
   }
 }
