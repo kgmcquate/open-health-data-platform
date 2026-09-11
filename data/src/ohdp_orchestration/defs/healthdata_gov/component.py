@@ -1,4 +1,4 @@
-# The @multi_asset body is built per instance; its `context` param is resolved
+# The @dlt_assets body is built per instance; its `context` param is resolved
 # by Dagster, not annotated here.
 # mypy: disable-error-code="no-untyped-def, no-untyped-call, type-arg, arg-type"
 """HealthData.gov components — one instance per dataset.
@@ -9,9 +9,11 @@
 
   - a **catalog asset** ``healthdata_gov/catalog/<raw_table>`` (unexecutable
     ``AssetSpec``, kind ``socrata``) — always;
-  - a **table asset** ``healthdata_gov/<raw_table>`` (a ``dlt`` pipeline,
-    ``deps=[catalog asset]``, kinds ``dlt`` + ``snowflake``) — only when
-    ``enabled: true``.
+  - a **table asset** ``healthdata_gov/<raw_table>`` (a ``@dlt_assets``-decorated
+    dlt pipeline, ``deps=[catalog asset]``, kind ``dlt`` + whatever the
+    destination actually is that run) — only when ``enabled: true``. The run
+    itself goes through ``ohdp_orchestration.resources.dlt.DLT_RESOURCE`` — see
+    that module for why a plain ``dlt.run()`` isn't safe here.
 
 * ``HealthDataGovCadenceSchedules`` — one instance (``schedules/defs.yaml``).
   Builds exactly three asset jobs + schedules, one per cadence, selecting table
@@ -21,25 +23,28 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from dagster import (
     AssetKey,
     AssetSelection,
     AssetSpec,
     DefaultScheduleStatus,
     Definitions,
-    MaterializeResult,
     MetadataValue,
     ScheduleDefinition,
     TableColumn,
     TableSchema,
     define_asset_job,
-    multi_asset,
 )
 from dagster.components import Component, ComponentLoadContext, Model, Resolvable
+from dagster_dlt import DagsterDltResource, DagsterDltTranslator, dlt_assets
+from dagster_dlt.translator import DltResourceTranslatorData
 
 from ohdp_ingestion.healthdata_gov.config import Cadence, DatasetConfig
-from ohdp_ingestion.healthdata_gov.source import load_raw_table
+from ohdp_ingestion.healthdata_gov.source import build_pipeline, socrata_source
 from ohdp_ingestion.naming import namespace
+from ohdp_orchestration.resources.dlt import DLT_RESOURCE
 from ohdp_shared import get_logger
 
 log = get_logger(__name__)
@@ -48,6 +53,32 @@ _DOMAIN = "healthdata_gov"
 _SOURCE = "healthdata_gov"
 _RAW_NS = namespace("raw", _SOURCE)  # "raw_healthdata_gov"
 _CADENCES: tuple[Cadence, ...] = ("daily", "weekly", "monthly")
+
+
+@dataclass
+class _TableTranslator(DagsterDltTranslator):
+    """Grafts ``HealthDataGovDataset._table_spec()`` onto the spec
+    ``DagsterDltTranslator`` derives from the dlt resource, rather than
+    reimplementing key/deps/tags/metadata mapping from scratch — the base
+    spec already carries the socrata-catalog dep, the cadence tag the
+    schedules select on, and the advertised column schema. Left alone (from
+    the base translator): ``automation_condition``, ``owners``, and
+    ``kinds`` — kinds default to ``{"dlt", <actual destination>}``, which
+    tracks dev (duckdb) vs. prod (snowflake) automatically.
+    """
+
+    spec: AssetSpec
+
+    def get_asset_spec(self, data: DltResourceTranslatorData) -> AssetSpec:
+        return super().get_asset_spec(data).replace_attributes(
+            key=self.spec.key,
+            deps=self.spec.deps,
+            description=self.spec.description,
+            group_name=self.spec.group_name,
+        ).merge_attributes(
+            tags=self.spec.tags,
+            metadata=self.spec.metadata,
+        )
 
 
 class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
@@ -104,6 +135,12 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         )
 
     def _table_spec(self) -> AssetSpec:
+        """The static (declared, not per-run) half of the table asset's spec.
+        ``_TableTranslator`` grafts ``key``/``deps``/``description``/
+        ``group_name``/``tags``/``metadata`` from this onto the spec
+        ``dlt_assets`` derives from the dlt resource — so kinds (``dlt`` +
+        the actual destination) stay dlt's own, dev-vs-prod-accurate call.
+        """
         metadata: dict[str, object] = {
             "dagster/table_name": f"{_RAW_NS}.{self.raw_table}",
             "socrata_id": self.id,
@@ -123,43 +160,37 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             # ohdp/cadence lives only on the table asset: it is what the cadence
             # schedules select on.
             tags={"ohdp/domain": _DOMAIN, "ohdp/cadence": self.cadence},
-            kinds={"dlt", "snowflake"},
         )
 
     # --- defs ------------------------------------------------------------------
     def _table_asset(self):
-        spec = self._table_spec()
-        key = spec.key
         cfg = self
+        translator = _TableTranslator(spec=self._table_spec())
 
-        @multi_asset(specs=[spec], name=cfg.raw_table, op_tags={"ohdp/cadence": cfg.cadence})
-        def _asset() -> MaterializeResult:
-            load = load_raw_table(
-                resource_id=cfg.id,
-                table_name=cfg.raw_table,
-                source=_SOURCE,
+        @dlt_assets(
+            dlt_source=socrata_source(
+                cfg.id,
+                cfg.raw_table,
                 incremental_cursor=cfg.incremental_cursor,
                 row_limit=cfg.row_limit,
-            )
+            ),
+            dlt_pipeline=build_pipeline(pipeline_name=f"{_SOURCE}_{cfg.raw_table}", source=_SOURCE),
+            name=cfg.raw_table,
+            dagster_dlt_translator=translator,
+            op_tags={"ohdp/cadence": cfg.cadence},
+        )
+        def _assets(context, dlt: DagsterDltResource):
+            yield from dlt.run(context=context, loader_file_format="parquet")
 
-            metadata: dict[str, object] = {
-                "dlt/load_ids": MetadataValue.json(load.load_ids),
-                # Rows this run extracted and loaded, not the table total — dlt
-                # doesn't hand back a cheap total-row count the way an Iceberg
-                # snapshot summary used to.
-                "dlt/rows_loaded": MetadataValue.int(load.rows),
-                "dlt/write_disposition": load.strategy,
-            }
-
-            return MaterializeResult(asset_key=key, metadata=metadata)
-
-        return _asset
+        return _assets
 
     def build_defs(self, context: ComponentLoadContext) -> Definitions:
         assets: list = [self._catalog_spec()]
+        resources: dict = {}
         if self.enabled:
             assets.append(self._table_asset())
-        return Definitions(assets=assets)
+            resources["dlt"] = DLT_RESOURCE
+        return Definitions(assets=assets, resources=resources)
 
 
 class HealthDataGovCadenceSchedules(Component, Model, Resolvable):

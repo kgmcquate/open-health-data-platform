@@ -1,5 +1,10 @@
 """The raw loader writes straight to the destination — a local DuckDB file in
-tests, Snowflake in prod (ADR-0012). Socrata is stubbed."""
+tests, Snowflake in prod (ADR-0012). Socrata is stubbed.
+
+Exercises ``CustomDagsterDltResource`` (the actual production code path —
+``ohdp_orchestration.defs.healthdata_gov.component`` runs every table asset
+through it) rather than a parallel test-only reimplementation.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,11 @@ from typing import Any
 
 import duckdb
 import pytest
+from dagster import materialize
+from dagster_dlt import dlt_assets
+
+from ohdp_ingestion.healthdata_gov.source import build_pipeline, socrata_source
+from ohdp_orchestration.resources.dlt import CustomDagsterDltResource
 
 
 @pytest.fixture
@@ -60,6 +70,27 @@ def _stub_socrata(monkeypatch: pytest.MonkeyPatch, pages: list[list[dict[str, An
     monkeypatch.setattr(requests, "get", _get)
 
 
+def _load(
+    *,
+    resource_id: str,
+    table_name: str,
+    source: str = "healthdata_gov",
+    incremental_cursor: str | None = "socrata_updated_at",
+):
+    """Materialize one table asset the same way the component does, through
+    ``CustomDagsterDltResource``."""
+
+    @dlt_assets(
+        dlt_source=socrata_source(resource_id, table_name, incremental_cursor=incremental_cursor),
+        dlt_pipeline=build_pipeline(pipeline_name=f"{source}_{table_name}", source=source),
+        name=table_name,
+    )
+    def _assets(context, dlt: CustomDagsterDltResource):
+        yield from dlt.run(context=context)
+
+    return materialize([_assets], resources={"dlt": CustomDagsterDltResource()})
+
+
 def test_write_disposition_follows_the_cursor() -> None:
     from ohdp_ingestion.healthdata_gov.source import write_disposition
 
@@ -70,27 +101,22 @@ def test_write_disposition_follows_the_cursor() -> None:
 
 
 def test_incremental_load_appends_history(lake: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    from ohdp_ingestion.healthdata_gov.source import load_raw_table
-
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": 1}]])
-    first = load_raw_table(resource_id="abcd-1234", table_name="demo", source="healthdata_gov")
-    assert first.rows == 1
-    assert first.strategy == "append"
+    result = _load(resource_id="abcd-1234", table_name="demo")
+    assert result.success
 
     # A later run returning a changed row appends rather than replacing: raw is
     # the full history of what the API handed back.
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-02-01", "v": 2}]])
-    load_raw_table(resource_id="abcd-1234", table_name="demo", source="healthdata_gov")
+    assert _load(resource_id="abcd-1234", table_name="demo").success
 
     rows = _rows(lake, "healthdata_gov", "demo")
     assert sorted(rows["v"]) == [1, 2]
 
 
 def test_new_columns_evolve_the_schema(lake: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    from ohdp_ingestion.healthdata_gov.source import load_raw_table
-
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": 1}]])
-    load_raw_table(resource_id="abcd-1234", table_name="drift", source="healthdata_gov")
+    assert _load(resource_id="abcd-1234", table_name="drift").success
 
     # Socrata datasets grow columns without warning; dlt adds the new column and
     # backfills the earlier rows with nulls.
@@ -98,7 +124,7 @@ def test_new_columns_evolve_the_schema(lake: Any, monkeypatch: pytest.MonkeyPatc
         monkeypatch,
         [[{"socrata_id": "b", "socrata_updated_at": "2026-02-01", "v": 2, "added": "new"}]],
     )
-    load_raw_table(resource_id="abcd-1234", table_name="drift", source="healthdata_gov")
+    assert _load(resource_id="abcd-1234", table_name="drift").success
 
     rows = _rows(lake, "healthdata_gov", "drift")
     assert "added" in rows
@@ -110,27 +136,17 @@ def test_quiet_run_leaves_the_table_alone(lake: Any, monkeypatch: pytest.MonkeyP
 
     `replace` on a zero-row extract would wipe the raw history, and "upstream
     published no changes" is not "the dataset is now empty" — the load step
-    must be skipped, not just given an empty table.
+    must be skipped, not just given an empty table. Confirmed empirically that
+    a plain ``dlt_pipeline.run()`` does *not* do this on its own; that's what
+    ``CustomDagsterDltResource._run`` exists to fix.
     """
-    from ohdp_ingestion.healthdata_gov.source import load_raw_table
-
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "v": 1}]])
-    load_raw_table(
-        resource_id="abcd-1234",
-        table_name="full",
-        source="healthdata_gov",
-        incremental_cursor=None,
-    )
+    assert _load(resource_id="abcd-1234", table_name="full", incremental_cursor=None).success
 
     _stub_socrata(monkeypatch, [])
-    quiet = load_raw_table(
-        resource_id="abcd-1234",
-        table_name="full",
-        source="healthdata_gov",
-        incremental_cursor=None,
-    )
+    quiet = _load(resource_id="abcd-1234", table_name="full", incremental_cursor=None)
+    assert quiet.success
+    assert quiet.asset_materializations_for_node("full") == []
 
-    assert quiet.rows == 0
-    assert quiet.load_ids == []
     rows = _rows(lake, "healthdata_gov", "full")
     assert rows["v"] == [1]

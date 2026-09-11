@@ -27,17 +27,13 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from dataclasses import dataclass
 from typing import Any, Literal
 
 import dlt
 from dlt.sources.helpers import requests
 
 from ohdp_ingestion import naming
-from ohdp_shared import get_logger
 from ohdp_shared.settings import is_snowflake_configured, settings
-
-log = get_logger(__name__)
 
 WriteDisposition = Literal["append", "replace"]
 
@@ -149,9 +145,10 @@ def _destination() -> Any:
 def build_pipeline(*, pipeline_name: str, source: str) -> dlt.Pipeline:
     """A dlt pipeline that stages one source's deltas as Parquet.
 
-    ``load_raw_table`` runs it and commits the result to
-    ``RAW.<source>`` (ADR-0013); dbt reads the tables as dbt sources (the
-    generated ``_healthdata_gov__sources.yml``).
+    Used to build a ``@dlt_assets``-decorated asset (see
+    ``ohdp_orchestration.defs.healthdata_gov.component``), which runs it and
+    commits the result to ``RAW.<source>`` (ADR-0013); dbt reads the tables as
+    dbt sources (the generated ``_healthdata_gov__sources.yml``).
     """
     return dlt.pipeline(
         pipeline_name=pipeline_name,
@@ -159,47 +156,3 @@ def build_pipeline(*, pipeline_name: str, source: str) -> dlt.Pipeline:
         dataset_name=naming.schema("raw", source),
         progress=None,
     )
-
-
-@dataclass(frozen=True)
-class RawLoad:
-    """What one raw load did, for the asset's Dagster metadata."""
-
-    load_ids: list[str]
-    rows: int
-    strategy: WriteDisposition
-
-
-def load_raw_table(
-    *,
-    resource_id: str,
-    table_name: str,
-    source: str,
-    incremental_cursor: str | None = "socrata_updated_at",
-    row_limit: int | None = None,
-) -> RawLoad:
-    """Fetch one Socrata dataset and land it in ``RAW.<source>.<table_name>``.
-
-    Extract/normalize/load are run as separate steps (rather than a single
-    ``pipeline.run()``) so the load step can be skipped on a zero-row extract —
-    running it anyway on a `replace` resource would empty the table on a quiet
-    day, which is not the same thing as "the dataset is empty".
-    """
-    pipeline = build_pipeline(pipeline_name=f"{source}_{table_name}", source=source)
-    pipeline.extract(
-        socrata_source(
-            resource_id,
-            table_name,
-            incremental_cursor=incremental_cursor,
-            row_limit=row_limit,
-        )
-    )
-    rows = pipeline.normalize().row_counts.get(table_name, 0)
-
-    load_ids: list[str] = []
-    if rows:
-        load_ids = list(pipeline.load().loads_ids)
-    else:
-        log.info("no new rows extracted; leaving the raw table alone", table=table_name)
-
-    return RawLoad(load_ids=load_ids, rows=rows, strategy=write_disposition(incremental_cursor))
