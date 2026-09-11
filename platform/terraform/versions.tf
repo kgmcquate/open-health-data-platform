@@ -35,6 +35,7 @@ provider "cloudflare" {}
 # ACCOUNTADMIN (or a role with CREATE DATABASE / CREATE ROLE / CREATE USER /
 # CREATE NETWORK POLICY) is required — this stack creates account-level objects.
 provider "snowflake" {
+  authenticator     = "SNOWFLAKE_JWT"
   organization_name = var.snowflake_organization_name
   account_name      = var.snowflake_account_name
 }
