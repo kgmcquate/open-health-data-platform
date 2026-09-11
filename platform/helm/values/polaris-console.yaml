@@ -1,0 +1,67 @@
+# Values for the vendored Apache Polaris console chart
+# (platform/helm/vendor/polaris-console — ADR-0010).
+#
+# The console is a browser SPA. It is served at
+#   https://polaris.ohdp.kevinmcquate.com
+# behind its own Google login wall (values/oauth2-proxy-polaris.yaml), which also
+# reverse-proxies /api/* on that host to the Polaris service — so the SPA and the
+# Polaris API share one origin (no CORS) and both sit behind the wall.
+#
+# Auth into Polaris is still Client Credentials: on the console's login page,
+# enter the `ohdp` root principal's `clientId` / `clientSecret` (the only
+# principal that exists — polaris-bootstrap):
+#   kubectl -n data get secret polaris-principal \
+#     -o jsonpath='{.data.OHDP_ICEBERG_CREDENTIAL}' | base64 -d
+# The console keeps the issued token in the browser only.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kgmcquate/polaris-console
+  # Must equal the pinned polaris-tools ref in VENDORED.md and the
+  # POLARIS_TOOLS_REF in .github/workflows/build-polaris-console.yml.
+  tag: "da984987b91ffb421502059dea422b9331186e46"
+  pullPolicy: IfNotPresent
+
+# oauth2-proxy-polaris owns the Ingress + TLS for this host (same pattern as
+# gqlproxy / Dagster). The console is reached only through it.
+ingress:
+  enabled: false
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Runtime config baked into /config.js at container start. Same-origin URLs —
+# the browser only ever talks to https://polaris.ohdp.kevinmcquate.com.
+config:
+  api:
+    polarisApiUrl: "https://polaris.ohdp.kevinmcquate.com"
+    oauthTokenUrl: "https://polaris.ohdp.kevinmcquate.com/api/catalog/v1/oauth/tokens"
+    polarisRealm: "ohdp"
+    polarisRealmHeaderName: "Polaris-Realm"
+    polarisPrincipalScope: "PRINCIPAL_ROLE:ALL"
+  # OIDC left disabled (Option A): Polaris stays on internal auth, so an OIDC
+  # login here would authenticate the user but carry no Polaris roles. Revisit
+  # with a real IdP (Auth0/Keycloak) + Polaris `mixed` auth if per-user RBAC is
+  # wanted.
+  oidc:
+    issuerUrl: ""
+    clientId: ""
+    redirectUri: ""
+    scope: ""
+
+# A few-MB nginx serving static files. Shares ARCHITECTURE.md §4's budget.
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 96Mi
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false

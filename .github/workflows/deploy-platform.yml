@@ -121,10 +121,12 @@ jobs:
       - name: Polaris
         run: make -C platform/helm polaris
 
-      # The Polaris console UI (ADR-0010). Local chart; image built by
-      # build-polaris-console.yml. Internal only — reached via `make console`.
+      # The Polaris console UI (ADR-0010). Vendored chart + GHCR image
+      # (build-polaris-console.yml). Exposed at https://polaris.ohdp.kevinmcquate.com
+      # behind oauth2-proxy-polaris — which reuses oauth2-proxy-secret, so the
+      # Google OAuth client must also list that host's /oauth2/callback URI.
       - name: Polaris console
-        run: make -C platform/helm polaris-console
+        run: make -C platform/helm polaris-console oauth2-proxy-polaris
 
       - name: GraphQL authz proxy
         run: make -C platform/helm proxy

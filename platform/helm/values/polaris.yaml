@@ -121,25 +121,19 @@ storage:
     name: ""
 
 # Reached in-cluster at http://polaris.data.svc.cluster.local:8181/api/catalog
-# (OHDP_ICEBERG_CATALOG_URI, platform-base pipelineConfig). Public exposure
-# (catalog.ohdp.kevinmcquate.com behind oauth2-proxy, ARCHITECTURE.md §5) is not
-# wired yet.
+# (OHDP_ICEBERG_CATALOG_URI, platform-base pipelineConfig). It is also exposed on
+# the internet at https://polaris.ohdp.kevinmcquate.com/api/* — but only behind
+# the oauth2-proxy-polaris Google login wall + email allowlist
+# (values/oauth2-proxy-polaris.yaml), never via a Traefik Ingress of its own.
 service:
   type: ClusterIP
 
 ingress:
   enabled: false
 
-# CORS: the Polaris console (platform/helm/charts/polaris-console) is a browser
-# SPA that calls this API directly from the operator's machine over a
-# `kubectl port-forward` (`make polaris-console` / `make console`). Allow that
-# localhost origin so the browser's preflight succeeds. In-cluster clients (dlt,
-# dbt, the publish step) send no Origin header and are unaffected.
-cors:
-  enabled: true
-  allowedOrigins:
-    - http://localhost:8080
-  allowedMethods: [GET, POST, PUT, DELETE, HEAD, PATCH]
+# No CORS block: the Polaris console reaches this API same-origin, through the
+# oauth2-proxy-polaris reverse proxy on polaris.ohdp.kevinmcquate.com
+# (values/oauth2-proxy-polaris.yaml). In-cluster clients (dlt, dbt) are direct.
 
 serviceAccount:
   create: true

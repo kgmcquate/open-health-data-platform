@@ -47,13 +47,23 @@ vended-credentials` header and passes `s3.*` to pyiceberg itself: Polaris is
 given no storage credentials (it cannot subscope for non-AWS Spaces), so asking
 it to vend only earns a `403` on the `*_WITH_WRITE_DELEGATION` op.
 
-The Apache Polaris **console** (a browser SPA, `platform/helm/charts/polaris-console`)
-is deployed for catalog inspection/admin. Upstream ships neither a Helm repo nor
-an image, so the chart is local and the image is built from a pinned
-`apache/polaris-tools` commit by `build-polaris-console.yml`. It is internal-only
-(`make console` port-forwards it; ARCHITECTURE §5 — nothing new exposed) and logs
-in as the `ohdp` root principal. Polaris gets a narrow CORS allowlist
-(`http://localhost:8080`) for it.
+The Apache Polaris **console** (a browser SPA) is deployed for catalog
+inspection/admin. Upstream (`apache/polaris-tools`) ships neither a Helm repo nor
+an image, so the chart is vendored (`platform/helm/vendor/polaris-console`, see
+its `VENDORED.md`) and the image is built from the same pinned commit by
+`build-polaris-console.yml`.
+
+It is served at `https://polaris.ohdp.kevinmcquate.com` behind a **second
+oauth2-proxy** (`oauth2-proxy-polaris`) — a Google login wall with an *email
+allowlist* (unlike the any-Google-account Dagster wall, since the console exposes
+the catalog admin API). That same proxy reverse-proxies `/api/*` on the host to
+the Polaris Service, so the SPA and the catalog API share one origin (no CORS)
+and the whole surface sits behind the wall; Polaris keeps no Ingress of its own.
+
+Auth into Polaris is unchanged — `authentication.type: internal`. The console
+logs in with Client Credentials as the `ohdp` root principal. Per-user identity
+in the catalog would need Polaris `mixed` auth against a real IdP that issues
+role claims (Auth0/Keycloak — not Google); deferred until there is a second user.
 
 ### Raw is append-only, dedupe in `clean`
 
@@ -102,6 +112,10 @@ to a replica — M0 curated data does not exist yet.)*
 - New infra: Polaris service + `polaris` Postgres DB + a bootstrap (catalog
   `ohdp`, a pipeline principal). `platform/helm/values/polaris.yaml`,
   `postgres.databases += polaris`.
+- Polaris console: a vendored chart (`vendor/polaris-console`), a GHCR image
+  built off-cycle (`build-polaris-console.yml`), and a second `oauth2-proxy`
+  release at `polaris.ohdp.kevinmcquate.com` (new DNS record + a redirect URI on
+  the existing Google OAuth client). ~50 MB against §4's budget.
 - dbt must run in the project venv (`cd data && uv run dbt`) so the plugin
   module is importable — `uvx --from dbt-duckdb dbt` will not work. CI updates.
 - The M0 `openaq` / `cdc` sources (ADR-0008 left them as `main`-schema stubs) are

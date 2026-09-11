@@ -1,0 +1,94 @@
+# Values for the upstream chart: oauth2-proxy/oauth2-proxy
+#
+#   helm upgrade --install oauth2-proxy-polaris oauth2-proxy/oauth2-proxy -n data \
+#     -f platform/helm/values/oauth2-proxy-polaris.yaml
+#
+# A second oauth2-proxy release — the Google login wall in front of the Apache
+# Polaris console (ADR-0010). Separate from the Dagster wall (values/oauth2-proxy.yaml)
+# because this host has a different security posture: the Dagster one allows any
+# Google account (public read-only viewer via gqlproxy); this one is an
+# allowlist — the console exposes the catalog admin API.
+#
+#   Cloudflare -> Traefik -> Ingress(polaris.ohdp) -> THIS
+#      -> /api/*  -> polaris.data.svc:8181            (Iceberg REST + management API)
+#      -> /*      -> polaris-console.data.svc:8080    (the SPA)
+#
+# Same origin for the SPA and the API, so the console needs no CORS and the whole
+# surface sits behind the wall. Auth into Polaris itself is still the console's
+# Client Credentials login (the `ohdp` root principal); this only gates who may
+# reach the host.
+
+replicaCount: 1
+
+image:
+  repository: oauth2-proxy/oauth2-proxy
+  pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Secret: reuse data/oauth2-proxy-secret (platform-base owns it; the deploy
+# workflow patches in client-id / client-secret from DAGSTER_OIDC_CLIENT_ID /
+# _SECRET). The same Google OAuth "Web application" client is used — just add
+#   https://polaris.ohdp.kevinmcquate.com/oauth2/callback
+# to its authorized redirect URIs alongside the Dagster one.
+# ---------------------------------------------------------------------------
+config:
+  existingSecret: oauth2-proxy-secret
+
+  configFile: |-
+    provider = "google"
+    # No email_domains — access is the allowlist in authenticatedEmailsFile below.
+    upstreams = [
+      "http://polaris.data.svc.cluster.local:8181/api/",
+      "http://polaris-console.data.svc.cluster.local:8080/"
+    ]
+    redirect_url = "https://polaris.ohdp.kevinmcquate.com/oauth2/callback"
+    # Traefik terminates TLS and sets X-Forwarded-Proto; trust it.
+    reverse_proxy = true
+    cookie_secure = true
+    # One provider, one IdP: skip the "Sign in with Google" interstitial.
+    skip_provider_button = true
+    # The console sends its own `Authorization: Bearer <polaris-token>` to /api/*.
+    # oauth2-proxy leaves an incoming Authorization header alone unless it is
+    # configured to set one itself, which it is not here.
+
+# One email per line. Extend deliberately — everyone here can administer the
+# Iceberg catalog.
+authenticatedEmailsFile:
+  enabled: true
+  persistence: configmap
+  restricted_access: |-
+    kgmcquate@gmail.com
+
+# ---------------------------------------------------------------------------
+# Ingress. This release owns polaris.ohdp and the polaris-tls cert (same pattern
+# as the Dagster oauth2-proxy owning dagster.ohdp).
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: traefik
+  path: /
+  pathType: Prefix
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - polaris.ohdp.kevinmcquate.com
+  tls:
+    - secretName: polaris-tls
+      hosts:
+        - polaris.ohdp.kevinmcquate.com
+
+service:
+  type: ClusterIP
+  portNumber: 80
+
+# §4: shares the ingress/cert-manager/proxy budget line. Small Go binary.
+resources:
+  requests:
+    cpu: 10m
+    memory: 25Mi
+  limits:
+    cpu: 50m
+    memory: 64Mi
+
+metrics:
+  enabled: false
