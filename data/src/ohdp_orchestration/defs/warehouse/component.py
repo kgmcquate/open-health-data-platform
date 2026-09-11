@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from dagster import AssetKey, Definitions
+from dagster import AssetKey, AutomationCondition, Definitions
 from dagster.components import Component, ComponentLoadContext, Model, Resolvable
 from dagster_dbt import DagsterDbtTranslator, DbtCliResource, DbtProject, dbt_assets
 
@@ -33,17 +33,34 @@ _LAYERS = ("clean", "core", "marts")
 
 
 class _Translator(DagsterDbtTranslator):
-    def __init__(self, key_prefix: str, source_keys: dict[tuple[str, str], list[str]]):
+    def __init__(self, key_prefix: str):
         super().__init__()
         self._prefix = key_prefix
-        self._source_keys = source_keys
 
-    def get_asset_key(self, props: dict[str, Any]) -> AssetKey:
-        if props["resource_type"] == "source":
-            mapped = self._source_keys.get((props["source_name"], props["name"]))
-            if mapped:
-                return AssetKey(mapped)
-        return AssetKey([self._prefix, props["name"]])
+    def get_asset_key(self, dbt_resource_props: dict[str, Any]) -> AssetKey:
+        """Set the asset key"""
+
+        # Allow the asset key to be overridden if set explicitly in the model config
+        hardcoded_asset_key = (
+            dbt_resource_props
+            .get("config", {})
+            .get("meta", {})
+            .get("dagster", {})
+            .get("asset_key")
+        )
+
+        if hardcoded_asset_key:
+            return super().get_asset_key(dbt_resource_props)
+
+        # Set the asset key to match the structure of the Snowflake catalog
+        return AssetKey(
+            [
+                self._prefix,
+                dbt_resource_props["database"],
+                dbt_resource_props["schema"],
+                dbt_resource_props["name"],
+            ]
+        )
 
     def get_group_name(self, props: dict[str, Any]) -> str | None:
         if props["resource_type"] != "model":
@@ -54,14 +71,23 @@ class _Translator(DagsterDbtTranslator):
 
     def get_tags(self, props: dict[str, Any]) -> dict[str, str]:
         # Drop the bare dbt selection tags (`clean` / `core` / `marts`); keep the
-        # rest, add ohdp/* .
+        # rest, add ohdp/* and the materialization (for asset selection).
         tags = {k: v for k, v in super().get_tags(props).items() if k not in _LAYERS}
         tags["ohdp/domain"] = "warehouse"
+        tags["dbt_materialized"] = props.get("config", {}).get("materialized", "view").strip()
         fqn = props.get("fqn") or []
         layer = next((p for p in fqn if p in _LAYERS), None)
         if layer:
             tags["ohdp/layer"] = layer
         return tags
+
+    def get_metadata(self, props: dict[str, Any]) -> dict[str, Any]:
+        # Surface a model's dbt `meta:` config (besides `dagster.*`, read below
+        # for automation) as asset metadata, e.g. for ownership/doc links.
+        metadata = dict(super().get_metadata(props))
+        dbt_meta = props.get("config", {}).get("meta", {})
+        metadata.update({k: str(v) for k, v in dbt_meta.items()})
+        return metadata
 
     def get_asset_spec(self, manifest, unique_id, project):
         spec = super().get_asset_spec(manifest, unique_id, project)
@@ -69,25 +95,53 @@ class _Translator(DagsterDbtTranslator):
             return spec.merge_attributes(kinds={"snowflake"})
         return spec
 
+    def get_automation_condition(self, props: dict[str, Any]) -> AutomationCondition | None:
+        """Opt-in declarative automation, driven by each model's `+meta.dagster`
+        config — nothing currently schedules `warehouse_dbt`, so this is the
+        mechanism that lets a model ask to rebuild itself.
+        """
+        resource_type = props.get("resource_type")
+        materialized = props.get("config", {}).get("materialized", "view").strip()
+        automaterialize = props.get("config", {}).get("meta", {}).get("automaterialize", False)
+        refresh_limit = props.get("config", {}).get("meta", {}).get("refresh_limit")
 
-# Map dbt source (source_name, table_name) -> Dagster AssetKey path, so dbt
-# lineage joins the ingestion assets. Extend as sources are added.
-_SOURCE_KEYS: dict[tuple[str, str], list[str]] = {}
+        # Always rebuild views on code change; everything else needs an opt-in.
+        if not automaterialize:
+            if materialized == "view":
+                return AutomationCondition.code_version_changed()
+            return None
 
+        # Only if newly true, so a failed run doesn't re-trigger on its own.
+        dbt_model_changed = (
+            AutomationCondition.missing() | AutomationCondition.code_version_changed()
+        ).newly_true()
 
-def _healthdata_gov_source_keys(project_dir: Path) -> dict[tuple[str, str], list[str]]:
-    """Every `healthdata_gov` raw table -> ["healthdata_gov", <raw_table>]."""
-    import yaml
+        deps_have_updated: AutomationCondition = AutomationCondition.any_deps_updated()
 
-    out: dict[tuple[str, str], list[str]] = {}
-    for path in (project_dir / "models").rglob("*__sources.yml"):
-        doc = yaml.safe_load(path.read_text()) or {}
-        for source in doc.get("sources", []):
-            if source.get("name") != "healthdata_gov":
-                continue
-            for table in source.get("tables", []):
-                out[("healthdata_gov", table["name"])] = ["healthdata_gov", table["name"]]
-    return out
+        if refresh_limit is not None:
+            cron_passed: AutomationCondition = AutomationCondition.cron_tick_passed(
+                refresh_limit
+            ).since_last_handled()  # type: ignore[misc]  # dagster generics: AssetKey vs AssetKey | AssetCheckKey
+            deps_have_updated = (
+                AutomationCondition.any_deps_match(
+                    AutomationCondition.newly_updated()
+                ).since_last_handled()
+                & cron_passed
+            )
+
+        if resource_type == "model" and materialized in (
+            "table",
+            "incremental",
+            "view",
+            "materialized_view",
+        ):
+            return (deps_have_updated & ~AutomationCondition.run_in_progress()) | dbt_model_changed
+
+        if resource_type == "seed":
+            return dbt_model_changed
+        
+        return None
+
 
 
 def _default_project_dir() -> Path:
@@ -122,8 +176,7 @@ class DbtWarehouse(Component, Model, Resolvable):
             )
 
         translator = _Translator(
-            self.key_prefix,
-            {**_SOURCE_KEYS, **_healthdata_gov_source_keys(project_dir)},
+            self.key_prefix
         )
         # `environment`, not credential-presence: a misconfigured prod pod
         # should fail loudly rather than silently build a throwaway local

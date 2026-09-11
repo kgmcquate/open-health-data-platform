@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from dagster import (
     AssetKey,
+    AssetMaterialization,
     AssetSelection,
     AssetSpec,
     DefaultScheduleStatus,
@@ -41,9 +42,9 @@ from dagster.components import Component, ComponentLoadContext, Model, Resolvabl
 from dagster_dlt import DagsterDltResource, DagsterDltTranslator, dlt_assets
 from dagster_dlt.translator import DltResourceTranslatorData
 
+from ohdp_ingestion import naming
 from ohdp_ingestion.healthdata_gov.config import Cadence, DatasetConfig
 from ohdp_ingestion.healthdata_gov.source import build_pipeline, socrata_source
-from ohdp_ingestion.naming import namespace
 from ohdp_orchestration.resources.dlt import DLT_RESOURCE
 from ohdp_shared import get_logger
 
@@ -51,8 +52,15 @@ log = get_logger(__name__)
 
 _DOMAIN = "healthdata_gov"
 _SOURCE = "healthdata_gov"
-_RAW_NS = namespace("raw", _SOURCE)  # "raw_healthdata_gov"
+_RAW_NS = naming.namespace("raw", _SOURCE)  # "RAW.healthdata_gov" (ADR-0013)
 _CADENCES: tuple[Cadence, ...] = ("daily", "weekly", "monthly")
+
+# Must match warehouse/defs.yaml's `key_prefix` — there's no shared constant for
+# it since the two components are independently configured, but the dbt
+# translator's `get_asset_key` (warehouse/component.py) computes
+# [prefix, database, schema, name] for dbt's `healthdata_gov` source nodes too,
+# and that key needs to line up with `_warehouse_raw_spec()` below.
+_WAREHOUSE_PREFIX = "warehouse"
 
 
 @dataclass
@@ -94,6 +102,28 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
     @property
     def table_key(self) -> AssetKey:
         return AssetKey([_DOMAIN, self.raw_table])
+
+    @property
+    def warehouse_raw_key(self) -> AssetKey:
+        """Best-effort label for where this table lives in the warehouse's RAW
+        layer — `[prefix, "RAW", schema, table]`, via the same `ohdp_ingestion.
+        naming` module the raw loader itself uses. This does **not** currently
+        equal dbt's actual compiled source-node asset key: that key comes from
+        whatever target `dbt/target/manifest.json` was last parsed against
+        (`ci`/`local`, both DuckDB — see Dockerfile/ci.yml, neither ever
+        `prod`), so dbt's source lands at e.g. `warehouse/ci_build/healthdata_gov/
+        <table>` instead. Making these line up for real needs either reading the
+        compiled manifest here instead of guessing, or baking the image's
+        manifest with `--target prod` — neither is done yet.
+        """
+        return AssetKey(
+            [
+                _WAREHOUSE_PREFIX,
+                naming.database("raw"),
+                naming.schema("raw", _SOURCE),
+                self.raw_table,
+            ]
+        )
 
     # --- specs -------------------------------------------------------------
     def _advertised_schema(self) -> TableSchema | None:
@@ -162,6 +192,22 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             tags={"ohdp/domain": _DOMAIN, "ohdp/cadence": self.cadence},
         )
 
+    def _warehouse_raw_spec(self) -> AssetSpec:
+        """Unexecutable RAW-layer label for this table (``warehouse_raw_key``),
+        downstream of the dlt table. NOT currently the same asset dbt's
+        `healthdata_gov` source resolves to in the live graph — see the
+        docstring on `warehouse_raw_key`. `_table_asset()`'s op reports its
+        materialization directly (see below); this spec never runs its own op.
+        """
+        return AssetSpec(
+            key=self.warehouse_raw_key,
+            deps=[self.table_key],
+            group_name=f"{_WAREHOUSE_PREFIX}_raw",
+            description=f"{self.name} — as dbt's `{_DOMAIN}` source sees it.",
+            tags={"ohdp/domain": _WAREHOUSE_PREFIX, "ohdp/layer": "raw"},
+            kinds={"snowflake"},
+        )
+
     # --- defs ------------------------------------------------------------------
     def _table_asset(self):
         cfg = self
@@ -181,6 +227,15 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         )
         def _assets(context, dlt: DagsterDltResource):
             yield from dlt.run(context=context, loader_file_format="parquet")
+            # `warehouse_raw_key` has no op of its own (`_warehouse_raw_spec` is
+            # unexecutable) — report it materialized here, since this run is
+            # exactly what freshens the table dbt's source reads.
+            context.instance.report_runless_asset_event(
+                AssetMaterialization(
+                    asset_key=cfg.warehouse_raw_key,
+                    description="Represents data copied into the raw layer.",
+                )
+            )
 
         return _assets
 
@@ -189,6 +244,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         resources: dict = {}
         if self.enabled:
             assets.append(self._table_asset())
+            assets.append(self._warehouse_raw_spec())
             resources["dlt"] = DLT_RESOURCE
         return Definitions(assets=assets, resources=resources)
 
