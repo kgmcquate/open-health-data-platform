@@ -1,0 +1,36 @@
+# Values for the upstream chart: oci://ghcr.io/apache/superset-kubernetes-operator/charts/superset-operator
+#
+#   helm upgrade --install superset-operator \
+#     oci://ghcr.io/apache/superset-kubernetes-operator/charts/superset-operator \
+#     --version <SUPERSET_OPERATOR_VERSION> -n superset-operator-system --create-namespace \
+#     -f platform/helm/values/superset-operator.yaml
+#
+# This is the CRD + controller only — it does not run Superset itself. Once it
+# is watching `bi`, `make superset` applies the `Superset` CR (charts/superset)
+# that the controller reconciles into the actual Deployments/Services.
+#
+# We do not vendor a chart for this: same ADR-0006 reasoning as Dagster and
+# OpenMetadata — the operator encodes non-obvious lifecycle wiring (migration
+# Jobs, secret-key rotation, config rendering) that would be redone on every
+# upgrade if we owned it.
+
+# Namespace-scoped, not cluster-scoped: the operator only ever needs to see
+# `bi`, and the CEL-validation/secret-handling story doesn't change with scope
+# — this is single-tenant hardening for free. CRD installation itself is still
+# cluster-scoped (unavoidable, CRDs are cluster resources) but that is a
+# one-time `helm install`/`upgrade`, not standing RBAC on the operator's
+# ServiceAccount.
+watch:
+  scope: namespaces
+  namespaces:
+    - bi
+
+# No prometheus-operator CRDs in this cluster (ARCHITECTURE.md §4 — metrics and
+# logs go to Grafana Cloud via vmagent, not a Prometheus Operator ServiceMonitor).
+# Secure metrics auth also needs cluster-scoped RBAC, which the namespace-scoped
+# install above deliberately avoids — so metrics are off rather than half-wired.
+metrics:
+  enabled: false
+
+# Tiny controller pod; the chart's own defaults (64Mi/128Mi) are already within
+# budget, left unset here.

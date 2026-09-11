@@ -6,7 +6,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
 | [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket, Cloudflare DNS records | no |
-| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, Dagster, hub-api | when `deploy` ticked |
+| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Superset operator + Superset, oauth2-proxy-superset, hub-api | when `deploy` ticked |
 
 ## Setup
 
@@ -134,7 +134,12 @@ act -l
 
 ## What is still missing
 
-- **Superset** has no chart values yet (M1) though Postgres provisions its database.
+- **Superset** is deployed (M1) via the Superset Kubernetes Operator, pointed
+  directly at the shared Postgres — no Cube yet. Celery worker/beat are not
+  enabled, so scheduled reports and async SQL Lab queries are not available;
+  see `platform/helm/charts/superset`. It sits behind its own Google login wall
+  (`oauth2-proxy-superset`, `kgmcquate@gmail.com` only) rather than the
+  self-service public exposure M1 originally sketched — see ARCHITECTURE.md §5.
 - **Cube** and **hub-web** are not deployed — M2.
 - **No rollback step.** `helm rollback <release>` by hand; snapshot rollback is a
   pointer change, see the [runbook](runbook.md).

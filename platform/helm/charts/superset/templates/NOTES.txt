@@ -1,0 +1,17 @@
+Superset CR "{{ include "superset.fullname" . }}" applied — the operator (make superset-operator)
+reconciles the actual Deployments/Services/lifecycle Jobs from here.
+
+Watch it come up:
+
+  kubectl -n {{ .Release.Namespace }} get superset {{ include "superset.fullname" . }} -w
+  kubectl -n {{ .Release.Namespace }} get jobs -l superset.apache.org/init-task -w
+  kubectl -n {{ .Release.Namespace }} get pods -w
+
+No Ingress is created by this chart. Public access is
+https://superset.open-health-data-platform.org, owned by the
+oauth2-proxy-superset release (make oauth2-proxy-superset) — restricted to
+kgmcquate@gmail.com. Superset's own login page still applies behind that wall;
+create the first admin user with:
+
+  kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "superset.fullname" . }}-web-server -- \
+    superset fab create-admin

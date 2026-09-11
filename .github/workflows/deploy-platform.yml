@@ -81,6 +81,8 @@ jobs:
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
           DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
+          SUPERSET_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
+          SUPERSET_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
@@ -120,6 +122,13 @@ jobs:
             "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")
           kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$patch"
 
+          # Same trick, second release: the Superset auth wall's own Google
+          # OAuth client (separate from Dagster's — different redirect URI).
+          patch=$(printf '{"data":{"client-id":"%s","client-secret":"%s"}}' \
+            "$(printf %s "$SUPERSET_OIDC_CLIENT_ID" | base64 -w0)" \
+            "$(printf %s "$SUPERSET_OIDC_CLIENT_SECRET" | base64 -w0)")
+          kubectl -n bi patch secret oauth2-proxy-superset-secret --type merge -p "$patch"
+
       - name: OpenSearch
         run: make -C platform/helm opensearch
 
@@ -129,11 +138,23 @@ jobs:
       - name: GraphQL authz proxy
         run: make -C platform/helm proxy
 
-      - name: oauth2-proxy (Google login wall)
+      - name: Dagster monitoring dashboard
+        run: make -C platform/helm dagster-monitoring
+
+      - name: oauth2-proxy (Google login wall — Dagster + monitoring)
         run: make -C platform/helm oauth2-proxy
 
       - name: Dagster
         run: make -C platform/helm dagster TAG="$TAG"
+
+      - name: Superset operator
+        run: make -C platform/helm superset-operator
+
+      - name: Superset
+        run: make -C platform/helm superset
+
+      - name: oauth2-proxy (Google login wall — Superset)
+        run: make -C platform/helm oauth2-proxy-superset
 
       - name: hub-api
         run: make -C platform/helm hub-api TAG="$TAG"

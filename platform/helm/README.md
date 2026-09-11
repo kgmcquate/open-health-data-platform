@@ -8,13 +8,18 @@ charts/
                         the shared Postgres StatefulSet, the ClusterIssuer
   hub-api/              our chart — the FastAPI backend
   graphql-authz-proxy/  our chart — wraps kgmcquate/graphql-authz-proxy
+  dagster-monitoring/   our chart — wraps kgmcquate/dagster-monitoring
+  superset/              our chart — a Superset CR (Superset Kubernetes
+                        Operator) + a hand-rolled Valkey cache
 values/
-  traefik.yaml          for traefik/traefik
-  cert-manager.yaml     for jetstack/cert-manager
-  dagster.yaml          for dagster/dagster
-  openmetadata.yaml     for open-metadata/openmetadata  (pinned to 2.0.x)
-  opensearch.yaml       for opensearch/opensearch
-  oauth2-proxy.yaml     for oauth2-proxy/oauth2-proxy  (Google wall → Dagster, ADR-0007)
+  traefik.yaml               for traefik/traefik
+  cert-manager.yaml          for jetstack/cert-manager
+  dagster.yaml               for dagster/dagster
+  openmetadata.yaml          for open-metadata/openmetadata  (pinned to 2.0.x)
+  opensearch.yaml            for opensearch/opensearch
+  oauth2-proxy.yaml          for oauth2-proxy/oauth2-proxy  (Google wall → Dagster + dagster-monitoring, ADR-0007)
+  superset-operator.yaml     for the Superset Kubernetes Operator's own chart (CRD + controller)
+  oauth2-proxy-superset.yaml for oauth2-proxy/oauth2-proxy  (Google wall → Superset, kgmcquate@gmail.com only)
 ```
 
 There is no data warehouse here. It is Snowflake, created by
@@ -35,8 +40,20 @@ migration job, JWT config and search bootstrap. Vendoring that means redoing it
 on every upgrade, for no gain. We own the *values*, which is where all our
 actual decisions live. See [ADR-0006](../../docs/decisions/0006-upstream-charts-and-external-authz-proxy.md).
 
-`hub-api` and `graphql-authz-proxy` get real charts because nothing upstream
-exists for them.
+`hub-api`, `graphql-authz-proxy` and `dagster-monitoring` get real charts
+because nothing upstream exists for them.
+
+## Why Superset is the Kubernetes Operator, not the Helm chart
+
+The apache/superset Helm chart is deprecated upstream in favor of the [Superset
+Kubernetes Operator](https://github.com/apache/superset-kubernetes-operator);
+we followed that migration rather than adopt a chart with no further updates.
+The operator (`values/superset-operator.yaml`) is a values file for the same
+reason as Dagster/OpenMetadata above — it owns real lifecycle logic (migration
+Jobs, secret-key rotation, config rendering). Our `charts/superset` just renders
+the `Superset` CR plus a small hand-rolled Valkey cache: no Bitnami dependency
+and no separate Redis operator, same reasoning as platform-base's hand-rolled
+Postgres StatefulSet.
 
 ## Prerequisites
 
@@ -55,7 +72,10 @@ keeps it stable across upgrades:
 | `openmetadata-fernet-secret` | `meta` | OpenMetadata fernet key |
 | `cube-secret` | `data` | hub-api ↔ Cube shared secret |
 | `hub-api-db` | `app` | `OHDP_APP_DATABASE_URL`, `OHDP_CUBE_API_SECRET` |
-| `oauth2-proxy-secret` | `data` | oauth2-proxy `cookie-secret` (Google `client-id`/`client-secret` merged in externally) |
+| `oauth2-proxy-secret` | `data` | oauth2-proxy `cookie-secret` for Dagster + dagster-monitoring (Google `client-id`/`client-secret` merged in externally) |
+| `superset-db-auth` | `bi` | mirror of the superset password |
+| `superset-secret` | `bi` | Superset Flask `SECRET_KEY` |
+| `oauth2-proxy-superset-secret` | `bi` | oauth2-proxy `cookie-secret` for Superset (Google `client-id`/`client-secret` merged in externally) |
 | `ohdp-pipeline-config` (ConfigMap) | `data` | non-secret pipeline env |
 
 The **external** secrets are GitHub Actions repo secrets, injected by the
@@ -93,6 +113,14 @@ kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$(printf \
   '{"data":{"client-id":"%s","client-secret":"%s"}}' \
   "$(printf %s "$DAGSTER_OIDC_CLIENT_ID" | base64 -w0)" \
   "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")"
+
+# Same trick, second release: Superset's own Google OAuth client (separate app
+# registration from Dagster's), redirect URI
+# https://superset.open-health-data-platform.org/oauth2/callback
+kubectl -n bi patch secret oauth2-proxy-superset-secret --type merge -p "$(printf \
+  '{"data":{"client-id":"%s","client-secret":"%s"}}' \
+  "$(printf %s "$SUPERSET_OIDC_CLIENT_ID" | base64 -w0)" \
+  "$(printf %s "$SUPERSET_OIDC_CLIENT_SECRET" | base64 -w0)")"
 ```
 
 `OHDP_OPENMETADATA_JWT` is minted by OpenMetadata itself (Settings → Bots →
@@ -102,15 +130,22 @@ and restart the consumers.
 ## Install
 
 ```bash
-make repos      # add + update upstream helm repos
-make infra      # platform-base, Traefik, cert-manager, ClusterIssuer
+make repos                # add + update upstream helm repos
+make infra                 # platform-base, Traefik, cert-manager, ClusterIssuer
 # create the external secrets (above)
-make install    # opensearch, openmetadata, proxy, dagster
-make hub-api    # deployed on its own for now
+make install                # opensearch, openmetadata, proxy, dagster
+make dagster-monitoring      # the /monitoring dashboard (before oauth2-proxy, below)
+make oauth2-proxy           # Google wall: Dagster + dagster-monitoring
+make superset-operator      # the Superset Kubernetes Operator (CRDs + controller)
+make superset                # the Superset CR + Valkey, once the operator above is running
+make oauth2-proxy-superset   # Google wall: Superset (kgmcquate@gmail.com only)
+make hub-api                # deployed on its own for now
 ```
 
 Order matters — OpenSearch must be green before OpenMetadata starts or its
-migration job fails; `make install` sequences this for you.
+migration job fails (`make install` sequences this for you), and
+`superset-operator` must be running (and its CRD established) before
+`make superset` applies a `Superset` CR for it to reconcile.
 
 The warehouse is not installed here: `terraform apply` in `platform/terraform`
 creates the Snowflake database, schemas, role, service user and token, and the

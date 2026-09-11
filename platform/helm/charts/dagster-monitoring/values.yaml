@@ -1,0 +1,67 @@
+# dagster-monitoring — a read-only Dagster run/asset dashboard, mounted at
+# /monitoring behind the same oauth2-proxy Google wall that gates the Dagster
+# UI (values/oauth2-proxy.yaml). No Ingress here on purpose, same reasoning as
+# dagsterWebserver in values/dagster.yaml: exposing this Service directly would
+# bypass oauth2-proxy entirely.
+#
+# fullnameOverride is pinned so oauth2-proxy's upstream path route
+# (dagster-monitoring.data.svc.cluster.local) and this chart's Service name
+# always agree regardless of the Helm release name used to install it.
+
+replicaCount: 1
+
+image:
+  repository: docker.io/kgmcquate/dagster-monitoring
+  # Upstream publishes only a floating :latest tag, so pin the digest instead
+  # (same reasoning as graphql-authz-proxy). Re-resolve deliberately:
+  #   docker buildx imagetools inspect kgmcquate/dagster-monitoring:latest
+  digest: "sha256:2d448c630b57eb3bbd255d0c9bcac4875033682c112fbdf1104cb8271e74dc15"
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: "dagster-monitoring"
+
+# Talks to the GraphQL enforcement point (ARCHITECTURE.md §5), not the raw
+# dagster-webserver Service — an unrecognised caller (this app calls pod-to-
+# pod, with none of oauth2-proxy's X-Forwarded-* headers) falls through to
+# graphql-authz-proxy's public-viewer group, same as any anonymous UI visitor.
+# If the allowlist is ever locked down to specific read fields, this app is
+# bound by it too, rather than having a side channel around it.
+dagster:
+  graphqlUrl: "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80/graphql"
+  baseUrl: "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80"
+
+# Matches oauth2-proxy's path-based upstream route — see values/oauth2-proxy.yaml.
+basePath: "/monitoring"
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Tiny static-ish dashboard app; no dedicated §4 budget line yet, sized well
+# under the smallest existing one (graphql-authz-proxy's 128Mi/192Mi).
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+# NOT hardened like our other charts (gqlproxy, hub-api). The image's entrypoint
+# (generate-config.sh) rewrites /etc/nginx/nginx.conf and index.html in place at
+# every container start, and nginx master binds the privileged port 80 as root
+# before workers drop to the `nginx` user — readOnlyRootFilesystem or dropping
+# all capabilities breaks both. Revisit only alongside an image change (a
+# non-root nginx-unprivileged base + a writable-paths-only rootfs).
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

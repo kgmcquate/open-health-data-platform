@@ -168,12 +168,14 @@ flowchart TB
             D2["dagster-daemon"]
             D3["graphql-authz-proxy"]
             D4["oauth2-proxy"]
+            D5["dagster-monitoring"]
             D6["cube"]
         end
 
         subgraph nsbi["namespace: bi"]
+            B0["oauth2-proxy-superset"]
             B1["superset"]
-            B2["redis"]
+            B2["valkey"]
         end
 
         subgraph nsmeta["namespace: meta"]
@@ -192,10 +194,12 @@ flowchart TB
     CF --> ING
     ING --> A1
     ING --> D4
-    ING --> B1
+    ING --> B0
     ING --> M1
     D4 --> D3
+    D4 --> D5
     D3 --> D1
+    B0 --> B1
     vm -.->|metrics, logs| GC
 ```
 
@@ -219,7 +223,7 @@ Steady state ~13 GB, burst ~15 GB during a build.
 |---|---|---|
 | opensearch | 3 GB | Largest single consumer; single node, 1 shard, 0 replicas |
 | openmetadata-server | 2 GB | JVM |
-| superset | 1 GB | Celery worker and beat deferred to phase 3 |
+| superset | 1 GB | Web server + valkey cache; Celery worker and beat deferred to phase 3 |
 | postgres | 1 GB | 4 databases: dagster, superset, openmetadata, app |
 | dagster-webserver + daemon | 1 GB | |
 | cube | 0.5 GB | No Cube Store, no pre-aggregations initially; queries Snowflake directly |
@@ -252,9 +256,16 @@ Tokens carry a `tier` claim (`free` | `paid`).
 | Surface | Authn | Authz |
 |---|---|---|
 | Hub app | OIDC session | Entitlement checks in hub-api against `tier` |
-| Superset | OIDC via Flask-AppBuilder; embedded uses guest tokens | Role mapped from IdP group claim |
+| Superset | *(target)* OIDC via Flask-AppBuilder; embedded uses guest tokens | *(target)* Role mapped from IdP group claim |
 | OpenMetadata | Native OIDC | Default viewer role for all authenticated users |
 | Dagster | oauth2-proxy gates the hostname | GraphQL allowlist proxy enforces read-only |
+| dagster-monitoring | oauth2-proxy gates the hostname (same wall as Dagster, path-routed) | Reads Dagster GraphQL through graphql-authz-proxy, not the raw webserver |
+
+As deployed today (M1), Superset sits behind its own oauth2-proxy Google wall
+restricted to `kgmcquate@gmail.com` (`platform/helm/values/oauth2-proxy-superset.yaml`)
+rather than the OIDC-with-role-mapping target row above — it is an internal
+analytics tool with one operator, not yet the public/embedded surface M2
+describes. Superset's own Flask-AppBuilder login still runs behind that wall.
 | Cube | Service token from hub-api | `queryRewrite` applies tier limits |
 
 ### Dagster hardening — non-negotiable

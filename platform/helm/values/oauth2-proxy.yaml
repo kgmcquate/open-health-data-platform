@@ -4,16 +4,17 @@
 #   helm upgrade --install oauth2-proxy oauth2-proxy/oauth2-proxy -n data \
 #     -f platform/helm/values/oauth2-proxy.yaml
 #
-# The Google login wall in front of the Dagster UI (ADR-0007). Every request to
-# catalog-of-runs is authenticated here before it reaches anything.
+# The Google login wall in front of the Dagster UI (ADR-0007), and, path-routed
+# on the same host, the dagster-monitoring dashboard. Every request is
+# authenticated here before it reaches anything.
 #
-#   Cloudflare -> Traefik -> Ingress(dagster.ohdp) -> THIS -> graphql-authz-proxy
-#                                                              -> dagster-webserver
+#   Cloudflare -> Traefik -> Ingress(dagster.ohdp) -> THIS -> /             -> graphql-authz-proxy -> dagster-webserver
+#                                                          -> /monitoring/  -> dagster-monitoring
 #
 # oauth2-proxy forwards X-Forwarded-Email / -User / -Preferred-Username, which
 # graphql-authz-proxy reads to resolve a user. kgmcquate@gmail.com -> admin;
 # every other Google account -> public-viewer (read-only allowlist). There is no
-# anonymous path anymore — the gqlproxy Service is ClusterIP with no Ingress.
+# anonymous path anymore — neither backing Service has its own Ingress.
 
 replicaCount: 1
 
@@ -35,10 +36,20 @@ config:
 
   # Setting configFile puts the chart in "inline-custom" mode: this block is the
   # entire oauth2_proxy.cfg, so email_domains and upstreams must live here too.
+  #
+  # Two upstreams share this one Google wall + host, routed by request path.
+  # oauth2-proxy tries upstreams in list order and matches by path prefix, so
+  # the specific /monitoring/ route MUST come before the catch-all "/" —
+  # reversing this order would swallow every request into gqlproxy. The
+  # monitoring app expects its BASE_PATH-prefixed path forwarded as-is (no
+  # rewrite) — see charts/dagster-monitoring/values.yaml.
   configFile: |-
     provider = "google"
     email_domains = [ "*" ]
-    upstreams = [ "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80" ]
+    upstreams = [
+      "http://dagster-monitoring.data.svc.cluster.local:80/monitoring/",
+      "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80/",
+    ]
     redirect_url = "https://dagster.open-health-data-platform.org/oauth2/callback"
     # Traefik terminates TLS and sets X-Forwarded-Proto; trust it so the derived
     # redirect/callback URLs are https and the real client IP is logged.

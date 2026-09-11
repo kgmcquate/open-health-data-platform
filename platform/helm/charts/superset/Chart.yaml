@@ -1,0 +1,13 @@
+apiVersion: v2
+name: superset
+description: >-
+  Apache Superset, via the Superset Kubernetes Operator's `Superset` CR, plus a
+  small hand-rolled Valkey cache. Requires `make superset-operator` first.
+type: application
+version: 0.1.0
+appVersion: "6.1.0"
+home: https://superset.apache.org/
+sources:
+  - https://github.com/apache/superset-kubernetes-operator
+maintainers:
+  - name: kgmcquate

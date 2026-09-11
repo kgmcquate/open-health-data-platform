@@ -1,0 +1,11 @@
+dagster-monitoring deployed as {{ include "dagster-monitoring.fullname" . }}.
+
+No Ingress is created by this chart — it is reached only through the Dagster
+oauth2-proxy release, path-routed at {{ .Values.basePath }} on
+dagster.open-health-data-platform.org (see values/oauth2-proxy.yaml's
+`upstreams` list). Confirm the route after `helm upgrade --install oauth2-proxy`:
+
+  https://dagster.open-health-data-platform.org{{ .Values.basePath }}/
+
+Talks to Dagster GraphQL via the enforcement proxy, not the raw webserver:
+  {{ .Values.dagster.graphqlUrl }}

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: dagster-monitoring
+description: >-
+  Read-only Dagster run/asset monitoring dashboard. Wraps
+  github.com/kgmcquate/dagster-monitoring.
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/kgmcquate/dagster-monitoring
+sources:
+  - https://github.com/kgmcquate/dagster-monitoring
+maintainers:
+  - name: kgmcquate

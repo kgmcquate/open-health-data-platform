@@ -1,0 +1,62 @@
+{{- /*
+The Superset Kubernetes Operator's own CRD, reconciled by the controller
+installed via `make superset-operator` (values/superset-operator.yaml). See
+https://apache.github.io/superset-kubernetes-operator/user-guide/configuration/
+for the full field reference.
+*/ -}}
+apiVersion: superset.apache.org/v1alpha1
+kind: Superset
+metadata:
+  name: {{ include "superset.fullname" . }}
+  labels:
+    {{- include "superset.labels" . | nindent 4 }}
+spec:
+  environment: {{ .Values.environment }}
+
+  {{- with .Values.bootstrapScript }}
+  bootstrapScript: |
+    {{- trimSuffix "\n" . | nindent 4 }}
+  {{- end }}
+
+  image:
+    repository: {{ .Values.image.repository }}
+    tag: {{ .Values.image.tag | quote }}
+
+  secretKeyFrom:
+    {{- toYaml .Values.secretKeyFrom | nindent 4 }}
+
+  metastore:
+    type: {{ .Values.metastore.type }}
+    host: {{ .Values.metastore.host }}
+    port: {{ .Values.metastore.port }}
+    database: {{ .Values.metastore.database }}
+    username: {{ .Values.metastore.username }}
+    passwordFrom:
+      {{- toYaml .Values.metastore.passwordFrom | nindent 6 }}
+
+  valkey:
+    host: {{ .Values.valkey.host }}
+    port: {{ .Values.valkey.port }}
+
+  {{- with .Values.deploymentTemplate }}
+  deploymentTemplate:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
+  {{- with .Values.podTemplate }}
+  podTemplate:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
+  webServer:
+    replicas: {{ .Values.webServer.replicas }}
+    service:
+      {{- toYaml .Values.webServer.service | nindent 6 }}
+    {{- with .Values.webServer.podTemplate }}
+    podTemplate:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+
+  # celeryWorker / celeryBeat / celeryFlower / mcpServer / websocketServer:
+  # deliberately absent. Presence = enabled for every operator component —
+  # see values.yaml for why these wait for a later phase.
