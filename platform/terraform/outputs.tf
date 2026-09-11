@@ -43,6 +43,11 @@ output "warehouse_bucket" {
   value       = digitalocean_spaces_bucket.warehouse.name
 }
 
+output "compute_logs_bucket" {
+  description = "Spaces bucket holding Dagster's S3ComputeLogManager output."
+  value       = digitalocean_spaces_bucket.compute_logs.name
+}
+
 # ---------------------------------------------------------------------------
 # Snowflake connection (ADR-0012). These are exactly the OHDP_SNOWFLAKE_*
 # settings the pipeline reads; account/user/role/warehouse are non-secret and

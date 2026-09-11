@@ -36,6 +36,12 @@ variable "snapshot_bucket" {
   default     = "ohdp-warehouse"
 }
 
+variable "compute_logs_bucket" {
+  description = "DigitalOcean Spaces bucket for Dagster's S3ComputeLogManager (raw stdout/stderr compute logs)."
+  type        = string
+  default     = "ohdp-compute-logs"
+}
+
 variable "cloudflare_zone_id" {
   description = "Cloudflare zone ID for the domain hosting the platform hostnames."
   type        = string

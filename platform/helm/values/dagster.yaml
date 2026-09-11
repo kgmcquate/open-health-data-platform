@@ -50,6 +50,10 @@ dagsterWebserver:
   service:
     type: ClusterIP
     port: 80
+  # Needed to read compute logs back out of Spaces (see computeLogManager
+  # below) — same secret the run launcher already gets, whole-secret injection.
+  envSecrets:
+    - name: ohdp-pipeline-secrets
 
 ingress:
   enabled: false
@@ -66,6 +70,9 @@ dagsterDaemon:
     limits:
       cpu: "1"
       memory: 512Mi
+  # Same Spaces creds as the webserver above, for computeLogManager below.
+  envSecrets:
+    - name: ohdp-pipeline-secrets
 
 # ---------------------------------------------------------------------------
 # Run launcher. Each run becomes an ephemeral Job — this is what gives us the
@@ -162,11 +169,25 @@ dagster-user-deployments:
 pythonLogs:
   pythonLogLevel: INFO
 
-# Compute (stdout/stderr) logs are dropped by default. Switching to
-# S3ComputeLogManager against Spaces would make them browsable — do that only after
-# confirming the redaction filter covers subprocess output such as dbt's.
+# Compute (stdout/stderr) logs, browsable in the (publicly exposed, §5)
+# webserver UI — including dlt's, which logs via its own stdlib logger rather
+# than context.log and so never reaches the structured/redacted event stream.
+# Audited before enabling this: dlt's Socrata source sends its app token as a
+# header, never a URL query param (ohdp_ingestion/healthdata_gov/source.py),
+# and dlt runs at its unconfigured default log level (WARNING) everywhere in
+# this repo; dbt-snowflake auths by key pair only, its own connection-info
+# logging explicitly excludes private_key, and the warehouse component never
+# passes --debug. Re-audit before lowering dlt's log level, adding --debug to
+# the dbt component, or routing any other subprocess through this — a raw
+# traceback from a connection failure is the one path not covered above.
 computeLogManager:
-  type: NoOpComputeLogManager
+  type: S3ComputeLogManager
+  config:
+    s3ComputeLogManager:
+      bucket: "ohdp-compute-logs" # must match compute_logs_bucket in terraform
+      region: "nyc3"
+      endpointUrl: "https://nyc3.digitaloceanspaces.com"
+      skipEmptyFiles: true
 
 serviceAccount:
   create: true

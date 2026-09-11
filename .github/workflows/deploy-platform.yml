@@ -85,9 +85,15 @@ jobs:
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
             --dry-run=client -o yaml | kubectl apply -f -; }
+          # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY duplicate the OHDP_SPACES_*
+          # values above under boto3's own env var names: S3ComputeLogManager
+          # (dagster.yaml) takes no access-key config, it just reads these off
+          # the process environment.
           upsert data ohdp-pipeline-secrets \
             --from-literal=OHDP_SPACES_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
             --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
+            --from-literal=AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+            --from-literal=AWS_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
