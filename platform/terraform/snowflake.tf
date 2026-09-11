@@ -174,24 +174,41 @@ resource "snowflake_grant_privileges_to_account_role" "warehouse" {
 # Network policy. Not optional decoration: Snowflake refuses to *generate or
 # use* a PAT for a SERVICE user that is not subject to one.
 #
+# It has to be attached at the ACCOUNT level, not the user level: Snowflake's
+# own Horizon Catalog docs for external-engine access say plainly "Using
+# network policies that are set at the user level isn't supported with this
+# feature" — a user-level `network_policy` on the service user is exactly what
+# was on `snowflake_service_user.pipeline` before, and it makes every
+# session:role token exchange fail OAuth scope validation with
+# `invalid_scope: The scope is invalid` even though the role/grants are fine.
+# PATs accept either an account- or a user-level policy to satisfy their own
+# "must be subject to a policy" requirement, so account-level is the one
+# setting that satisfies both.
+#
+# CONSEQUENCE OF GOING ACCOUNT-WIDE: `snowflake_allowed_ips` now gates every
+# session in the account, human logins included, not just this service user.
 # The default allows everything, which satisfies the requirement without
 # pretending to be a control. Narrow it the moment you know the egress IP the
 # DOKS nodes present — but know that DigitalOcean node public IPs change when a
-# node is recycled or the pool is resized, so an allowlist here is a standing
-# way to break the pipeline at 3am. A NAT gateway with a stable IP is the
-# prerequisite for making this real.
+# node is recycled or the pool is resized, and now a stale entry locks out
+# *everyone*, not just breaks the pipeline. A NAT gateway with a stable IP is
+# the prerequisite for making this real.
 # ---------------------------------------------------------------------------
 resource "snowflake_network_policy" "pipeline" {
   name            = upper("${var.snowflake_pipeline_role}_NETWORK_POLICY")
   allowed_ip_list = var.snowflake_allowed_ips
-  comment         = "Required for PAT auth on the ${var.snowflake_pipeline_role} service user."
+  comment         = "Required for PAT auth account-wide (Horizon Catalog external-engine access rejects a user-level policy)."
+}
+
+resource "snowflake_network_policy_attachment" "pipeline" {
+  network_policy_name = snowflake_network_policy.pipeline.name
+  set_for_account     = true
 }
 
 resource "snowflake_service_user" "pipeline" {
-  name           = upper("${var.snowflake_pipeline_user}")
-  comment        = "Dagster pipeline. Authenticates to the Horizon Catalog REST endpoint with a PAT."
-  default_role   = snowflake_account_role.pipeline.name
-  network_policy = snowflake_network_policy.pipeline.name
+  name         = upper("${var.snowflake_pipeline_user}")
+  comment      = "Dagster pipeline. Authenticates to the Horizon Catalog REST endpoint with a PAT."
+  default_role = snowflake_account_role.pipeline.name
 
   # The catalog client asks for exactly one role (`session:role:<role>`); no
   # secondary roles should come along for the ride.
@@ -219,6 +236,7 @@ resource "snowflake_user_programmatic_access_token" "pipeline" {
   comment          = "Iceberg REST catalog access for the Dagster pipeline."
 
   # The role must be granted to the user before a role-restricted token on it
-  # can be issued.
-  depends_on = [snowflake_grant_account_role.pipeline]
+  # can be issued, and the account-wide network policy must already be in
+  # effect before Snowflake will issue or accept a PAT at all.
+  depends_on = [snowflake_grant_account_role.pipeline, snowflake_network_policy_attachment.pipeline]
 }
