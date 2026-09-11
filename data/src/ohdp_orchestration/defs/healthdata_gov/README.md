@@ -23,9 +23,9 @@ cd data && uv run python scripts/scrape_healthdata_gov.py --top-n 8
 Walks the Socrata catalog API, (re)writes every `datasets/<slug>/defs.yaml`
 (including the column schema), prunes dirs no longer in the catalog, ensures
 `schedules/defs.yaml` exists, and regenerates
-`data/dbt/models/staging/_healthdata_gov__sources.yml`. Safe to re-run: your
-edits to `enabled`, `cadence`, `row_limit` and `incremental_cursor` in an
-instance are preserved.
+`data/dbt/models/clean/healthdata_gov/_healthdata_gov__sources.yml`. Safe to
+re-run: your edits to `enabled`, `cadence`, `row_limit` and
+`incremental_cursor` in an instance are preserved.
 
 ## Enable a dataset
 
@@ -48,15 +48,15 @@ Two assets per dataset, so lineage is explicit:
 | | key | group | kinds | materialized | built when |
 |---|---|---|---|---|---|
 | **catalog asset** | `healthdata_gov/catalog/<raw_table>` | `healthdata_gov_catalog` | `socrata` | never | always |
-| **table asset** | `healthdata_gov/<raw_table>` | `healthdata_gov` | `dlt`, `iceberg` | yes | `enabled: true` |
+| **table asset** | `healthdata_gov/<raw_table>` | `healthdata_gov` | `dlt`, `snowflake` | yes | `enabled: true` |
 
-The table asset is `deps=[catalog asset]` → `catalog -> raw Iceberg table ->
-(dbt clean → core → marts)`. dlt **appends** to the Iceberg table
-`raw_healthdata_gov.<raw_table>` (ADR-0010) — full history, schema auto-evolves;
-`incremental_cursor: null` datasets `replace` instead. The catalog asset carries
-the Socrata column schema + publisher / URL / keywords / cadence / page-views
-metadata for the OpenMetadata Dagster ingestion; the table asset gets the
-dlt-inferred schema and Iceberg snapshot id / row count after a run.
+The table asset is `deps=[catalog asset]` → `catalog -> raw table ->
+(dbt clean → core → marts)`. dlt **appends** to `raw_healthdata_gov.<raw_table>`
+(ADR-0012) — full history, schema auto-evolves; `incremental_cursor: null`
+datasets `replace` instead. The catalog asset carries the Socrata column
+schema + publisher / URL / keywords / cadence / page-views metadata for the
+OpenMetadata Dagster ingestion; the table asset gets dlt's load ids and rows
+loaded after a run.
 
 ## Schedules
 
@@ -75,12 +75,10 @@ are created **stopped** (`default_status` in `schedules/defs.yaml`).
   `socrata_updated_at`.
 - The `columns` block is Socrata's *advertised* schema; dlt infers the real
   loaded types at materialization.
-- Local dev / CI use a pyiceberg SqlCatalog (SQLite) — set
-  `OHDP_ICEBERG_LOCAL_*`; prod uses Snowflake's Horizon Catalog via
-  `OHDP_ICEBERG_CATALOG_URI`. See
-  [ADR-0010](../../../../../../docs/decisions/0010-iceberg-medallion-lakehouse.md)
-  and [ADR-0011](../../../../../../docs/decisions/0011-snowflake-horizon-catalog.md).
-- dlt stages the delta as Parquet and `ohdp_ingestion.iceberg.commit` lands it
-  in the catalog; dlt does not write Iceberg itself (ADR-0011).
+- Local dev / CI write to a local DuckDB file (`OHDP_DUCKDB_PATH`); prod
+  writes to Snowflake directly, set via `OHDP_SNOWFLAKE_ACCOUNT` and friends.
+  dlt picks the destination itself
+  (`ohdp_shared.settings.is_snowflake_configured`). See
+  [ADR-0012](../../../../../../docs/decisions/0012-native-snowflake-tables.md).
 - Optional `OHDP_HEALTHDATA_APP_TOKEN` raises Socrata rate limits.
 - Schedules fire at 07:00 UTC, before the 08:00 dbt build.

@@ -1,6 +1,6 @@
 -- Mart layer: presentation tables the semantic layer / dashboards read. One
--- Iceberg namespace per mart (mart_respiratory). Stub: weekly state rollup.
-{{ config(materialized="external", plugin="iceberg") }}
+-- schema per mart (mart_respiratory). Stub: weekly state rollup.
+{{ config(materialized="table") }}
 
 select
     state,

@@ -1,12 +1,13 @@
 # mypy: disable-error-code="no-untyped-def, no-untyped-call, type-arg, arg-type, override"
-"""The dbt medallion project as Dagster assets, under the ``warehouse/`` prefix.
+"""The dbt medallion project as Dagster assets, under the ``warehouse/`` prefix
+(ADR-0012 — dbt-snowflake in prod, dbt-duckdb in local dev/CI).
 
 * models  -> ``warehouse/<model_name>``, grouped ``warehouse_<layer>``
-  (`clean` / `core` / `marts`), kinds ``dbt`` + ``iceberg``.
+  (`clean` / `core` / `marts`), kinds ``dbt`` + ``snowflake``.
 * dbt **sources** map back to the keys the ingestion components already own —
   ``healthdata_gov/<raw_table>`` — so the graph is continuous:
 
-      healthdata_gov/catalog/… → healthdata_gov/<raw_table> (dlt, raw Iceberg)
+      healthdata_gov/catalog/… → healthdata_gov/<raw_table> (dlt, raw table)
         → warehouse/stg_… (clean) → warehouse/core_… → warehouse/mart_…
 
 Needs ``dbt/target/manifest.json``. ``dagster dev`` builds it (``prepare_if_dev``);
@@ -24,6 +25,7 @@ from dagster.components import Component, ComponentLoadContext, Model, Resolvabl
 from dagster_dbt import DagsterDbtTranslator, DbtCliResource, DbtProject, dbt_assets
 
 from ohdp_shared import get_logger
+from ohdp_shared.settings import settings
 
 log = get_logger(__name__)
 
@@ -64,7 +66,7 @@ class _Translator(DagsterDbtTranslator):
     def get_asset_spec(self, manifest, unique_id, project):
         spec = super().get_asset_spec(manifest, unique_id, project)
         if manifest["nodes"].get(unique_id, {}).get("resource_type") == "model":
-            return spec.merge_attributes(kinds={"iceberg"})
+            return spec.merge_attributes(kinds={"snowflake"})
         return spec
 
 
@@ -123,7 +125,11 @@ class DbtWarehouse(Component, Model, Resolvable):
             self.key_prefix,
             {**_SOURCE_KEYS, **_healthdata_gov_source_keys(project_dir)},
         )
-        command = list(self.dbt_command)
+        # `environment`, not credential-presence: a misconfigured prod pod
+        # should fail loudly rather than silently build a throwaway local
+        # DuckDB file inside the pod.
+        target = "prod" if settings.environment == "prod" else "local"
+        command = [*self.dbt_command, "--target", target]
 
         @dbt_assets(
             manifest=project.manifest_path,

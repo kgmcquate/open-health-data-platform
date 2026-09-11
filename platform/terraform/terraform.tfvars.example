@@ -37,10 +37,6 @@ snowflake_account_name      = ""
 # snowflake_database    = "OHDP"
 # snowflake_namespaces  = ["raw_healthdata_gov", "clean_healthdata_gov", "core"]
 #
-# Snowflake requires a network policy before it will issue a PAT to a SERVICE
-# user. Defaults to 0.0.0.0/0 — narrow it only once the DOKS egress IPs are
-# stable, or a node recycle will 401 every pipeline run.
+# Account-wide network policy. Defaults to 0.0.0.0/0 — narrow it only once the
+# DOKS egress IPs are stable, or a node recycle will lock out the account.
 # snowflake_allowed_ips = ["0.0.0.0/0"]
-#
-# Bump to rotate the pipeline's catalog token on the next apply.
-# snowflake_pat_keeper  = "v1"

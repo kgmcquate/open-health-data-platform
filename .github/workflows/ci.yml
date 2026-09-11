@@ -49,8 +49,6 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      # dbt runs in the project venv so the ohdp_ingestion.dbt.iceberg plugin
-      # loads (ADR-0010) — `uvx --from dbt-duckdb dbt` will not find it.
       - run: uv sync --all-groups --frozen
       - name: dbt parse (offline — no catalog or Spaces needed)
         run: |

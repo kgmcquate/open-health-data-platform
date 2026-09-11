@@ -2,27 +2,23 @@
 
 Operational procedures. Keep this current — it is the thing you reach for at 2am.
 
-## Snapshot rollback
+## Build failed — a bad model may already be live
 
-The serving warehouse is a pointer. To roll back:
-
-1. List snapshots: `aws s3 ls s3://$OHDP_SPACES_BUCKET/snapshots/ --endpoint-url $OHDP_SPACES_ENDPOINT_URL`
-2. Set `current.json` to the last-known-good `warehouse-{ts}.duckdb`.
-3. Roll the replica: `kubectl -n data rollout restart deploy/duckdb-replica`
-4. Confirm freshness in Superset and via `/healthz` on Cube.
-
-_Snapshots are immutable and retained for 14 versions (provisional, ADR pending §10.4)._
-
-## Build failed — no snapshot published
-
-Expected behaviour when a dbt test fails (ARCHITECTURE.md §3). Serving keeps the
-previous snapshot. Triage:
+Serving reads Snowflake directly (ADR-0012) — there is no publish gate between a
+`dbt build` and what dashboards see. dbt materializes each `table`/`incremental`
+model, *then* runs its tests, so a test failure means the (possibly bad) data
+is already in the table by the time you find out. Triage:
 
 1. Open the failed Dagster run. Logs are redacted — if you need raw output, run
-   `dbt build` locally against a fresh DuckDB.
+   `dbt build` locally against a fresh DuckDB (`--target local`/`--target ci`)
+   or, with credentials, `--target prod`.
 2. If an upstream API changed shape, fix the ingestion schema contract and the
    staging model in the same PR.
-3. Do not manually publish a snapshot to unblock. Fix forward.
+3. If the bad data is already visible downstream, the fix is a new green
+   `dbt build` run, not a rollback — there is no prior-snapshot pointer to
+   revert to. Time Travel (`snowflake_data_retention_days`) can recover a
+   table's pre-run state by hand if it's urgent:
+   `CREATE OR REPLACE TABLE <schema>.<table> AS SELECT * FROM <schema>.<table> AT (OFFSET => -3600);`
 
 ## Postgres restore
 
@@ -34,10 +30,11 @@ _Must be tested before M4 (§11)._
 
 ## Node memory pressure
 
-Symptom: pods OOMKilled, DuckDB queries failing. Check the serving worker pool
-metrics (queue wait, peak memory, spill bytes — §6). If a single query pattern is
-the cause, tighten the Cube `queryRewrite` caps. The node has no headroom for an
-unbounded scan by design.
+Symptom: pods OOMKilled. Serving queries run in Snowflake now (ADR-0012), not on
+this node, so this is almost always the pipeline pod during a `dbt build` or a
+large dlt load — check its memory, not a serving worker pool. If a single
+dashboard query pattern is the cause instead, tighten the Cube `queryRewrite`
+caps; Cube itself still runs on this node, Snowflake compute does not.
 
 ## Dagster GraphQL proxy
 

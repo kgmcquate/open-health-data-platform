@@ -13,7 +13,7 @@ def test_models_are_warehouse_prefixed_and_grouped_by_layer() -> None:
     }
     assert models, "no warehouse/* assets — did `dbt parse` run?"
     for node in models.values():
-        assert "dbt" in node.kinds and "iceberg" in node.kinds
+        assert "dbt" in node.kinds and "snowflake" in node.kinds
         assert node.group_name in ("warehouse_clean", "warehouse_core", "warehouse_marts")
         assert node.tags["ohdp/domain"] == "warehouse"
 

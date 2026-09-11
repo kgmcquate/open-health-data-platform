@@ -33,17 +33,15 @@ pipelineConfig:
   OHDP_SPACES_BUCKET: "ohdp-warehouse"
   OHDP_SPACES_ENDPOINT_URL: "https://nyc3.digitaloceanspaces.com"
   OHDP_SPACES_REGION: "nyc3"
-  # Iceberg lakehouse (ADR-0010), catalogued by Snowflake Horizon (ADR-0011).
-  # These four come from `terraform output` in platform/terraform; the matching
-  # credential (OHDP_ICEBERG_CREDENTIAL, "<user>:<pat>") is the one secret half
-  # and arrives in `ohdp-pipeline-secrets` from deploy-platform.yml.
-  #
-  # OHDP_ICEBERG_WAREHOUSE is a Snowflake *database*, not a virtual warehouse.
-  OHDP_ICEBERG_CATALOG_URI: "https://IRCMTCN-EKB34223.snowflakecomputing.com/polaris/api/catalog"
-  OHDP_ICEBERG_CATALOG_NAME: "ohdp"
-  OHDP_ICEBERG_WAREHOUSE: "OHDP"
-  OHDP_ICEBERG_SCOPE: "session:role:OHDP_PIPELINE"
-  OHDP_DBT_STAGE_DIR: "/tmp/ohdp_dbt_stage"
+  # Snowflake data warehouse (ADR-0012). These come from `terraform output` in
+  # platform/terraform; the matching private key (OHDP_SNOWFLAKE_PRIVATE_KEY —
+  # SERVICE users don't accept password auth) is the one secret half and
+  # arrives in `ohdp-pipeline-secrets` from deploy-platform.yml.
+  OHDP_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
+  OHDP_SNOWFLAKE_USER: "OHDP_PIPELINE"
+  OHDP_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
+  OHDP_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
+  OHDP_SNOWFLAKE_DATABASE: "OHDP"
 
 postgres:
   image: postgres:16.4-bookworm

@@ -46,7 +46,7 @@ env:
   SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
   AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
-  # Snowflake Horizon Catalog (ADR-0011). The provider reads user/role/key from
+  # Snowflake data warehouse (ADR-0012). The provider reads user/role/key from
   # the environment; only the account identifier is a variable. SNOWFLAKE_ROLE
   # must be able to create account-level objects (database, role, user, network
   # policy) — ACCOUNTADMIN unless you have made a narrower one.

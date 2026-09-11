@@ -13,28 +13,30 @@ snapshot-paths: ["snapshots"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
-# Medallion layers (ADR-0010). Every model materializes to an Iceberg table via
-# the `iceberg` plugin; dbt writes a scratch Parquet at +location first, the
-# plugin commits it to the catalog. Iceberg namespace is set per folder.
+# Medallion layers (ADR-0012). Plain tables — Snowflake in prod, DuckDB in
+# local/CI (profiles.yml). Schema is set per folder; generate_schema_name.sql
+# makes it land verbatim instead of dbt's default <target_schema>_<custom>
+# double-prefix.
 #
-#   clean/<source>/   -> namespace clean_<source>   (typed, deduped, per source)
-#   core/             -> namespace core              (conformed, cross-source)
-#   marts/<mart>/     -> namespace mart_<mart>       (presentation)
+#   clean/<source>/   -> schema clean_<source>   (typed, deduped, per source)
+#   core/             -> schema core              (conformed, cross-source)
+#   marts/<mart>/     -> schema mart_<mart>       (presentation)
 models:
   ohdp:
-    +materialized: external
-    +plugin: iceberg
     clean:
       +tags: ["clean"]
+      +materialized: table
       healthdata_gov:
-        +iceberg_namespace: "clean_healthdata_gov"
+        +schema: "clean_healthdata_gov"
     core:
       +tags: ["core"]
-      +iceberg_namespace: "core"
+      +materialized: table
+      +schema: "core"
     marts:
       +tags: ["marts"]
+      +materialized: table
       respiratory:
-        +iceberg_namespace: "mart_respiratory"
+        +schema: "mart_respiratory"
 
 # The test gate is load-bearing (ARCHITECTURE.md §3): a failed test must stop
 # the publish. Keep severity at error for anything a dashboard number depends on.

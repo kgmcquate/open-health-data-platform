@@ -2,19 +2,13 @@
 # reject a Destination object in the `destination` position; both are the
 # documented usage. Relax only this module.
 # mypy: disable-error-code="no-untyped-def, untyped-decorator, call-overload, no-any-return"
-"""A ``dlt`` source over one Socrata dataset, landing an Iceberg table in `raw`.
-
-dlt extracts, normalizes and keeps the incremental cursor; it does **not** write
-Iceberg. Its ``filesystem`` destination is a *staging* area holding only the
-current run's delta (``write_disposition="replace"``), which
-``ohdp_ingestion.iceberg.commit`` then lands in the catalog — the same writer the
-dbt plugin uses, so schema drift behaves the same in every layer.
-
-The split exists because dlt's Iceberg destination passes an explicit
-``location=`` on create, and Snowflake-managed storage assigns table locations
-itself and rejects one from the client (ADR-0011). Staging on Spaces is also
-where dlt keeps its pipeline state, which is what makes the incremental cursor
-survive a pod restart.
+"""A ``dlt`` source over one Socrata dataset, landing a native table in `raw`
+(ADR-0012). dlt writes straight to the destination — Snowflake in prod, a local
+DuckDB file in dev/CI (``ohdp_shared.settings.is_snowflake_configured``) — and
+handles schema evolution and the incremental cursor itself; there is no
+separate staging step or catalog-commit call. dlt keeps its own pipeline state
+in the destination dataset, which is what makes the cursor survive a pod
+restart.
 
 Every row carries two system columns we alias in explicitly:
 
@@ -23,7 +17,7 @@ Every row carries two system columns we alias in explicitly:
 * ``socrata_updated_at`` (``:updated_at``) — row mutation time; the incremental
   cursor, so re-runs only *fetch* rows that changed. The raw table itself is
   **append-only** (ADR-0010) — full history of what the API returned — and its
-  schema auto-evolves (``commit`` runs ``union_by_name`` on every write).
+  schema auto-evolves: dlt adds new columns on write, no bespoke code needed.
 
 ``$order=:id`` gives a stable pagination key.
 """
@@ -33,24 +27,22 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import dlt
-import pyarrow as pa
 from dlt.sources.helpers import requests
 
-from ohdp_ingestion.iceberg import Strategy, commit, is_local, namespace
+from ohdp_ingestion.naming import namespace
 from ohdp_shared import get_logger
-from ohdp_shared.settings import settings
+from ohdp_shared.settings import is_snowflake_configured, settings
 
 log = get_logger(__name__)
+
+WriteDisposition = Literal["append", "replace"]
 
 _SYSTEM_SELECT = "*,:id AS socrata_id,:updated_at AS socrata_updated_at"
 _EPOCH = "1900-01-01T00:00:00.000"
 _MAX_PAGE = 50_000  # Socrata hard ceiling on $limit
-# Staging lives beside the snapshots in Spaces, under its own prefix so it is
-# obvious that nothing here is durable.
-_STAGING_PREFIX = "_dlt_staging"
 
 
 @dlt.source(name="healthdata_gov")
@@ -75,14 +67,13 @@ def socrata_source(
     headers = {"X-App-Token": token} if token else {}
     page = min(page_size, _MAX_PAGE)
 
-    # Staging always `replace`: it holds this run's delta and nothing else, so
-    # the Iceberg commit can read the whole staged table back. History lives in
-    # Iceberg, not here. Whether that commit appends or overwrites is decided by
-    # `iceberg_strategy` below, off the same `incremental_cursor` flag.
+    # With a cursor we only fetched what changed, so `append` — raw is the full
+    # history of what the API returned (ADR-0010). Without one we re-fetched the
+    # whole dataset, so `replace` rather than append duplicates.
     @dlt.resource(
         name=table_name,
         primary_key="socrata_id",
-        write_disposition="replace",
+        write_disposition=write_disposition(incremental_cursor),
     )
     # dlt's documented pattern is to default the arg to the incremental object;
     # B008 flags the call in the default but that is exactly how the hint is wired.
@@ -126,52 +117,44 @@ def socrata_source(
     return rows
 
 
-def iceberg_strategy(incremental_cursor: str | None) -> Strategy:
-    """How a staged delta lands in the raw Iceberg table.
+def write_disposition(incremental_cursor: str | None) -> WriteDisposition:
+    """How a run's rows land in the raw table.
 
     With a cursor we only fetched what changed, so `append` — raw is the full
     history of what the API returned (ADR-0010). Without one we re-fetched the
-    whole dataset, so `overwrite` rather than append duplicates; Iceberg keeps
-    the prior snapshots for time travel either way.
+    whole dataset, so `replace` rather than append duplicates.
     """
-    return "append" if incremental_cursor else "overwrite"
+    return "append" if incremental_cursor else "replace"
 
 
-def _staging_destination(source: str) -> Any:
-    """dlt ``filesystem`` destination for the staging delta + the pipeline state.
-
-    Not the lake: the durable tables live in the catalog's own storage. This is
-    scratch that happens to need to outlive the pod, which is why it is on
-    Spaces in prod rather than a local dir.
-    """
-    if is_local():
-        from pathlib import Path
-
-        root = Path(settings.iceberg_local_warehouse).resolve() / "_staging"
-        root.mkdir(parents=True, exist_ok=True)
-        return dlt.destinations.filesystem(bucket_url=root.as_uri())
-
-    return dlt.destinations.filesystem(
-        bucket_url=f"s3://{settings.spaces_bucket}/{_STAGING_PREFIX}/{source}",
-        credentials={
-            "aws_access_key_id": settings.spaces_access_key_id,
-            "aws_secret_access_key": settings.spaces_secret_access_key,
-            "endpoint_url": settings.spaces_endpoint_url,
-            "region_name": settings.spaces_region,
-        },
-    )
+def _destination() -> Any:
+    """dlt destination for the raw table: Snowflake in prod, local DuckDB
+    otherwise (ADR-0012). dlt writes straight here — schema evolution and the
+    incremental cursor's pipeline state are both handled natively."""
+    if is_snowflake_configured():
+        return dlt.destinations.snowflake(
+            credentials={
+                "database": settings.snowflake_database,
+                "host": settings.snowflake_account,
+                "username": settings.snowflake_user,
+                "private_key": settings.snowflake_private_key,
+                "warehouse": settings.snowflake_warehouse,
+                "role": settings.snowflake_role,
+            }
+        )
+    return dlt.destinations.duckdb(credentials=settings.duckdb_path)
 
 
 def build_pipeline(*, pipeline_name: str, source: str) -> dlt.Pipeline:
     """A dlt pipeline that stages one source's deltas as Parquet.
 
     ``load_raw_table`` runs it and commits the result to ``raw_<source>``; dbt
-    reads the Iceberg tables as sources (the generated
+    reads the tables as dbt sources (the generated
     ``_healthdata_gov__sources.yml``).
     """
     return dlt.pipeline(
         pipeline_name=pipeline_name,
-        destination=_staging_destination(source),
+        destination=_destination(),
         dataset_name=namespace("raw", source),
         progress=None,
     )
@@ -183,7 +166,7 @@ class RawLoad:
 
     load_ids: list[str]
     rows: int
-    strategy: Strategy
+    strategy: WriteDisposition
 
 
 def load_raw_table(
@@ -196,11 +179,13 @@ def load_raw_table(
 ) -> RawLoad:
     """Fetch one Socrata dataset and land it in ``raw_<source>.<table_name>``.
 
-    Two steps on purpose (see the module docstring): dlt stages the delta, then
-    the shared Iceberg writer commits it.
+    Extract/normalize/load are run as separate steps (rather than a single
+    ``pipeline.run()``) so the load step can be skipped on a zero-row extract —
+    running it anyway on a `replace` resource would empty the table on a quiet
+    day, which is not the same thing as "the dataset is empty".
     """
     pipeline = build_pipeline(pipeline_name=f"{source}_{table_name}", source=source)
-    info = pipeline.run(
+    pipeline.extract(
         socrata_source(
             resource_id,
             table_name,
@@ -208,16 +193,14 @@ def load_raw_table(
             row_limit=row_limit,
         )
     )
+    rows = pipeline.normalize().row_counts.get(table_name, 0)
 
-    strategy = iceberg_strategy(incremental_cursor)
-    # dlt's dataset accessor is untyped; `replace` above means this is exactly
-    # the rows this run fetched.
-    staged: pa.Table = pipeline.dataset()[table_name].arrow()
-    if staged.num_rows:
-        commit(staged, f"{namespace('raw', source)}.{table_name}", strategy=strategy)
+    load_ids: list[str] = []
+    if rows:
+        load_ids = list(pipeline.load().loads_ids)
     else:
-        # Nothing changed upstream. An `overwrite` here would empty the table on
-        # a quiet day, which is not the same thing as "the dataset is empty".
-        log.info("no new rows staged; leaving the raw table alone", table=table_name)
+        log.info("no new rows extracted; leaving the raw table alone", table=table_name)
 
-    return RawLoad(load_ids=list(info.loads_ids), rows=staged.num_rows, strategy=strategy)
+    return RawLoad(
+        load_ids=load_ids, rows=rows, strategy=write_disposition(incremental_cursor)
+    )

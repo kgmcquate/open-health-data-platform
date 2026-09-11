@@ -1,12 +1,13 @@
 -- Clean layer: raw is append-only history; reduce to the current row per
 -- socrata_id, drop dlt bookkeeping, keep the source columns as-is (typing and
--- business logic belong in `core`). Upsert into Iceberg so re-runs only rewrite
--- what changed (ADR-0010).
+-- business logic belong in `core`). Merge so re-runs only rewrite what changed
+-- (ADR-0012). on_schema_change is explicit: dbt-snowflake's default ("ignore")
+-- would silently drop newly-arrived Socrata columns instead of adding them.
 {{ config(
-    materialized="external",
-    plugin="iceberg",
-    iceberg_strategy="upsert",
-    unique_key="socrata_id"
+    materialized="incremental",
+    incremental_strategy="merge",
+    unique_key="socrata_id",
+    on_schema_change="append_new_columns"
 ) }}
 
 with ranked as (

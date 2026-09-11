@@ -1,6 +1,6 @@
-# Versioned DuckDB snapshots + the current.json pointer (ARCHITECTURE.md §3),
-# and nightly pg_dump output (§11). DigitalOcean Spaces uses the same S3-style
-# access pattern without the Cloudflare dependency.
+# Nightly pg_dump output (ARCHITECTURE.md §11) and the mirrored Snowflake
+# pipeline private key below. The publish-and-replicate DuckDB snapshot
+# mechanism this bucket originally also held (ADR-0002) was retired in ADR-0012.
 resource "digitalocean_spaces_bucket" "warehouse" {
   name   = var.snapshot_bucket
   region = var.location
@@ -12,18 +12,18 @@ resource "digitalocean_spaces_bucket" "warehouse" {
 # destroys the record of the bucket. Create the Space once by hand and then
 # point the backend at it as described in backend.tf.
 
-# The Horizon Catalog credential (snowflake.tf, ADR-0011), mirrored into the
-# warehouse bucket as a private object. This is in addition to the
-# iceberg_credential output/repo-secret path, not a replacement for it — it
+# The Snowflake pipeline private key (snowflake.tf, ADR-0012), mirrored into
+# the warehouse bucket as a private object. This is in addition to the
+# snowflake_private_key output/repo-secret path, not a replacement for it — it
 # exists for anything that can pull a Spaces object directly instead of going
 # through gh secret + the deploy workflow. The bucket is private and this
 # object carries no separate ACL override, but note it is still plaintext at
-# rest: anyone with read access to the bucket can read the pipeline's PAT.
-resource "digitalocean_spaces_bucket_object" "iceberg_credential" {
+# rest: anyone with read access to the bucket can read the pipeline's key.
+resource "digitalocean_spaces_bucket_object" "snowflake_pipeline_private_key" {
   region       = var.location
   bucket       = digitalocean_spaces_bucket.warehouse.name
-  key          = "iceberg-credential.txt"
-  content      = local.iceberg_credential
+  key          = "snowflake-pipeline-private-key.pem"
+  content      = local.snowflake_private_key
   acl          = "private"
   content_type = "text/plain"
 }

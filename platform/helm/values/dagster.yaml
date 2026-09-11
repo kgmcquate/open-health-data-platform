@@ -86,8 +86,9 @@ runLauncher:
         # Spaces credentials, source API keys, OpenMetadata JWT. Referenced by
         # name only — never inlined into run config or tags, which render in the
         # public UI (§5).
-        # Also carries OHDP_ICEBERG_CREDENTIAL, the Horizon Catalog PAT pair
-        # ("<user>:<pat>") from Terraform (ADR-0011).
+        # Also carries OHDP_SNOWFLAKE_PRIVATE_KEY, the pipeline's Snowflake
+        # RSA private key (SERVICE users don't accept password auth) from
+        # Terraform (ADR-0012).
         - name: ohdp-pipeline-secrets
       envConfigMaps:
         - name: ohdp-pipeline-config

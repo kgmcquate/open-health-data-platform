@@ -1,31 +1,37 @@
-"""The raw loader's two-step path: dlt stages the delta, `commit` lands it in
-Iceberg (ADR-0011). Socrata is stubbed; the catalog is a local SqlCatalog."""
+"""The raw loader writes straight to the destination — a local DuckDB file in
+tests, Snowflake in prod (ADR-0012). Socrata is stubbed."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
 
 
 @pytest.fixture
 def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    """Point both the catalog and the dlt staging root at tmp_path."""
-    monkeypatch.setenv("OHDP_ICEBERG_CATALOG_URI", "")
-    monkeypatch.setenv("OHDP_ICEBERG_LOCAL_CATALOG_PATH", str(tmp_path / "cat.db"))
-    monkeypatch.setenv("OHDP_ICEBERG_LOCAL_WAREHOUSE", str(tmp_path / "wh"))
-    # dlt keeps pipeline state (the incremental cursor) here, not in the lake.
+    """Point the local DuckDB destination and dlt's own state dir at tmp_path."""
+    monkeypatch.setenv("OHDP_SNOWFLAKE_ACCOUNT", "")
+    monkeypatch.setenv("OHDP_DUCKDB_PATH", str(tmp_path / "build.duckdb"))
+    # dlt keeps pipeline state (the incremental cursor) here.
     monkeypatch.setenv("DLT_DATA_DIR", str(tmp_path / "dlt"))
 
     import ohdp_ingestion.healthdata_gov.source as src
-    import ohdp_ingestion.iceberg as ice
     from ohdp_shared.settings import Settings
 
     settings = Settings()
-    monkeypatch.setattr(ice, "settings", settings)
     monkeypatch.setattr(src, "settings", settings)
-    return ice
+    return settings
+
+
+def _rows(settings: Any, schema: str, table: str) -> dict[str, Any]:
+    con = duckdb.connect(settings.duckdb_path, read_only=True)
+    try:
+        return con.sql(f'select * from "{schema}"."{table}"').to_arrow_table().to_pydict()
+    finally:
+        con.close()
 
 
 def _stub_socrata(monkeypatch: pytest.MonkeyPatch, pages: list[list[dict[str, Any]]]) -> None:
@@ -54,13 +60,13 @@ def _stub_socrata(monkeypatch: pytest.MonkeyPatch, pages: list[list[dict[str, An
     monkeypatch.setattr(requests, "get", _get)
 
 
-def test_strategy_follows_the_cursor() -> None:
-    from ohdp_ingestion.healthdata_gov.source import iceberg_strategy
+def test_write_disposition_follows_the_cursor() -> None:
+    from ohdp_ingestion.healthdata_gov.source import write_disposition
 
     # A cursor means we fetched only the delta, so raw keeps history.
-    assert iceberg_strategy("socrata_updated_at") == "append"
+    assert write_disposition("socrata_updated_at") == "append"
     # No cursor means we re-fetched everything; appending would duplicate it.
-    assert iceberg_strategy(None) == "overwrite"
+    assert write_disposition(None) == "replace"
 
 
 def test_incremental_load_appends_history(lake: Any, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,7 +82,7 @@ def test_incremental_load_appends_history(lake: Any, monkeypatch: pytest.MonkeyP
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-02-01", "v": 2}]])
     load_raw_table(resource_id="abcd-1234", table_name="demo", source="healthdata_gov")
 
-    rows = lake.load_catalog().load_table("raw_healthdata_gov.demo").scan().to_arrow().to_pydict()
+    rows = _rows(lake, "raw_healthdata_gov", "demo")
     assert sorted(rows["v"]) == [1, 2]
 
 
@@ -86,15 +92,15 @@ def test_new_columns_evolve_the_schema(lake: Any, monkeypatch: pytest.MonkeyPatc
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": 1}]])
     load_raw_table(resource_id="abcd-1234", table_name="drift", source="healthdata_gov")
 
-    # Socrata datasets grow columns without warning; the commit unions them in
-    # and backfills the earlier rows with nulls.
+    # Socrata datasets grow columns without warning; dlt adds the new column and
+    # backfills the earlier rows with nulls.
     _stub_socrata(
         monkeypatch,
         [[{"socrata_id": "b", "socrata_updated_at": "2026-02-01", "v": 2, "added": "new"}]],
     )
     load_raw_table(resource_id="abcd-1234", table_name="drift", source="healthdata_gov")
 
-    rows = lake.load_catalog().load_table("raw_healthdata_gov.drift").scan().to_arrow().to_pydict()
+    rows = _rows(lake, "raw_healthdata_gov", "drift")
     assert "added" in rows
     assert sorted(zip(rows["v"], rows["added"], strict=True)) == [(1, None), (2, "new")]
 
@@ -102,8 +108,9 @@ def test_new_columns_evolve_the_schema(lake: Any, monkeypatch: pytest.MonkeyPatc
 def test_quiet_run_leaves_the_table_alone(lake: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """A wholesale-refresh dataset that returns nothing must not be emptied.
 
-    `overwrite` on an empty staging table would wipe the raw history, and
-    "upstream published no changes" is not "the dataset is now empty".
+    `replace` on a zero-row extract would wipe the raw history, and "upstream
+    published no changes" is not "the dataset is now empty" — the load step
+    must be skipped, not just given an empty table.
     """
     from ohdp_ingestion.healthdata_gov.source import load_raw_table
 
@@ -124,5 +131,6 @@ def test_quiet_run_leaves_the_table_alone(lake: Any, monkeypatch: pytest.MonkeyP
     )
 
     assert quiet.rows == 0
-    rows = lake.load_catalog().load_table("raw_healthdata_gov.full").scan().to_arrow().to_pydict()
+    assert quiet.load_ids == []
+    rows = _rows(lake, "raw_healthdata_gov", "full")
     assert rows["v"] == [1]

@@ -1,7 +1,7 @@
 -- Core layer: conformed, typed facts and dimensions, cross-source, the grain
--- downstream marts join on. Full rebuild each run (overwrite) — small tables.
+-- downstream marts join on. Full rebuild each run — small tables.
 -- Stub: one typed fact off the clean hospital-capacity model.
-{{ config(materialized="external", plugin="iceberg") }}
+{{ config(materialized="table") }}
 
 select
     cast(state as varchar)                        as state,

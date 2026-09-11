@@ -10,7 +10,7 @@
   - a **catalog asset** ``healthdata_gov/catalog/<raw_table>`` (unexecutable
     ``AssetSpec``, kind ``socrata``) — always;
   - a **table asset** ``healthdata_gov/<raw_table>`` (a ``dlt`` pipeline,
-    ``deps=[catalog asset]``, kinds ``dlt`` + ``iceberg``) — only when
+    ``deps=[catalog asset]``, kinds ``dlt`` + ``snowflake``) — only when
     ``enabled: true``.
 
 * ``HealthDataGovCadenceSchedules`` — one instance (``schedules/defs.yaml``).
@@ -39,7 +39,7 @@ from dagster.components import Component, ComponentLoadContext, Model, Resolvabl
 
 from ohdp_ingestion.healthdata_gov.config import Cadence, DatasetConfig
 from ohdp_ingestion.healthdata_gov.source import load_raw_table
-from ohdp_ingestion.iceberg import namespace
+from ohdp_ingestion.naming import namespace
 from ohdp_shared import get_logger
 
 log = get_logger(__name__)
@@ -118,14 +118,12 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             key=self.table_key,
             deps=[self.catalog_key],
             group_name=self.group_name,
-            description=(
-                f"{self.name} — appended to Iceberg table {_RAW_NS}.{self.raw_table} by dlt."
-            ),
+            description=(f"{self.name} — appended to {_RAW_NS}.{self.raw_table} by dlt."),
             metadata=metadata,
             # ohdp/cadence lives only on the table asset: it is what the cadence
             # schedules select on.
             tags={"ohdp/domain": _DOMAIN, "ohdp/cadence": self.cadence},
-            kinds={"dlt", "iceberg"},
+            kinds={"dlt", "snowflake"},
         )
 
     # --- defs ------------------------------------------------------------------
@@ -135,7 +133,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         cfg = self
 
         @multi_asset(specs=[spec], name=cfg.raw_table, op_tags={"ohdp/cadence": cfg.cadence})
-        def _asset(context) -> MaterializeResult:
+        def _asset() -> MaterializeResult:
             load = load_raw_table(
                 resource_id=cfg.id,
                 table_name=cfg.raw_table,
@@ -146,31 +144,12 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
 
             metadata: dict[str, object] = {
                 "dlt/load_ids": MetadataValue.json(load.load_ids),
-                # Rows this run staged and committed — not the table total, which
-                # comes off the Iceberg snapshot below.
-                "dlt/rows_committed": MetadataValue.int(load.rows),
-                "iceberg/strategy": load.strategy,
+                # Rows this run extracted and loaded, not the table total — dlt
+                # doesn't hand back a cheap total-row count the way an Iceberg
+                # snapshot summary used to.
+                "dlt/rows_loaded": MetadataValue.int(load.rows),
+                "dlt/write_disposition": load.strategy,
             }
-            try:
-                from ohdp_ingestion.iceberg import load_catalog
-
-                table = load_catalog().load_table(f"{_RAW_NS}.{cfg.raw_table}")
-                snap = table.current_snapshot()
-                arrow_schema = table.schema().as_arrow()
-                metadata["dagster/column_schema"] = TableSchema(
-                    columns=[
-                        TableColumn(name=f.name, type=str(f.type))
-                        for f in arrow_schema
-                        if not f.name.startswith("_dlt")
-                    ]
-                )
-                if snap is not None:
-                    total = snap.summary.get("total-records")
-                    if total is not None:
-                        metadata["dagster/row_count"] = MetadataValue.int(int(total))
-                    metadata["iceberg/snapshot_id"] = str(snap.snapshot_id)
-            except Exception as exc:  # noqa: BLE001 — best-effort
-                context.log.warning("no iceberg metadata for %s: %s", cfg.raw_table, exc)
 
             return MaterializeResult(asset_key=key, metadata=metadata)
 

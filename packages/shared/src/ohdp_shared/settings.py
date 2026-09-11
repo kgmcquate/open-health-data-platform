@@ -25,46 +25,34 @@ class Settings(BaseSettings):
     spaces_secret_access_key: str = ""
     spaces_region: str = "nyc3"
     spaces_bucket: str = "ohdp-warehouse"
-    snapshot_retention: int = Field(default=14, description="daily snapshots kept in Spaces")
 
-    # Iceberg lakehouse (ADR-0010, catalog per ADR-0011). Snowflake Horizon Catalog
-    # is the REST catalog and owns the storage — the table files live in Snowflake,
-    # not in spaces_bucket, and Horizon vends short-lived credentials for them.
-    iceberg_catalog_uri: str = Field(
+    # Snowflake data warehouse (ADR-0012). Plain tables, no REST catalog. Empty
+    # snowflake_account means local dev/CI — see is_snowflake_configured() below,
+    # which callers use to fall back to the local DuckDB path instead.
+    snowflake_account: str = Field(
         default="",
         description=(
-            "Horizon Catalog Iceberg REST endpoint, "
-            "https://<org>-<account>.snowflakecomputing.com/polaris/api/catalog"
+            "<organization>-<account> identifier dlt/dbt-snowflake connect to as host/account."
         ),
     )
-    iceberg_catalog_name: str = "ohdp"
-    iceberg_credential: str = Field(
+    snowflake_user: str = "OHDP_PIPELINE"
+    snowflake_private_key: str = Field(
         default="",
         description=(
-            "Bare PAT used as the OAuth2 client_secret against the catalog — NOT "
-            "'<snowflake_user>:<pat>'; Snowflake's token endpoint 400s with "
-            "invalid_scope if a client_id rides along. Terraform's iceberg_credential "
-            "output."
+            "The pipeline's RSA private key (PKCS#8 PEM) — Snowflake SERVICE users "
+            "don't accept password auth, so this is what both dlt's Snowflake "
+            "destination and dbt-snowflake authenticate with. Terraform's "
+            "snowflake_private_key output."
         ),
     )
-    iceberg_scope: str = Field(
-        default="session:role:OHDP_PIPELINE",
-        description="Snowflake role the catalog session runs as.",
-    )
-    iceberg_warehouse: str = Field(
-        default="OHDP",
-        description=(
-            "The Iceberg REST 'warehouse' — a Snowflake *database* name, not a "
-            "virtual warehouse. Namespaces are schemas inside it."
-        ),
-    )
-    # When iceberg_catalog_uri is unset (local dev / CI) fall back to a pyiceberg
-    # SqlCatalog: this SQLite file is the catalog, iceberg_local_warehouse the data root.
-    iceberg_local_catalog_path: str = "data/warehouse/iceberg_catalog.db"
-    iceberg_local_warehouse: str = "data/warehouse/lake"
+    snowflake_role: str = "OHDP_PIPELINE"
+    snowflake_warehouse: str = "OHDP_WH"
+    snowflake_database: str = "OHDP"
 
-    # Local DuckDB warehouse path used by the publish step (writer side only)
-    duckdb_path: str = "data/warehouse/warehouse.duckdb"
+    # The one local DuckDB file both local/CI dlt ingestion and the local/ci dbt
+    # targets read and write, so dbt sources resolve against what dlt just
+    # loaded. Must match profiles.yml's OHDP_DUCKDB_PATH default.
+    duckdb_path: str = "data/warehouse/build.duckdb"
 
     # Postgres (single instance, 4 logical databases)
     postgres_host: str = "localhost"
@@ -88,3 +76,8 @@ def _load() -> Settings:
 
 
 settings: Settings = _load()
+
+
+def is_snowflake_configured() -> bool:
+    """False in local dev/CI (falls back to the local DuckDB path), true in prod."""
+    return bool(settings.snowflake_account)

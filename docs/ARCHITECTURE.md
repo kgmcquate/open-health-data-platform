@@ -47,12 +47,11 @@ flowchart TB
         BUILD["dbt build pod<br/>ephemeral"]
     end
 
-    subgraph storage["Object storage — Cloudflare R2"]
-        ART["Versioned DuckDB snapshots<br/>+ current.json pointer"]
+    subgraph storage["Snowflake data warehouse"]
+        SNOW["Medallion schemas<br/>raw / clean / core / marts"]
     end
 
     subgraph serving["Serving"]
-        REPL["DuckDB read replica<br/>read-only, local NVMe"]
         CUBE["Cube Core<br/>semantic layer"]
     end
 
@@ -72,9 +71,8 @@ flowchart TB
 
     S1 & S2 & S3 & S4 & S5 --> BUILD
     DAG -->|launches| BUILD
-    BUILD -->|uploads snapshot| ART
-    ART -->|init container pulls| REPL
-    REPL --> CUBE
+    BUILD -->|dlt loads, dbt-snowflake builds| SNOW
+    SNOW --> CUBE
     CUBE --> SUP
     CUBE --> BOT
     CUBE --> ALERT
@@ -99,51 +97,44 @@ flowchart TB
 | Component | Responsibility | Notes |
 |---|---|---|
 | Hub app | Signup, billing, chat UI, embedded dashboards, links to every tool | The only thing most users see first |
-| Dagster | Ingestion, dbt orchestration, snapshot publishing, ML inference, alert checks | Publicly visible, hardened (§5) |
-| dbt | SQL transformation and tests against DuckDB | Source of truth for models |
-| DuckDB | Compute and storage | Publish-and-replicate, never shared read-write |
-| Cube Core | Semantic layer: measures, dimensions, access control, MCP endpoint | Single definition of every metric |
-| Superset | Dashboards, embedded and standalone | Queries Cube, not DuckDB |
+| Dagster | Ingestion, dbt orchestration, ML inference, alert checks | Publicly visible, hardened (§5) |
+| dbt | SQL transformation and tests | Snowflake in prod, DuckDB in local dev/CI (ADR-0012) |
+| Snowflake | Compute and storage for the medallion warehouse | dlt loads, dbt-snowflake builds |
+| Cube Core | Semantic layer: measures, dimensions, access control, MCP endpoint | Single definition of every metric, queries Snowflake directly |
+| Superset | Dashboards, embedded and standalone | Queries Cube, not Snowflake |
 | OpenMetadata | Catalog, lineage, glossary, metric directory, discovery MCP | Human-browsable surface |
 | Postgres | App metadata for Dagster, Superset, OpenMetadata, hub app | One instance, four databases |
-| R2 | Versioned snapshots and Parquet | Zero egress fees |
+| Spaces | Postgres backups | S3-compatible, zero egress fees |
 
 ---
 
 ## 3. Data lifecycle
 
-The core pattern. Multiple processes may open a DuckDB file read-only **only when
-no process holds it read-write**, so the writer and readers must never share a file.
+The core pattern (ADR-0012). dlt and dbt-snowflake write straight to Snowflake;
+there is no separate publish/replicate step, and no snapshot file to keep two
+processes from sharing.
 
 ```mermaid
 sequenceDiagram
     participant Sched as Dagster schedule
-    participant Build as dbt build pod
-    participant R2 as Cloudflare R2
-    participant K8s as k3s API
-    participant Repl as DuckDB replica
+    participant Build as pipeline pod
+    participant Snow as Snowflake
     participant OM as OpenMetadata
 
     Sched->>Build: launch run (concurrency 1)
-    Build->>Build: ingest sources to raw tables
+    Build->>Snow: dlt loads (raw tables)
     Build->>Build: dbt build (models + tests)
     alt tests fail
-        Build-->>Sched: fail run, publish nothing
+        Build-->>Sched: fail run, models roll back per-model
     else tests pass
-        Build->>R2: upload warehouse-{ts}.duckdb
-        Build->>R2: update current.json pointer
+        Build->>Snow: dbt-snowflake writes clean/core/marts
         Build->>OM: upsert lineage, metrics, freshness
-        Build->>K8s: patch Deployment annotation
-        K8s->>Repl: rolling restart
-        Repl->>R2: init container pulls current snapshot
-        Repl->>Repl: open read-only, serve
     end
 ```
 
-**Rollback is a pointer change.** Snapshots are immutable and retained for N versions.
-
-**Do not publish on failed tests.** The dbt test gate is the only thing standing
-between a broken upstream API and a wrong number on a clinician's dashboard.
+**Do not merge/build on failed tests.** The dbt test gate is the only thing
+standing between a broken upstream API and a wrong number on a clinician's
+dashboard.
 
 ---
 
@@ -177,7 +168,6 @@ flowchart TB
             D2["dagster-daemon"]
             D3["graphql-authz-proxy"]
             D4["oauth2-proxy"]
-            D5["duckdb-replica"]
             D6["cube"]
         end
 
@@ -206,7 +196,6 @@ flowchart TB
     ING --> M1
     D4 --> D3
     D3 --> D1
-    D5 --> R2
     vm -.->|metrics, logs| GC
 ```
 
@@ -231,14 +220,13 @@ Steady state ~13 GB, burst ~15 GB during a build.
 | opensearch | 3 GB | Largest single consumer; single node, 1 shard, 0 replicas |
 | openmetadata-server | 2 GB | JVM |
 | superset | 1 GB | Celery worker and beat deferred to phase 3 |
-| duckdb-replica | 1.5 GB | Bounded worker pool, see §6 |
 | postgres | 1 GB | 4 databases: dagster, superset, openmetadata, app |
 | dagster-webserver + daemon | 1 GB | |
-| cube | 0.5 GB | No Cube Store, no pre-aggregations initially |
+| cube | 0.5 GB | No Cube Store, no pre-aggregations initially; queries Snowflake directly |
 | hub-web + hub-api | 0.5 GB | |
 | ingress, cert-manager, oauth2-proxy, graphql-proxy | 0.3 GB | |
 | k3s system | 1 GB | |
-| dbt build pod | 1.5 GB | Burst only, concurrency capped at 1 |
+| pipeline pod | 1.5 GB | Burst only, concurrency capped at 1; compute is Snowflake, not this pod |
 
 Set memory **limits** on every pod. An unbounded DuckDB query will otherwise take
 down the node.
@@ -399,14 +387,14 @@ Each milestone should be independently demoable. Do not start the next until the
 previous is green for a week.
 
 **M0 — Pipeline spine**
-Two sources (OpenAQ, one CDC surveillance dataset). dbt against local DuckDB.
-Dagster running the build. No auth, no UI, no catalog. Snapshot published to R2 and
-pulled by a read replica. Goal: prove the publish-and-replicate loop stays green.
+Two sources (OpenAQ, one CDC surveillance dataset). dbt against local DuckDB in
+dev/CI, Snowflake in prod (ADR-0012). Dagster running the build. No auth, no UI,
+no catalog. Goal: prove dlt loads + dbt-snowflake builds stay green.
 
 **M1 — Platform on k3s**
 Provision the VM, k3s, Postgres, ingress, TLS. Deploy Dagster with oauth2-proxy and
-the GraphQL allowlist proxy. Deploy Superset pointed at the read replica. Everything
-public, still free, still no chatbot.
+the GraphQL allowlist proxy. Deploy Superset pointed at Snowflake (directly, or via
+Cube once M2 lands). Everything public, still free, still no chatbot.
 
 **M2 — Semantic layer and catalog**
 Cube Core with the first five metrics. Repoint Superset at Cube. Deploy OpenMetadata
@@ -437,9 +425,10 @@ Things that will look like reasonable improvements and are not:
   free managed control planes exist. The binding constraint is compute price per
   GB of RAM, where Hetzner is ~4-5x cheaper than the managed-k8s providers.
   [ADR-0005](decisions/0005-hetzner-k3s-over-managed-kubernetes.md) has the numbers.
-- **Do not adopt DuckDB's Quack client-server protocol yet.** It is promoted to stable
-  in DuckDB 2.0, which had no release candidate date as of August 2026. Evaluate it,
-  document the evaluation, but keep the serving path on publish-and-replicate.
+- **DuckDB's Quack client-server protocol is moot for serving.** It would have
+  solved DuckDB's single-writer constraint for the publish-and-replicate path,
+  which ADR-0012 retired — serving reads Snowflake (directly, or via Cube)
+  instead.
 - **Do not use the dbt Semantic Layer's serving APIs.** They require dbt Cloud at
   roughly $100/user/month. MetricFlow itself is open source; the serving tier is not.
 - **Do not give the agent a raw SQL tool** on the grounds that it would be more flexible.
@@ -461,8 +450,7 @@ Flag these rather than deciding unilaterally:
    non-clinical, with disclaimers on every generated output. Worth a lawyer's hour
    before launch.
 3. **Free-tier chat quota.** Starting proposal: 20 questions/month free, 500 paid.
-4. **Snapshot retention.** Starting proposal: keep 14 daily snapshots in R2.
-5. **Which persona leads.** Clinicians and business users want different defaults from
+4. **Which persona leads.** Clinicians and business users want different defaults from
    the same data; this affects the metrics modeled first.
 
 ---

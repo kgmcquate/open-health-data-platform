@@ -81,7 +81,7 @@ jobs:
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
           DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          SNOWFLAKE_ICEBERG_CREDENTIAL: ${{ secrets.SNOWFLAKE_ICEBERG_CREDENTIAL }}
+          SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
             --dry-run=client -o yaml | kubectl apply -f -; }
@@ -91,19 +91,19 @@ jobs:
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
-            --from-literal=OHDP_ICEBERG_CREDENTIAL="$SNOWFLAKE_ICEBERG_CREDENTIAL"
+            --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET"
 
-          # OHDP_ICEBERG_CREDENTIAL is the bare Horizon Catalog PAT — NOT
-          # "<user>:<pat>", Snowflake's token endpoint 400s (invalid_scope) if a
-          # client_id rides along. Terraform mints it; publish it with:
-          #   terraform output -raw iceberg_credential | gh secret set SNOWFLAKE_ICEBERG_CREDENTIAL
-          # Snowflake caps a PAT at 365 days — when it expires every asset in the
-          # run 401s, so rotate (bump `snowflake_pat_keeper`, re-apply, re-set the
-          # repo secret, re-deploy) before then. See ADR-0011.
+          # OHDP_SNOWFLAKE_PRIVATE_KEY is the pipeline's RSA key pair's private
+          # half (PKCS#8 PEM) — Snowflake SERVICE users don't accept password
+          # auth, so this is what both dlt and dbt-snowflake authenticate with
+          # (ADR-0012). Terraform generates it; publish it with:
+          #   terraform output -raw snowflake_private_key | gh secret set SNOWFLAKE_PIPELINE_PRIVATE_KEY
+          # To rotate, force-replace the key and re-run the two steps above:
+          #   terraform apply -replace=tls_private_key.pipeline
 
           # oauth2-proxy (ADR-0007). platform-base owns this Secret and generates
           # `cookie-secret`; we merge the Google client creds into it. --type merge

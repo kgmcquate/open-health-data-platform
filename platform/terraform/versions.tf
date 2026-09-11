@@ -16,6 +16,12 @@ terraform {
       source  = "snowflakedb/snowflake"
       version = "~> 2.21"
     }
+    # Generates the pipeline's RSA key pair (snowflake.tf) — Snowflake SERVICE
+    # users don't accept password auth; key-pair is the supported mechanism.
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 
   # Backend lives in backend.tf as a partial config.
