@@ -1,5 +1,6 @@
 """The Iceberg lake helpers + the custom dbt writer plugin, against a local
-SqlCatalog (SQLite + a tmp warehouse dir) — same pyiceberg API as Polaris."""
+SqlCatalog (SQLite + a tmp warehouse dir) — the same pyiceberg API the Snowflake
+Horizon Catalog serves in prod (ADR-0011)."""
 
 from __future__ import annotations
 

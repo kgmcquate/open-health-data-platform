@@ -42,3 +42,38 @@ output "warehouse_bucket" {
   description = "Spaces bucket holding snapshots and backups."
   value       = digitalocean_spaces_bucket.warehouse.name
 }
+
+# ---------------------------------------------------------------------------
+# Snowflake Horizon Catalog (ADR-0011). These four are exactly the OHDP_ICEBERG_*
+# settings the pipeline reads; the first three are non-secret and live in the
+# `ohdp-pipeline-config` ConfigMap, the credential is a repo secret.
+# ---------------------------------------------------------------------------
+output "iceberg_catalog_uri" {
+  description = "OHDP_ICEBERG_CATALOG_URI — the Horizon Catalog Iceberg REST endpoint."
+  value       = local.snowflake_catalog_uri
+}
+
+output "iceberg_warehouse" {
+  description = "OHDP_ICEBERG_WAREHOUSE — the Snowflake database a REST client attaches to."
+  value       = snowflake_database.ohdp.name
+}
+
+output "iceberg_scope" {
+  description = "OHDP_ICEBERG_SCOPE — the OAuth2 scope naming the role the catalog session runs as."
+  value       = "session:role:${snowflake_account_role.pipeline.name}"
+}
+
+output "iceberg_credential" {
+  description = <<-EOT
+    OHDP_ICEBERG_CREDENTIAL — "<user>:<pat>", the client_credentials pair
+    pyiceberg exchanges for an access token. Store it as the repo secret
+    SNOWFLAKE_ICEBERG_CREDENTIAL, which deploy-platform.yml reads.
+  EOT
+  value       = "${snowflake_service_user.pipeline.name}:${snowflake_user_programmatic_access_token.pipeline.token}"
+  sensitive   = true
+}
+
+output "iceberg_credential_command" {
+  description = "Push the catalog credential straight into the GitHub repo secret the deploy reads."
+  value       = "terraform output -raw iceberg_credential | gh secret set SNOWFLAKE_ICEBERG_CREDENTIAL"
+}

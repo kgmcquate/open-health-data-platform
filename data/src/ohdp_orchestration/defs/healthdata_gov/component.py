@@ -38,7 +38,7 @@ from dagster import (
 from dagster.components import Component, ComponentLoadContext, Model, Resolvable
 
 from ohdp_ingestion.healthdata_gov.config import Cadence, DatasetConfig
-from ohdp_ingestion.healthdata_gov.source import build_pipeline, socrata_source
+from ohdp_ingestion.healthdata_gov.source import load_raw_table
 from ohdp_ingestion.iceberg import namespace
 from ohdp_shared import get_logger
 
@@ -136,27 +136,21 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
 
         @multi_asset(specs=[spec], name=cfg.raw_table, op_tags={"ohdp/cadence": cfg.cadence})
         def _asset(context) -> MaterializeResult:
-            pipeline = build_pipeline(
-                pipeline_name=f"healthdata_gov_{cfg.raw_table}",
+            load = load_raw_table(
+                resource_id=cfg.id,
+                table_name=cfg.raw_table,
                 source=_SOURCE,
-            )
-            source = socrata_source(
-                cfg.id,
-                cfg.raw_table,
                 incremental_cursor=cfg.incremental_cursor,
                 row_limit=cfg.row_limit,
             )
-            info = pipeline.run(source)
 
-            metadata: dict[str, object] = {"dlt/load_ids": MetadataValue.json(info.loads_ids)}
-            try:
-                norm = pipeline.last_trace.last_normalize_info
-                if norm is not None and cfg.raw_table in norm.row_counts:
-                    metadata["dlt/rows_appended"] = MetadataValue.int(
-                        norm.row_counts[cfg.raw_table]
-                    )
-            except Exception as exc:  # noqa: BLE001 — metrics are best-effort
-                context.log.warning("no dlt row metrics for %s: %s", cfg.raw_table, exc)
+            metadata: dict[str, object] = {
+                "dlt/load_ids": MetadataValue.json(load.load_ids),
+                # Rows this run staged and committed — not the table total, which
+                # comes off the Iceberg snapshot below.
+                "dlt/rows_committed": MetadataValue.int(load.rows),
+                "iceberg/strategy": load.strategy,
+            }
             try:
                 from ohdp_ingestion.iceberg import load_catalog
 

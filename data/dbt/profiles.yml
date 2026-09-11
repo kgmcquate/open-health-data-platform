@@ -13,13 +13,11 @@ ohdp:
       # dbt writes each model to a scratch Parquet here; the iceberg plugin then
       # commits it to the catalog. Local only — never the durable artifact.
       external_root: "{{ env_var('OHDP_DBT_STAGE_DIR', '/tmp/ohdp_dbt_stage') }}"
-      extensions: [httpfs, parquet, iceberg]
-      settings:
-        s3_endpoint: "{{ env_var('OHDP_SPACES_ENDPOINT_URL', 'https://nyc3.digitaloceanspaces.com') | replace('https://', '') }}"
-        s3_region: "{{ env_var('OHDP_SPACES_REGION', 'nyc3') }}"
-        s3_access_key_id: "{{ env_var('OHDP_SPACES_ACCESS_KEY_ID', '') }}"
-        s3_secret_access_key: "{{ env_var('OHDP_SPACES_SECRET_ACCESS_KEY', '') }}"
-        s3_url_style: "vhost"
+      # No httpfs/iceberg extension and no s3 credentials: DuckDB never reaches
+      # the lake itself. The plugin reads and writes through pyiceberg, which
+      # gets per-table credentials vended by the catalog (ADR-0011), and the
+      # scratch Parquet at `external_root` is local.
+      extensions: [parquet]
       plugins:
         - module: ohdp_ingestion.dbt.iceberg
           alias: iceberg
@@ -30,7 +28,7 @@ ohdp:
       # dbt writes each model to a scratch Parquet here; the iceberg plugin then
       # commits it to the catalog. Local only — never the durable artifact.
       external_root: "{{ env_var('OHDP_DBT_STAGE_DIR', '/tmp/ohdp_dbt_stage') }}"
-      extensions: [httpfs, parquet, iceberg]
+      extensions: [parquet]
       plugins:
         - module: ohdp_ingestion.dbt.iceberg
           alias: iceberg

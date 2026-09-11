@@ -76,7 +76,11 @@ are created **stopped** (`default_status` in `schedules/defs.yaml`).
 - The `columns` block is Socrata's *advertised* schema; dlt infers the real
   loaded types at materialization.
 - Local dev / CI use a pyiceberg SqlCatalog (SQLite) — set
-  `OHDP_ICEBERG_LOCAL_*`; prod uses Polaris via `OHDP_ICEBERG_CATALOG_URI`.
-  See [ADR-0010](../../../../../../docs/decisions/0010-iceberg-medallion-lakehouse.md).
+  `OHDP_ICEBERG_LOCAL_*`; prod uses Snowflake's Horizon Catalog via
+  `OHDP_ICEBERG_CATALOG_URI`. See
+  [ADR-0010](../../../../../../docs/decisions/0010-iceberg-medallion-lakehouse.md)
+  and [ADR-0011](../../../../../../docs/decisions/0011-snowflake-horizon-catalog.md).
+- dlt stages the delta as Parquet and `ohdp_ingestion.iceberg.commit` lands it
+  in the catalog; dlt does not write Iceberg itself (ADR-0011).
 - Optional `OHDP_HEALTHDATA_APP_TOKEN` raises Socrata rate limits.
 - Schedules fire at 07:00 UTC, before the 08:00 dbt build.

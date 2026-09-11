@@ -50,7 +50,9 @@ variable "dns_base" {
 variable "dns_hostnames" {
   description = "Service hostnames (left-most label) fronted by the Traefik ingress."
   type        = list(string)
-  default     = ["app", "dagster", "catalog", "cube", "superset", "polaris"]
+  # `polaris` is gone with the Polaris console (ADR-0011). The Horizon Catalog
+  # is a Snowflake-hosted endpoint — nothing of ours is served for it.
+  default = ["app", "dagster", "catalog", "cube", "superset"]
 }
 
 variable "loadbalancer_ip" {
@@ -66,4 +68,104 @@ variable "loadbalancer_ip" {
     condition     = var.loadbalancer_ip == "" || can(cidrhost("${var.loadbalancer_ip}/32", 0))
     error_message = "loadbalancer_ip must be a valid IPv4 address or left empty."
   }
+}
+
+# ---------------------------------------------------------------------------
+# Snowflake Horizon Catalog (ADR-0011)
+# ---------------------------------------------------------------------------
+
+variable "snowflake_organization_name" {
+  description = <<-EOT
+    Snowflake organization name. With `snowflake_account_name` it forms the
+    account identifier `<org>-<account>` used in the Horizon Catalog URL.
+    Find both with `SELECT CURRENT_ORGANIZATION_NAME(), CURRENT_ACCOUNT_NAME()`.
+  EOT
+  type        = string
+}
+
+variable "snowflake_account_name" {
+  description = "Snowflake account name (not the account locator)."
+  type        = string
+}
+
+variable "snowflake_database" {
+  description = "Snowflake database backing the lake. This is the Iceberg REST `warehouse` the pipeline attaches to."
+  type        = string
+  default     = "OHDP"
+}
+
+variable "snowflake_warehouse" {
+  description = "Virtual warehouse for ad-hoc SQL. The pipeline does not use it — DuckDB is the compute."
+  type        = string
+  default     = "OHDP_WH"
+}
+
+variable "snowflake_namespaces" {
+  description = <<-EOT
+    Iceberg namespaces to create as schemas, lowercase to match what the
+    pipeline sends over REST (ohdp_ingestion.iceberg.namespace). Marts can also
+    appear on their own via the dbt plugin's create_namespace_if_not_exists;
+    list one here to bring it under Terraform.
+  EOT
+  type        = list(string)
+  default     = ["raw_healthdata_gov", "clean_healthdata_gov", "core"]
+}
+
+variable "snowflake_data_retention_days" {
+  description = "Time Travel window on the database. Iceberg snapshot history is separate and unaffected."
+  type        = number
+  default     = 1
+}
+
+variable "snowflake_pipeline_role" {
+  description = "Account role the pipeline authenticates as. Becomes the REST `scope` — session:role:<this>."
+  type        = string
+  default     = "OHDP_PIPELINE"
+}
+
+variable "snowflake_pipeline_user" {
+  description = "SERVICE user the pipeline's PAT belongs to. Becomes the client_id half of OHDP_ICEBERG_CREDENTIAL."
+  type        = string
+  default     = "OHDP_PIPELINE"
+}
+
+variable "snowflake_allowed_ips" {
+  description = <<-EOT
+    CIDRs allowed to authenticate as the pipeline user. Snowflake requires a
+    network policy on a SERVICE user before it will issue or accept a PAT at
+    all, so this exists whether or not you want to restrict anything.
+
+    The default allows everything. Narrowing it to the DOKS egress IPs only
+    works once those IPs are stable — node recycles and pool resizes change
+    them, and a stale entry here fails every pipeline run with a 401.
+  EOT
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+
+  validation {
+    condition     = length(var.snowflake_allowed_ips) > 0
+    error_message = "snowflake_allowed_ips must list at least one CIDR — an empty policy blocks the pipeline."
+  }
+}
+
+variable "snowflake_pat_days_to_expiry" {
+  description = "Lifetime of the pipeline's programmatic access token. Snowflake caps this at 365."
+  type        = number
+  default     = 365
+
+  validation {
+    condition     = var.snowflake_pat_days_to_expiry > 0 && var.snowflake_pat_days_to_expiry <= 365
+    error_message = "snowflake_pat_days_to_expiry must be between 1 and 365 (Snowflake's ceiling)."
+  }
+}
+
+variable "snowflake_pat_keeper" {
+  description = <<-EOT
+    Change this to any new non-empty value to rotate the pipeline's PAT on the
+    next apply. Terraform rotates only when it moves from one non-empty value to
+    a different one; adding or removing the field does nothing. Re-run the
+    platform deploy afterwards so the cluster secret picks up the new token.
+  EOT
+  type        = string
+  default     = "v1"
 }

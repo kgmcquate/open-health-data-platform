@@ -15,4 +15,5 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0006](0006-upstream-charts-and-external-authz-proxy.md) | Upstream Helm charts, external authz proxy | Accepted |
 | [0007](0007-oauth2-proxy-google-sso.md) | Google login wall in front of Dagster (oauth2-proxy) | Accepted |
 | [0008](0008-config-driven-healthdata-gov-ingestion.md) | Config-driven HealthData.gov ingestion (Dagster component + dlt) | Accepted |
-| [0010](0010-iceberg-medallion-lakehouse.md) | Iceberg medallion lakehouse on Spaces, Polaris catalog | Accepted |
+| [0010](0010-iceberg-medallion-lakehouse.md) | Iceberg medallion lakehouse, Polaris catalog | Superseded in part by [0011](0011-snowflake-horizon-catalog.md) |
+| [0011](0011-snowflake-horizon-catalog.md) | Snowflake Horizon Catalog replaces Polaris; Terraform-managed | Accepted |

@@ -1,6 +1,12 @@
 # 0010 — Iceberg medallion lakehouse on Spaces, Polaris catalog
 
-**Status:** Accepted
+**Status:** Accepted, but the catalog and storage decisions are **superseded by
+[ADR-0011](0011-snowflake-horizon-catalog.md)** — the catalog is Snowflake's
+Horizon Catalog and the table files live in Snowflake-managed storage, not
+Spaces. The medallion layers, the namespace scheme, the dbt-duckdb writer plugin
+and the publish step below all still hold. The "Catalog: Apache Polaris (REST)"
+section and the `raw`-via-dlt mechanics are history; read them for why, not for
+what runs.
 **Relates to:** supersedes the storage layout in
 [ADR-0008](0008-config-driven-healthdata-gov-ingestion.md); amends
 [ADR-0002](0002-publish-and-replicate-duckdb.md) (serving unchanged, its *inputs*

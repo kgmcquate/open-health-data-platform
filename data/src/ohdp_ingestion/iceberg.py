@@ -1,19 +1,28 @@
-"""One place that knows how to reach the Iceberg catalog (ADR-0010).
+"""One place that knows how to reach the Iceberg catalog (ADR-0010, ADR-0011).
 
-Production: an Apache Polaris REST catalog (``OHDP_ICEBERG_CATALOG_URI`` set).
-Local dev / CI: a pyiceberg ``SqlCatalog`` on SQLite with a local warehouse dir —
-same ``pyiceberg.catalog`` API, no services to run.
+Production: Snowflake's **Horizon Catalog** over the Iceberg REST protocol
+(``OHDP_ICEBERG_CATALOG_URI`` set). Local dev / CI: a pyiceberg ``SqlCatalog`` on
+SQLite with a local warehouse dir — same ``pyiceberg.catalog`` API, no services.
+
+Snowflake owns the storage for these tables and vends short-lived credentials
+to the REST client per table, which is why nothing here passes ``s3.*``
+properties or picks table locations. DuckDB is still the only compute; Snowflake
+is a catalog and a bucket.
 
 Used by three callers, so it lives in the ingestion layer (no dagster/dlt import):
-- ``ohdp_ingestion`` — the dlt raw loader
-- ``data/dbt/plugins/iceberg_write.py`` — the dbt read/write plugin
+- ``ohdp_ingestion.healthdata_gov`` — the raw loader
+- ``ohdp_ingestion.dbt.iceberg`` — the dbt read/write plugin
 - ``ohdp_orchestration`` — the publish step
 """
 
 from __future__ import annotations
 
+import warnings
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+import pyarrow as pa
 
 from ohdp_shared import get_logger
 from ohdp_shared.settings import settings
@@ -24,18 +33,9 @@ log = get_logger(__name__)
 # `curated` splits into `core` and `mart_<name>`.
 Layer = str  # "raw" | "clean" | "curated"
 
-
-def _s3_props() -> dict[str, str]:
-    """pyiceberg FileIO props for DigitalOcean Spaces."""
-    if not settings.spaces_endpoint_url:
-        return {}
-    return {
-        "s3.endpoint": settings.spaces_endpoint_url,
-        "s3.access-key-id": settings.spaces_access_key_id,
-        "s3.secret-access-key": settings.spaces_secret_access_key,
-        "s3.region": settings.spaces_region,
-        "py-io-impl": "pyiceberg.io.fsspec.FsspecFileIO",
-    }
+# How a commit lands against whatever is already in the table.
+Strategy = Literal["overwrite", "append", "upsert"]
+STRATEGIES: tuple[str, ...] = ("overwrite", "append", "upsert")
 
 
 def is_local() -> bool:
@@ -43,8 +43,7 @@ def is_local() -> bool:
 
 
 def catalog_properties() -> dict[str, Any]:
-    """The kwargs for ``pyiceberg.catalog.load_catalog`` (and dlt's
-    ``iceberg_catalog_config``, which is the same shape)."""
+    """The kwargs for ``pyiceberg.catalog.load_catalog``."""
     if is_local():
         db = Path(settings.iceberg_local_catalog_path).resolve()
         db.parent.mkdir(parents=True, exist_ok=True)
@@ -55,21 +54,26 @@ def catalog_properties() -> dict[str, Any]:
             "uri": f"sqlite:///{db}",
             "warehouse": warehouse.as_uri(),
         }
+
     props: dict[str, Any] = {
         "type": "rest",
-        "uri": settings.iceberg_catalog_uri,
+        # Horizon's `warehouse` is a Snowflake *database*; namespaces are its
+        # schemas. Not a virtual warehouse — that is unrelated and unused here.
         "warehouse": settings.iceberg_warehouse or settings.iceberg_catalog_name,
+        "uri": settings.iceberg_catalog_uri,
+        # OAuth2 client_credentials against <uri>/v1/oauth/tokens. The credential
+        # is "<snowflake_user>:<pat>" and the scope names the role the catalog
+        # session assumes — both come straight from Terraform outputs.
         "scope": settings.iceberg_scope,
-        # Polaris is given no storage credentials (it cannot subscope for Spaces),
-        # so we never want it to vend any: suppress pyiceberg's default
-        # `X-Iceberg-Access-Delegation: vended-credentials` header. Without this,
-        # every create/load is authorized as the *_WITH_WRITE_DELEGATION variant
-        # and Polaris 403s it. We bring our own s3.* creds below (`_s3_props`).
-        "header.X-Iceberg-Access-Delegation": "",
+        # Take Snowflake up on credential vending: it hands back per-table,
+        # time-limited storage credentials with the table metadata, so the
+        # pipeline never holds a key for the lake's bucket. This is the default
+        # pyiceberg behaviour, stated explicitly because the Polaris setup this
+        # replaced had to suppress it.
+        "header.X-Iceberg-Access-Delegation": "vended-credentials",
     }
     if settings.iceberg_credential:
         props["credential"] = settings.iceberg_credential
-    props.update(_s3_props())
     return props
 
 
@@ -85,6 +89,10 @@ def namespace(layer: Layer, source: str | None = None) -> str:
 
     raw/clean -> ``<layer>_<source>`` (``raw_healthdata_gov``);
     curated   -> ``core`` or ``mart_<source>`` (source treated as the mart name).
+
+    Lowercase, and Terraform creates the matching Snowflake schemas lowercase to
+    agree with it (platform/terraform/snowflake.tf). The REST protocol passes
+    these through verbatim, so they are quoted identifiers in Snowflake SQL.
     """
     if layer == "curated":
         return f"mart_{source}" if source else "core"
@@ -93,27 +101,86 @@ def namespace(layer: Layer, source: str | None = None) -> str:
     return f"{layer}_{source}"
 
 
-def table_location(layer: Layer, table: str, source: str | None = None) -> str:
-    """Where the table's files live: ``s3://<bucket>/<layer>/<source>/<table>`` (or a
-    local dir in dev). The catalog records this; callers rarely need it directly."""
-    root = (
-        f"s3://{settings.spaces_bucket}"
-        if not is_local()
-        else Path(settings.iceberg_local_warehouse).resolve().as_uri()
-    )
-    parts = [layer, source, table] if source else [layer, table]
-    return "/".join([root, *[p for p in parts if p]])
+def _align(data: pa.Table, schema: pa.Schema) -> pa.Table:
+    """Project `data` onto `schema`: add missing columns as nulls, drop extras,
+    order to match. Callers evolve the table first so `schema` is the superset."""
+    cols = {}
+    for field in schema:
+        cols[field.name] = (
+            data.column(field.name).cast(field.type)
+            if field.name in data.column_names
+            else pa.nulls(data.num_rows, field.type)
+        )
+    return pa.table(cols, schema=schema)
 
 
-def configure_dlt() -> None:
-    """Point dlt's filesystem+iceberg destination at this catalog.
+def commit(
+    data: pa.Table,
+    table_id: str,
+    *,
+    strategy: Strategy = "overwrite",
+    join_cols: Sequence[str] | None = None,
+    catalog: Any | None = None,
+) -> None:
+    """Land `data` in the Iceberg table `table_id` ("<namespace>.<table>").
 
-    dlt's ``get_catalog`` reads ``iceberg_catalog.*`` config (dlt.common.libs
-    .pyiceberg.IcebergConfig); we set it programmatically so there is no
-    ``.pyiceberg.yaml`` or brittle nested-dict env to manage.
+    Creates the namespace and table if absent, evolves the schema to the union
+    of old and new columns, then writes. This is the *only* write path into the
+    lake — both the raw loader and the dbt plugin come through here, so schema
+    drift behaves identically in every layer (ADR-0010: ~150 scraped datasets
+    whose columns move without warning).
+
+    No `location` is ever passed on create: Snowflake-managed storage assigns
+    the table location itself and rejects one from the client.
     """
-    import dlt
+    if strategy not in STRATEGIES:
+        raise ValueError(f"strategy must be one of {STRATEGIES}, got {strategy!r}")
 
-    dlt.config["iceberg_catalog.iceberg_catalog_name"] = settings.iceberg_catalog_name
-    dlt.config["iceberg_catalog.iceberg_catalog_type"] = "sql" if is_local() else "rest"
-    dlt.config["iceberg_catalog.iceberg_catalog_config"] = catalog_properties()
+    from pyiceberg.exceptions import NoSuchTableError
+
+    cat = catalog if catalog is not None else load_catalog()
+    ns = table_id.rsplit(".", 1)[0]
+    cat.create_namespace_if_not_exists(ns)
+
+    created = False
+    try:
+        table = cat.load_table(table_id)
+    except NoSuchTableError:
+        table = cat.create_table(table_id, schema=data.schema)
+        created = True
+
+    schema_grew = not set(data.schema.names) <= set(table.schema().column_names)
+
+    # Evolve to the superset of columns, then reload a fresh handle and project
+    # the incoming data onto that schema so every write path casts.
+    with table.update_schema() as update:
+        update.union_by_name(data.schema)
+    table = cat.load_table(table_id)
+    data = _align(data, table.schema().as_arrow())
+
+    if strategy == "append":
+        table.append(data)
+    elif strategy == "upsert":
+        if not join_cols:
+            raise ValueError("strategy='upsert' needs join_cols")
+        if schema_grew and not created and len(table.scan().to_arrow()) > 0:
+            # pyiceberg's upsert reads matched rows via a batch reader that does
+            # not backfill columns added after a data file was written. Rewrite
+            # the existing data under the evolved schema first.
+            table.overwrite(table.scan().to_arrow())
+            table = cat.load_table(table_id)
+        table.upsert(data, join_cols=list(join_cols))
+    else:  # overwrite
+        with warnings.catch_warnings():
+            # "Delete operation did not match any records" on a fresh table.
+            warnings.filterwarnings("ignore", message="Delete operation did not match")
+            table.overwrite(data)
+
+    log.info(
+        "committed to iceberg",
+        table=table_id,
+        strategy=strategy,
+        rows=data.num_rows,
+        created=created,
+        schema_grew=schema_grew,
+    )

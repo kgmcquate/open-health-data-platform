@@ -86,10 +86,9 @@ runLauncher:
         # Spaces credentials, source API keys, OpenMetadata JWT. Referenced by
         # name only — never inlined into run config or tags, which render in the
         # public UI (§5).
+        # Also carries OHDP_ICEBERG_CREDENTIAL, the Horizon Catalog PAT pair
+        # ("<user>:<pat>") from Terraform (ADR-0011).
         - name: ohdp-pipeline-secrets
-        # OHDP_ICEBERG_CREDENTIAL — the Polaris `ohdp` root principal, generated
-        # by platform-base (ADR-0010).
-        - name: polaris-principal
       envConfigMaps:
         - name: ohdp-pipeline-config
       resources:
@@ -145,7 +144,6 @@ dagster-user-deployments:
         enabled: false
       envSecrets:
         - name: ohdp-pipeline-secrets
-        - name: polaris-principal
       envConfigMaps:
         - name: ohdp-pipeline-config
       resources:

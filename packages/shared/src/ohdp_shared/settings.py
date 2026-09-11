@@ -27,19 +27,34 @@ class Settings(BaseSettings):
     spaces_bucket: str = "ohdp-warehouse"
     snapshot_retention: int = Field(default=14, description="daily snapshots kept in Spaces")
 
-    # Iceberg lakehouse (ADR-0010). Layers live under s3://<spaces_bucket>/{raw,clean,curated};
-    # the Apache Polaris REST catalog tracks the tables.
+    # Iceberg lakehouse (ADR-0010, catalog per ADR-0011). Snowflake Horizon Catalog
+    # is the REST catalog and owns the storage — the table files live in Snowflake,
+    # not in spaces_bucket, and Horizon vends short-lived credentials for them.
     iceberg_catalog_uri: str = Field(
         default="",
-        description="Polaris Iceberg REST endpoint, e.g. https://catalog.ohdp.../api/catalog",
+        description=(
+            "Horizon Catalog Iceberg REST endpoint, "
+            "https://<org>-<account>.snowflakecomputing.com/polaris/api/catalog"
+        ),
     )
     iceberg_catalog_name: str = "ohdp"
     iceberg_credential: str = Field(
-        default="", description="Polaris OAuth2 'client_id:client_secret'"
+        default="",
+        description=(
+            "OAuth2 client_credentials pair for the catalog: '<snowflake_user>:<pat>'. "
+            "Terraform's iceberg_credential output."
+        ),
     )
-    iceberg_scope: str = "PRINCIPAL_ROLE:ALL"
+    iceberg_scope: str = Field(
+        default="session:role:OHDP_PIPELINE",
+        description="Snowflake role the catalog session runs as.",
+    )
     iceberg_warehouse: str = Field(
-        default="", description="Polaris warehouse name; defaults to iceberg_catalog_name"
+        default="OHDP",
+        description=(
+            "The Iceberg REST 'warehouse' — a Snowflake *database* name, not a "
+            "virtual warehouse. Namespaces are schemas inside it."
+        ),
     )
     # When iceberg_catalog_uri is unset (local dev / CI) fall back to a pyiceberg
     # SqlCatalog: this SQLite file is the catalog, iceberg_local_warehouse the data root.

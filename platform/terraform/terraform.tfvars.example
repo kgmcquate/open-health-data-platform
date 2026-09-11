@@ -14,9 +14,33 @@ cloudflare_zone_id = ""
 
 # Left-most labels created as A records under dns_base.
 dns_base      = "ohdp.kevinmcquate.com"
-dns_hostnames = ["app", "dagster", "catalog", "cube", "superset", "polaris"]
+dns_hostnames = ["app", "dagster", "catalog", "cube", "superset"]
 
 # Public IPv4 of the Traefik ingress. Set this explicitly here (or in the
 # environment as TF_VAR_loadbalancer_ip) to the address Cloudflare should point
 # to; do not create a DigitalOcean reserved IP for this.
 loadbalancer_ip = ""
+
+# --- Snowflake Horizon Catalog (ADR-0011) ---------------------------------
+# Credentials are NOT set here. Export them instead, the same way the Cloudflare
+# token works:
+#
+#   export SNOWFLAKE_USER=... SNOWFLAKE_ROLE=ACCOUNTADMIN
+#   export SNOWFLAKE_PRIVATE_KEY="$(cat ~/.snowflake/tf_key.p8)"   # or SNOWFLAKE_PASSWORD
+#
+# Get the two identifiers with:
+#   SELECT CURRENT_ORGANIZATION_NAME(), CURRENT_ACCOUNT_NAME();
+snowflake_organization_name = ""
+snowflake_account_name      = ""
+
+# Everything below has a working default; override only if you mean to.
+# snowflake_database    = "OHDP"
+# snowflake_namespaces  = ["raw_healthdata_gov", "clean_healthdata_gov", "core"]
+#
+# Snowflake requires a network policy before it will issue a PAT to a SERVICE
+# user. Defaults to 0.0.0.0/0 — narrow it only once the DOKS egress IPs are
+# stable, or a node recycle will 401 every pipeline run.
+# snowflake_allowed_ips = ["0.0.0.0/0"]
+#
+# Bump to rotate the pipeline's catalog token on the next apply.
+# snowflake_pat_keeper  = "v1"

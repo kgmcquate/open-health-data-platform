@@ -33,10 +33,16 @@ pipelineConfig:
   OHDP_SPACES_BUCKET: "ohdp-warehouse"
   OHDP_SPACES_ENDPOINT_URL: "https://nyc3.digitaloceanspaces.com"
   OHDP_SPACES_REGION: "nyc3"
-  # Iceberg lakehouse (ADR-0010). Catalog credentials (OHDP_ICEBERG_CREDENTIAL)
-  # are in the generated `polaris-principal` secret, loaded via dagster envSecrets.
-  OHDP_ICEBERG_CATALOG_URI: "http://polaris.data.svc.cluster.local:8181/api/catalog"
+  # Iceberg lakehouse (ADR-0010), catalogued by Snowflake Horizon (ADR-0011).
+  # These four come from `terraform output` in platform/terraform; the matching
+  # credential (OHDP_ICEBERG_CREDENTIAL, "<user>:<pat>") is the one secret half
+  # and arrives in `ohdp-pipeline-secrets` from deploy-platform.yml.
+  #
+  # OHDP_ICEBERG_WAREHOUSE is a Snowflake *database*, not a virtual warehouse.
+  OHDP_ICEBERG_CATALOG_URI: "https://IRCMTCN-EKB34223.snowflakecomputing.com/polaris/api/catalog"
   OHDP_ICEBERG_CATALOG_NAME: "ohdp"
+  OHDP_ICEBERG_WAREHOUSE: "OHDP"
+  OHDP_ICEBERG_SCOPE: "session:role:OHDP_PIPELINE"
   OHDP_DBT_STAGE_DIR: "/tmp/ohdp_dbt_stage"
 
 postgres:
@@ -54,9 +60,13 @@ postgres:
       memory: 1Gi
   # The four logical databases (ARCHITECTURE.md §2, §9 — one instance, do not
   # split). Each gets an owner role with the matching generated password.
+  #
+  # The `polaris` database went with the Polaris catalog (ADR-0011). Dropping it
+  # from this list stops it being *created*; an existing one is left in place,
+  # so reclaim the disk with a manual `DROP DATABASE polaris` once you are
+  # satisfied nothing wants it.
   databases:
     - dagster
     - superset
     - openmetadata
     - app
-    - polaris # Iceberg REST catalog metastore (ADR-0010)
