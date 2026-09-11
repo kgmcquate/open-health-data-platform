@@ -6,7 +6,7 @@ attributes:
   publisher: U.S. Department of Health and Human Services
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__percentage_of_hospitals_reporting_data_to_hhs_by_state
+  raw_table: percentage_of_hospitals_reporting_data_to_hhs_by_state
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/8xss-g7j8

@@ -6,7 +6,7 @@ attributes:
   publisher: HealthData Team
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__covid_19_20220110_faq_template_v10_with_faq_mapping
+  raw_table: covid_19_20220110_faq_template_v10_with_faq_mapping
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/ssts-5wfp

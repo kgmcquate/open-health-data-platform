@@ -6,7 +6,7 @@ attributes:
   publisher: U.S. Department of Health and Human Services
   enabled: true
   cadence: daily
-  raw_table: raw_healthdata_gov__covid_19_test_to_treat
+  raw_table: covid_19_test_to_treat
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/6m8a-tsjg

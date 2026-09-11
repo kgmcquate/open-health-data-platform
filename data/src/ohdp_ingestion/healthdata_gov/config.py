@@ -87,7 +87,7 @@ class DatasetConfig(BaseModel):
             source_url=dataset.landing_page,
             cadence=cast(Cadence, dataset.cadence),
             enabled=enabled,
-            raw_table=f"raw_healthdata_gov__{slug}",
+            raw_table=slug,
             incremental_cursor="socrata_updated_at",
             row_limit=row_limit,
             page_views=dataset.page_views_total,

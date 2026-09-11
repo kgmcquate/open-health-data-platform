@@ -6,7 +6,7 @@ attributes:
   publisher: U.S. Department of Health and Human Services
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__children_by_disposition
+  raw_table: children_by_disposition
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/usvm-fdmd

@@ -6,7 +6,7 @@ attributes:
   publisher: HHS
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__fy_2026_hhs_lapse_and_contingency_plan
+  raw_table: fy_2026_hhs_lapse_and_contingency_plan
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/s4q2-58m5

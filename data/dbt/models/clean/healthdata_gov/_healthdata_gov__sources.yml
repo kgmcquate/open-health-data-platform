@@ -7,11 +7,11 @@ sources:
   database: '{{ "RAW" if target.type == "snowflake" else target.database }}'
   schema: healthdata_gov
   tables:
-  - name: raw_healthdata_gov__covid_19_community_profile_report_county_level
+  - name: covid_19_community_profile_report_county_level
     description: COVID-19 Community Profile Report - County-Level (U.S. Department of Health and Human
       Services). https://healthdata.gov/d/di4u-7yu6
     columns: []
-  - name: raw_healthdata_gov__covid_19_diagnostic_laboratory_testing_pcr_testing_time_series
+  - name: covid_19_diagnostic_laboratory_testing_pcr_testing_time_series
     description: COVID-19 Diagnostic Laboratory Testing (PCR Testing) Time Series (U.S. Department of
       Health and Human Services). https://healthdata.gov/d/j8mb-icvb
     columns:
@@ -40,7 +40,7 @@ sources:
     - name: fema_region
       description: 4. fema_region (string) - Region associated with the test. Typically that of patient's
         state of residence, but provider or lab state used when patient is unavailable.
-  - name: raw_healthdata_gov__covid_19_public_therapeutic_locator
+  - name: covid_19_public_therapeutic_locator
     description: COVID-19 Public Therapeutic Locator (U.S. Department of Health and Human Services). https://healthdata.gov/d/rxn6-qnx8
     columns:
     - name: last_report_date
@@ -77,7 +77,7 @@ sources:
       description: This column was automatically created in order to record in what polygon from the dataset
         'Demo | State Geographic Boundaries' (pqdx-y6mm) the point in column 'geocoded_address' is located.
         This enables the creation of region maps (choropleths) in the visualization canvas and data lens.
-  - name: raw_healthdata_gov__covid_19_reported_patient_impact_and_hospital_capacity_by_facility
+  - name: covid_19_reported_patient_impact_and_hospital_capacity_by_facility
     description: COVID-19 Reported Patient Impact and Hospital Capacity by Facility (U.S. Department of
       Health and Human Services). https://healthdata.gov/d/anag-cw7u
     columns:
@@ -607,7 +607,7 @@ sources:
         patients (coverage). This is a subset of #6c, occupied pediatric ICU beds. This count excludes
         NICU, newborn nursery, and outpatient surgery beds. This field is required as of 2/2/2022. See
         Appendix D for the definition of laboratory-confirmed COVID-19.'
-  - name: raw_healthdata_gov__covid_19_reported_patient_impact_and_hospital_capacity_by_state_raw
+  - name: covid_19_reported_patient_impact_and_hospital_capacity_by_state_raw
     description: COVID-19 Reported Patient Impact and Hospital Capacity by State (RAW) (U.S. Department
       of Health and Human Services). https://healthdata.gov/d/6xf2-c3ie
     columns:
@@ -1055,7 +1055,7 @@ sources:
     - name: previous_day_admission_adult_covid_suspected_30_39_coverage
       description: Number of hospitals reporting previous day admission adult COVID-19 suspected age 30-39
         years
-  - name: raw_healthdata_gov__covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw
+  - name: covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw
     description: COVID-19 Reported Patient Impact and Hospital Capacity by State Timeseries (RAW) (U.S.
       Department of Health and Human Services). https://healthdata.gov/d/g62h-syeh
     columns:
@@ -1507,7 +1507,7 @@ sources:
       description: 16. Number of hospitals reporting "inpatient_beds_used_covid" in this state
     - name: critical_staffing_shortage_today_not_reported
       description: 5. Number of hospitals not reporting staffing shortage today status in this state.
-  - name: raw_healthdata_gov__covid_19_test_to_treat
+  - name: covid_19_test_to_treat
     description: COVID-19 Test to Treat (U.S. Department of Health and Human Services). https://healthdata.gov/d/6m8a-tsjg
     columns:
     - name: geopoint
@@ -1534,7 +1534,7 @@ sources:
       description: Provider Address Line 2
     - name: state
       description: Provider's State
-  - name: raw_healthdata_gov__hhs_unaccompanied_alien_children_program
+  - name: hhs_unaccompanied_alien_children_program
     description: HHS Unaccompanied Alien Children Program (HHS). https://healthdata.gov/d/ehpz-xc9n
     columns:
     - name: children_transferred_out_of_cbp_custody

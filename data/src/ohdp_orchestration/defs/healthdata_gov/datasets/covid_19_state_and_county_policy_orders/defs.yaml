@@ -6,7 +6,7 @@ attributes:
   publisher: U.S. Department of Health and Human Services
   enabled: false
   cadence: daily
-  raw_table: raw_healthdata_gov__covid_19_state_and_county_policy_orders
+  raw_table: covid_19_state_and_county_policy_orders
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/gyqz-9u7n

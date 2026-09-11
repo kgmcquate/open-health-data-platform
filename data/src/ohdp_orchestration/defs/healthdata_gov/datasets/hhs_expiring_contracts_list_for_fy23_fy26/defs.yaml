@@ -6,7 +6,7 @@ attributes:
   publisher: U.S. Department of Health and Human Services
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__hhs_expiring_contracts_list_for_fy23_fy26
+  raw_table: hhs_expiring_contracts_list_for_fy23_fy26
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/dqp4-e6rh

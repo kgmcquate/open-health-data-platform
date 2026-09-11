@@ -6,7 +6,7 @@ attributes:
   publisher: U.S. Department of Health and Human Services
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__hhs_covid_19_small_area_estimations_survey_primary_vaccine_series_wave_27
+  raw_table: hhs_covid_19_small_area_estimations_survey_primary_vaccine_series_wave_27
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/5qsf-x4ji

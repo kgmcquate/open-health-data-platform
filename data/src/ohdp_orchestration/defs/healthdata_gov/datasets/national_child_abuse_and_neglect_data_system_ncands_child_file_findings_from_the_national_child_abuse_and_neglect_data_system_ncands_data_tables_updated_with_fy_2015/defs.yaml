@@ -7,7 +7,7 @@ attributes:
   publisher: Administration for Children and Families
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__national_child_abuse_and_neglect_data_system_ncands_child_file_findings_from_the_national_child_abuse_and_neglect_data_system_ncands_data_tables_updated_with_fy_2015
+  raw_table: national_child_abuse_and_neglect_data_system_ncands_child_file_findings_from_the_national_child_abuse_and_neglect_data_system_ncands_data_tables_updated_with_fy_2015
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/ej22-ej5b

@@ -6,7 +6,7 @@ attributes:
   publisher: U.S. Department of Health and Human Services
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__children_who_received_an_investigation_or_alternative_response
+  raw_table: children_who_received_an_investigation_or_alternative_response
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/7viv-bzwe

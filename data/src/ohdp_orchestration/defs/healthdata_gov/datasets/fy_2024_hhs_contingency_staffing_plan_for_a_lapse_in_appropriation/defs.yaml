@@ -6,7 +6,7 @@ attributes:
   publisher: Assistant Secretary for Financial Resources
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__fy_2024_hhs_contingency_staffing_plan_for_a_lapse_in_appropriation
+  raw_table: fy_2024_hhs_contingency_staffing_plan_for_a_lapse_in_appropriation
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/55yk-6ezr

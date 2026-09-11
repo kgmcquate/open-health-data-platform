@@ -17,7 +17,7 @@ with ranked as (
             partition by socrata_id
             order by socrata_updated_at desc, _dlt_load_id desc
         ) as _rn
-    from {{ source('healthdata_gov', 'raw_healthdata_gov__covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw') }}
+    from {{ source('healthdata_gov', 'covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw') }}
 )
 
 select * exclude (_rn, _dlt_id, _dlt_load_id)

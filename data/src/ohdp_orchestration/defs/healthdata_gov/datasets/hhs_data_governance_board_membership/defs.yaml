@@ -6,7 +6,7 @@ attributes:
   publisher: HHS Office of the Chief Data Officer
   enabled: false
   cadence: daily
-  raw_table: raw_healthdata_gov__hhs_data_governance_board_membership
+  raw_table: hhs_data_governance_board_membership
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/w3i2-jayx

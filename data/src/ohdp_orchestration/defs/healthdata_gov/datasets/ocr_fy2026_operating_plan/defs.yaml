@@ -6,7 +6,7 @@ attributes:
   publisher: HHS Office of Budget
   enabled: false
   cadence: monthly
-  raw_table: raw_healthdata_gov__ocr_fy2026_operating_plan
+  raw_table: ocr_fy2026_operating_plan
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/k5v7-ngr5

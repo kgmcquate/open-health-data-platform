@@ -31,7 +31,7 @@ def test_dbt_sources_resolve_to_the_ingestion_asset_keys() -> None:
     parents = {p.to_user_string() for p in stg.parent_keys}
     # the clean model reads a dlt raw table, not a fresh `warehouse/...` source node
     assert parents == {
-        "healthdata_gov/raw_healthdata_gov__covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
+        "healthdata_gov/covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
     }
     assert not any(p.startswith("warehouse/healthdata_gov") for p in parents)
 

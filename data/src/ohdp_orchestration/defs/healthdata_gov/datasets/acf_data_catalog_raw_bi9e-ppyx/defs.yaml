@@ -6,7 +6,7 @@ attributes:
   publisher: Administration for Children and Families
   enabled: false
   cadence: weekly
-  raw_table: raw_healthdata_gov__acf_data_catalog_raw_bi9e_ppyx
+  raw_table: acf_data_catalog_raw_bi9e_ppyx
   incremental_cursor: socrata_updated_at
   row_limit: 500000
   source_url: https://healthdata.gov/d/bi9e-ppyx

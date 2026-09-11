@@ -6,6 +6,7 @@ object only parses the component instances and wires assets/jobs/schedules.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -47,7 +48,7 @@ def test_every_instance_is_a_valid_dataset_component(path: Path) -> None:
     doc = yaml.safe_load(path.read_text())
     assert doc["type"].endswith("HealthDataGovDataset")
     cfg = DatasetConfig.model_validate(doc["attributes"])
-    assert cfg.raw_table.startswith("raw_healthdata_gov__")
+    assert re.fullmatch(r"[a-z][a-z0-9_]*", cfg.raw_table)
     assert cfg.cadence in ("daily", "weekly", "monthly")
 
 
