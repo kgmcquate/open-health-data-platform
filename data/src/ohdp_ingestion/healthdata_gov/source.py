@@ -49,11 +49,22 @@ _MAX_PAGE = 50_000  # Socrata hard ceiling on $limit
 # genuinely numeric/boolean/date columns as `text` in the raw table. We already
 # have the catalog's declared type per column (`ColumnSpec.type`), so hint dlt's
 # normalizer explicitly instead of relying on inference; its coerce dispatch
-# (`dlt/common/data_types/type_helpers.py`) then parses the numeric strings for
-# us at load time. Left unmapped on purpose: types dlt already gets right as text
+# (`dlt/common/data_types/type_helpers.py`) then parses the strings for us at
+# load time. Left unmapped on purpose: types dlt already gets right as text
 # (url, email, location, ...) stay inferred rather than forced.
+#
+# "number" is deliberately absent: Socrata's catalog has no int/float
+# distinction (every numeric column, whole or fractional, is just "number"),
+# so a fixed hint here can only ever pick double or bigint for *all* such
+# columns, not per-column. Instead `_parse_number_columns` below converts each
+# "number" field's string to a real Python `int`/`float` before it reaches
+# dlt, and dlt's own value-type inference (`PY_TYPE_TO_SC_TYPE` in
+# `type_helpers.py`) does bigint vs. double from that native type — the same
+# mechanism it uses for every other source. A column that's all whole numbers
+# lands as bigint; if a later row brings a decimal, dlt's existing variant
+# machinery spins off a `<col>__v_double` sibling rather than silently
+# widening or erroring.
 _SOCRATA_TO_DLT_TYPE: dict[str, TDataType] = {
-    "number": "double",
     "money": "decimal",
     "percent": "double",
     "checkbox": "bool",
@@ -74,6 +85,28 @@ def _column_hints(columns: Sequence[ColumnSpec] | None) -> dict[str, TColumnSche
         if c.type in _SOCRATA_TO_DLT_TYPE
     }
     return hints or None
+
+
+def _parse_number(value: str) -> int | float:
+    """A bare integer literal becomes `int` (dlt: bigint); anything else
+    (decimal point, exponent, ...) becomes `float` (dlt: double)."""
+    try:
+        return int(value)
+    except ValueError:
+        return float(value)
+
+
+def _parse_number_columns(batch: list[dict[str, Any]], number_columns: frozenset[str]) -> None:
+    """Mutates `batch` in place, parsing each `number`-typed field from
+    Socrata's JSON-string encoding into a native Python int/float so dlt's own
+    type inference (not a fixed hint) picks bigint vs. double per column."""
+    if not number_columns:
+        return
+    for row in batch:
+        for name in number_columns:
+            v = row.get(name)
+            if isinstance(v, str) and v != "":
+                row[name] = _parse_number(v)
 
 
 @dlt.source(name="healthdata_gov")
@@ -100,6 +133,9 @@ def socrata_source(
     token = app_token or os.environ.get("OHDP_HEALTHDATA_APP_TOKEN") or None
     headers = {"X-App-Token": token} if token else {}
     page = min(page_size, _MAX_PAGE)
+    number_columns = (
+        frozenset(c.name for c in columns if c.type == "number") if columns else frozenset()
+    )
 
     # With a cursor we only fetched what changed, so `append` — raw is the full
     # history of what the API returned (ADR-0010). Without one we re-fetched the
@@ -142,6 +178,7 @@ def socrata_source(
 
             if row_limit is not None and seen + len(batch) > row_limit:
                 batch = batch[: row_limit - seen]
+            _parse_number_columns(batch, number_columns)
             yield batch
             seen += len(batch)
 

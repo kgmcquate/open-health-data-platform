@@ -129,14 +129,20 @@ def test_incremental_load_appends_history(lake: Path, monkeypatch: pytest.Monkey
     assert sorted(rows["v"]) == [1, 2]
 
 
-def test_numeric_columns_are_cast_from_socratas_stringified_values(
+def test_whole_number_columns_are_cast_to_int_from_socratas_stringified_values(
     lake: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Socrata's SODA API serializes every field as a JSON string, numbers
     included, so a stub that used a native Python ``int``/``float`` for ``v``
     would mask this entirely — matching the real API means stubbing ``"482"``,
-    not ``482``. Without the catalog's declared ``number`` type hinted through
-    to dlt (``source.py``'s ``_column_hints``), this column lands as ``text``.
+    not ``482``. Without the catalog's declared ``number`` type parsed to a
+    native Python value before dlt sees it (``source.py``'s
+    ``_parse_number_columns``), this column lands as ``text``.
+
+    Socrata's catalog has no int/float distinction — a ``number`` column is
+    just as likely to hold ``"482"`` as ``"482.5"`` — so the raw table should
+    reflect what the *data* actually was, not force every ``number`` column to
+    float regardless of content.
     """
     _stub_socrata(
         monkeypatch,
@@ -150,7 +156,28 @@ def test_numeric_columns_are_cast_from_socratas_stringified_values(
     assert result.success
 
     rows = _rows(lake, "healthdata_gov", "numeric")
-    assert rows["v"] == [482.0]
+    assert rows["v"] == [482]
+    assert isinstance(rows["v"][0], int)
+
+
+def test_fractional_number_columns_are_cast_to_float(
+    lake: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``number`` column carrying a decimal value lands as a float, not an
+    int — the type follows the data per row-batch, not a fixed column hint."""
+    _stub_socrata(
+        monkeypatch,
+        [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": "482.5"}]],
+    )
+    result = _load(
+        resource_id="abcd-1234",
+        table_name="fractional",
+        columns=[ColumnSpec(name="v", type="number")],
+    )
+    assert result.success
+
+    rows = _rows(lake, "healthdata_gov", "fractional")
+    assert rows["v"] == [482.5]
     assert isinstance(rows["v"][0], float)
 
 
