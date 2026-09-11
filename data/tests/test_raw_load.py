@@ -19,6 +19,7 @@ import pytest
 from dagster import AssetKey, DagsterInstance, materialize
 from dagster_dlt import dlt_assets
 
+from ohdp_ingestion.healthdata_gov.config import ColumnSpec
 from ohdp_ingestion.healthdata_gov.source import build_pipeline, socrata_source
 from ohdp_orchestration.resources.dlt import CustomDagsterDltResource
 
@@ -87,12 +88,15 @@ def _load(
     table_name: str,
     source: str = "healthdata_gov",
     incremental_cursor: str | None = "socrata_updated_at",
+    columns: list[ColumnSpec] | None = None,
 ):
     """Materialize one table asset the same way the component does, through
     ``CustomDagsterDltResource``."""
 
     @dlt_assets(
-        dlt_source=socrata_source(resource_id, table_name, incremental_cursor=incremental_cursor),
+        dlt_source=socrata_source(
+            resource_id, table_name, incremental_cursor=incremental_cursor, columns=columns
+        ),
         dlt_pipeline=build_pipeline(pipeline_name=f"{source}_{table_name}", source=source),
         name=table_name,
     )
@@ -123,6 +127,31 @@ def test_incremental_load_appends_history(lake: Path, monkeypatch: pytest.Monkey
 
     rows = _rows(lake, "healthdata_gov", "demo")
     assert sorted(rows["v"]) == [1, 2]
+
+
+def test_numeric_columns_are_cast_from_socratas_stringified_values(
+    lake: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Socrata's SODA API serializes every field as a JSON string, numbers
+    included, so a stub that used a native Python ``int``/``float`` for ``v``
+    would mask this entirely — matching the real API means stubbing ``"482"``,
+    not ``482``. Without the catalog's declared ``number`` type hinted through
+    to dlt (``source.py``'s ``_column_hints``), this column lands as ``text``.
+    """
+    _stub_socrata(
+        monkeypatch,
+        [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": "482"}]],
+    )
+    result = _load(
+        resource_id="abcd-1234",
+        table_name="numeric",
+        columns=[ColumnSpec(name="v", type="number")],
+    )
+    assert result.success
+
+    rows = _rows(lake, "healthdata_gov", "numeric")
+    assert rows["v"] == [482.0]
+    assert isinstance(rows["v"][0], float)
 
 
 def test_new_columns_evolve_the_schema(lake: Path, monkeypatch: pytest.MonkeyPatch) -> None:

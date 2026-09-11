@@ -1,7 +1,8 @@
-# dlt's @source/@resource decorators are untyped and dlt.pipeline()'s overloads
-# reject a Destination object in the `destination` position; both are the
-# documented usage. Relax only this module.
-# mypy: disable-error-code="no-untyped-def, untyped-decorator, call-overload, no-any-return"
+# dlt's @source/@resource decorators are untyped, dlt.pipeline()'s overloads
+# reject a Destination object in the `destination` position, and `columns=`
+# rejects the documented `None` (opt out of hints); all are documented usage.
+# Relax only this module.
+# mypy: disable-error-code="no-untyped-def,untyped-decorator,call-overload,no-any-return,arg-type"
 """A ``dlt`` source over one Socrata dataset, landing a native table in the
 ``RAW`` database (ADR-0013, building on ADR-0014). dlt writes straight to
 Snowflake and handles schema evolution and the incremental cursor itself;
@@ -24,13 +25,16 @@ Every row carries two system columns we alias in explicitly:
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Any, Literal
 
 import dlt
+from dlt.common.data_types import TDataType
+from dlt.common.schema.typing import TColumnSchema
 from dlt.sources.helpers import requests
 
 from ohdp_ingestion import naming
+from ohdp_ingestion.healthdata_gov.config import ColumnSpec
 from ohdp_shared.settings import settings
 
 WriteDisposition = Literal["append", "replace"]
@@ -38,6 +42,38 @@ WriteDisposition = Literal["append", "replace"]
 _SYSTEM_SELECT = "*,:id AS socrata_id,:updated_at AS socrata_updated_at"
 _EPOCH = "1900-01-01T00:00:00.000"
 _MAX_PAGE = 50_000  # Socrata hard ceiling on $limit
+
+# Socrata's SODA API serializes every field as a JSON string, numbers included
+# (https://dev.socrata.com/docs/datatypes/ — done to dodge client float-precision
+# surprises), so dlt's runtime-type inference sees `str` for everything and lands
+# genuinely numeric/boolean/date columns as `text` in the raw table. We already
+# have the catalog's declared type per column (`ColumnSpec.type`), so hint dlt's
+# normalizer explicitly instead of relying on inference; its coerce dispatch
+# (`dlt/common/data_types/type_helpers.py`) then parses the numeric strings for
+# us at load time. Left unmapped on purpose: types dlt already gets right as text
+# (url, email, location, ...) stay inferred rather than forced.
+_SOCRATA_TO_DLT_TYPE: dict[str, TDataType] = {
+    "number": "double",
+    "money": "decimal",
+    "percent": "double",
+    "checkbox": "bool",
+    "flag": "bool",
+    "calendar_date": "timestamp",
+    "date": "timestamp",
+    "floating_timestamp": "timestamp",
+    "fixed_timestamp": "timestamp",
+}
+
+
+def _column_hints(columns: Sequence[ColumnSpec] | None) -> dict[str, TColumnSchema] | None:
+    if not columns:
+        return None
+    hints: dict[str, TColumnSchema] = {
+        c.name: {"data_type": _SOCRATA_TO_DLT_TYPE[c.type]}
+        for c in columns
+        if c.type in _SOCRATA_TO_DLT_TYPE
+    }
+    return hints or None
 
 
 @dlt.source(name="healthdata_gov")
@@ -50,12 +86,15 @@ def socrata_source(
     row_limit: int | None = None,
     page_size: int = 5_000,
     app_token: str | None = None,
+    columns: Sequence[ColumnSpec] | None = None,
 ):
     """A single-resource source for ``resource_id``, written append-only.
 
     ``incremental_cursor`` only controls the SoQL ``$where`` (fetch efficiency);
     set it to ``None`` to re-fetch the whole dataset each run (correct for
-    datasets Socrata rewrites wholesale).
+    datasets Socrata rewrites wholesale). ``columns`` is the catalog's declared
+    schema (``DatasetConfig.columns``) — see ``_column_hints`` for why it's
+    needed at all.
     """
     base_url = f"https://{domain}/resource/{resource_id}.json"
     token = app_token or os.environ.get("OHDP_HEALTHDATA_APP_TOKEN") or None
@@ -69,6 +108,7 @@ def socrata_source(
         name=table_name,
         primary_key="socrata_id",
         write_disposition=write_disposition(incremental_cursor),
+        columns=_column_hints(columns),
     )
     # dlt's documented pattern is to default the arg to the incremental object;
     # B008 flags the call in the default but that is exactly how the hint is wired.

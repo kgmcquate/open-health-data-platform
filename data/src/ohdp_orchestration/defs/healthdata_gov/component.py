@@ -225,6 +225,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
                 cfg.raw_table,
                 incremental_cursor=cfg.incremental_cursor,
                 row_limit=cfg.row_limit,
+                columns=cfg.columns,
             ),
             dlt_pipeline=build_pipeline(pipeline_name=f"{_SOURCE}_{cfg.raw_table}", source=_SOURCE),
             name=cfg.raw_table,
