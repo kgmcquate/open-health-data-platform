@@ -54,7 +54,7 @@ locals {
 # `warehouse` property and in SQL, never built from a Python identifier.
 # ---------------------------------------------------------------------------
 resource "snowflake_database" "ohdp" {
-  name    = upper(var.snowflake_database)
+  name    = var.snowflake_database
   comment = "OHDP Iceberg lakehouse — the `warehouse` an Iceberg REST client attaches to (ADR-0011)."
 
   # Snowflake-managed storage. `external_volume` unset means the tables use
@@ -67,7 +67,7 @@ resource "snowflake_schema" "namespace" {
   for_each = toset(var.snowflake_namespaces)
 
   database = snowflake_database.ohdp.name
-  name     = upper(each.value)
+  name     = each.value
   comment  = "Iceberg namespace ${each.value} (ADR-0010 medallion layer)."
 
   # Marts arrive over time and the dbt plugin calls create_namespace_if_not_exists,
@@ -84,7 +84,7 @@ resource "snowflake_schema" "namespace" {
 # one. XS, suspended after a minute, and created suspended: idle costs nothing.
 # ---------------------------------------------------------------------------
 resource "snowflake_warehouse" "ohdp" {
-  name                = upper(var.snowflake_warehouse)
+  name                = var.snowflake_warehouse
   warehouse_size      = "XSMALL"
   auto_suspend        = 60
   auto_resume         = true
@@ -200,7 +200,7 @@ resource "snowflake_grant_privileges_to_account_role" "warehouse" {
 # the prerequisite for making this real.
 # ---------------------------------------------------------------------------
 resource "snowflake_network_policy" "pipeline" {
-  name            = upper("${var.snowflake_pipeline_role}_NETWORK_POLICY")
+  name            = "${var.snowflake_pipeline_role}_NETWORK_POLICY"
   allowed_ip_list = var.snowflake_allowed_ips
   comment         = "Required for PAT auth account-wide (Horizon Catalog external-engine access rejects a user-level policy)."
 }
@@ -211,7 +211,7 @@ resource "snowflake_network_policy_attachment" "pipeline" {
 }
 
 resource "snowflake_service_user" "pipeline" {
-  name         = upper("${var.snowflake_pipeline_user}")
+  name         = "${var.snowflake_pipeline_user}"
   comment      = "Dagster pipeline. Authenticates to the Horizon Catalog REST endpoint with a PAT."
   default_role = snowflake_account_role.pipeline.name
 
