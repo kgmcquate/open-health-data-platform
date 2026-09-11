@@ -77,9 +77,12 @@ kubectl -n data create secret generic ohdp-pipeline-secrets \
   --from-literal=OHDP_CDC_APP_TOKEN=... \
   --from-literal=OHDP_OPENMETADATA_JWT=          # fill after OpenMetadata's first boot
 
-# Polaris (ADR-0010) needs no external secret — platform-base generates the
-# metastore connection and the `ohdp` realm root principal
-# (polaris-persistence / polaris-principal / polaris-bootstrap). `make polaris`
+# Polaris (ADR-0010) needs no external secret of its own — platform-base
+# generates the metastore connection and the `ohdp` realm root principal
+# (polaris-persistence / polaris-principal / polaris-bootstrap). It does read the
+# Spaces keys from `ohdp-pipeline-secrets` above (values/polaris.yaml
+# `storage.secret`): a non-staged REST `create table` has the server write the
+# first metadata.json, so Polaris needs its own object-store creds. `make polaris`
 # installs polaris/polaris (its init container creates the schema + `ohdp`
 # realm) and then creates the `ohdp` catalog via the management API. See
 # platform/scripts/polaris-bootstrap.sh.

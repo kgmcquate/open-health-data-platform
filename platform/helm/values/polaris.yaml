@@ -105,20 +105,27 @@ authentication:
     maxTokenGeneration: PT1H
 
 # ---------------------------------------------------------------------------
-# Storage: no credentials handed to Polaris. It does not vend scoped creds for
-# non-AWS S3 (Spaces), so the pipeline never asks it to: the REST client
-# suppresses pyiceberg's default `X-Iceberg-Access-Delegation: vended-credentials`
-# header (ohdp_ingestion.iceberg.catalog_properties) and passes s3.* to pyiceberg
-# itself (ohdp_ingestion.iceberg._s3_props). Polaris only stores the warehouse
-# root + allowed locations.
+# Storage. Polaris still needs its own Spaces credentials: a non-staged REST
+# `create table` (which is what pyiceberg / dlt issue) has the *server* write the
+# first `metadata.json` to the table location. Without creds that 500s with
+# `SdkClientException: Unable to load credentials from any of the providers`.
 #
-# (The `SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION` feature flag would do the same
-# server-side, but Polaris docs mark it dev-only, and `polaris.config.*` catalog
-# properties are a reserved prefix the server rejects — so it is a client concern.)
+# These are the base (un-subscoped) creds — `polaris.storage.aws.access-key` /
+# `.secret-key`, wired from the pipeline's Spaces secret. The `ohdp` catalog's
+# S3 storageConfigInfo carries no `roleArn` (polaris-bootstrap.sh), so Polaris
+# does no STS AssumeRole and uses these directly for its FileIO.
+#
+# Credential *vending* to clients is still off: Polaris cannot subscope for
+# non-AWS S3, so the REST client suppresses pyiceberg's default
+# `X-Iceberg-Access-Delegation: vended-credentials` header
+# (ohdp_ingestion.iceberg.catalog_properties) and brings its own s3.* creds
+# (ohdp_ingestion.iceberg._s3_props) for client-side data IO.
 # ---------------------------------------------------------------------------
 storage:
   secret:
-    name: ""
+    name: ohdp-pipeline-secrets
+    awsAccessKeyId: OHDP_SPACES_ACCESS_KEY_ID
+    awsSecretAccessKey: OHDP_SPACES_SECRET_ACCESS_KEY
 
 # Reached in-cluster at http://polaris.data.svc.cluster.local:8181/api/catalog
 # (OHDP_ICEBERG_CATALOG_URI, platform-base pipelineConfig). It is also exposed on
