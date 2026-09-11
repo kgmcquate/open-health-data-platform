@@ -9,6 +9,7 @@ dependencies = [
     "dagster-postgres>=0.24",
     "dagster-dbt>=0.24",
     "dagster-dlt>=0.29,<0.30",
+    "dagster-aws>=0.24",
     "dbt-snowflake>=1.8",
     "dlt[snowflake]>=1.9",
     "sqlalchemy>=2.0.18",
