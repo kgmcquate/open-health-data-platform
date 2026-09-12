@@ -96,8 +96,17 @@ env:
   # Non-secret Snowflake connection config — mirrors streamlit/values.yaml and
   # platform-base's pipelineConfig. Update all three together if the account/
   # warehouse ever changes.
+  #
+  # Username is CUBEJS_DB_USER, not CUBEJS_DB_SNOWFLAKE_USER — the Snowflake
+  # driver only reads username/password through the generic CUBEJS_DB_USER /
+  # CUBEJS_DB_PASS vars (shared across every driver); everything
+  # Snowflake-specific (account/role/warehouse/private key) is prefixed
+  # CUBEJS_DB_SNOWFLAKE_*. Confirmed against
+  # @cubejs-backend/snowflake-driver/dist/src/SnowflakeDriver.js in the
+  # cubejs/cube:v1.7.37 image — a CUBEJS_DB_SNOWFLAKE_USER var is silently
+  # ignored and the driver throws "A user name must be specified."
+  CUBEJS_DB_USER: "OHDP_PIPELINE"
   CUBEJS_DB_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
-  CUBEJS_DB_SNOWFLAKE_USER: "OHDP_PIPELINE"
   CUBEJS_DB_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
   CUBEJS_DB_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
 
