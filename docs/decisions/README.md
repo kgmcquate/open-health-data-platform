@@ -20,3 +20,5 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0012](0012-native-snowflake-tables.md) | Native Snowflake tables replace the Iceberg lake | Accepted |
 | [0013](0013-per-layer-snowflake-databases.md) | One Snowflake database per medallion layer (RAW/CLEAN/CURATED) | Accepted |
 | [0014](0014-snowflake-only-compilation.md) | Snowflake-only: drop the local/CI DuckDB targets | Accepted |
+| [0015](0015-streamlit-over-superset.md) | Streamlit over Superset for dashboards | Accepted |
+| [0016](0016-chat-agent-tool-surface.md) | Chat agent tool surface: own Cube tools, OpenMetadata MCP for context | Accepted |

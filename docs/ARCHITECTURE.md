@@ -98,7 +98,7 @@ flowchart TB
 | Dagster | Ingestion, dbt orchestration, ML inference, alert checks | Publicly visible, hardened (§5) |
 | dbt | SQL transformation and tests | Snowflake only (ADR-0014) |
 | Snowflake | Compute and storage for the medallion warehouse | dlt loads, dbt-snowflake builds |
-| Cube Core | Semantic layer: measures, dimensions, access control, MCP endpoint | Single definition of every metric, queries Snowflake directly |
+| Cube Core | Semantic layer: measures, dimensions, access control, REST/SQL APIs | Single definition of every metric, queries Snowflake directly. No MCP server in Core — see §6 |
 | Streamlit | Dashboards, standalone (linked from the hub app, not embedded) | Direct Snowflake for now (M1); repoint at Cube once M2 lands |
 | OpenMetadata | Catalog, lineage, glossary, metric directory, discovery MCP | Human-browsable surface |
 | Postgres | App metadata for Dagster, OpenMetadata, hub app | One instance, three databases |
@@ -298,11 +298,23 @@ which also records two upstream defects to fix before this goes public).
 
 ## 6. Chatbot safety model
 
-The agent has two MCP connections and no direct database access:
+The agent has no direct database access. Discovery comes over MCP; execution
+goes through the semantic layer:
 
-- **OpenMetadata MCP** (`{OM_URL}/mcp`) for discovery: what exists, who owns it,
-  is it fresh, what does this term mean.
-- **Cube MCP** for execution: select measures and dimensions from the semantic model.
+- **OpenMetadata MCP** (`{OM_URL}/mcp`) for discovery and context: what exists, who
+  owns it, is it fresh, what does this term mean. OSS and enabled by default in
+  OpenMetadata 2.0.
+- **Cube tools** for execution: select measures and dimensions from the semantic model.
+
+> Corrected 2026-09-12: this section previously said "**Cube MCP** for execution"
+> and described two MCP connections. Cube's MCP server is a Cube Cloud
+> Premium/Enterprise feature — Cube Core, which is what we self-host, ships none.
+> The execution tools are ours, written over Cube Core's REST API
+> (`/cubejs-api/v1/meta`, `/v1/load`, `/v1/sql`), which takes a JSON query object
+> rather than SQL. The bounded measure/dimension surface this section depends on is
+> a property of Cube's query model, not of MCP as a transport, so every control
+> below is unaffected. See [ADR-0016](decisions/0016-chat-agent-tool-surface.md)
+> and [chatbot.md](chatbot.md).
 
 Controls:
 
@@ -420,8 +432,9 @@ and the sync job so metrics and lineage appear in the catalog. Hub app shell wit
 and a link out to Streamlit.
 
 **M3 — Chatbot**
-Read-only Q&A over Cube MCP plus OpenMetadata MCP. Log everything. Quota enforcement.
-No dashboard creation, no ticket creation yet.
+Read-only Q&A over the Cube tool layer plus OpenMetadata MCP, with Europe PMC
+literature search. Log everything. Quota enforcement. No dashboard creation, no
+ticket creation yet. Designed in [chatbot.md](chatbot.md).
 
 **M4 — Monetization**
 Stripe, tier claims, quota tiers. Alerting via email. Dashboard generation from a
