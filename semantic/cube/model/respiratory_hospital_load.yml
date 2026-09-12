@@ -21,12 +21,12 @@ cubes:
       - name: avg_covid_inpatients
         sql: avg_covid_inpatients
         type: avg
-        description: "{{ model.column('avg_covid_inpatients').description }}"
+        description: {{ model.column('avg_covid_inpatients').description }}
 
       - name: avg_occupancy
         sql: avg_occupancy
         type: avg
-        description: "{{ model.column('avg_occupancy').description }}"
+        description: {{ model.column('avg_occupancy').description }}
 
       - name: state_week_count
         type: count
