@@ -2649,6 +2649,7 @@ dependencies = [
     { name = "openmetadata-ingestion", extra = ["dagster", "dbt", "snowflake"] },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "pyjwt" },
     { name = "pyyaml" },
     { name = "sqlalchemy" },
 ]
@@ -2683,6 +2684,7 @@ requires-dist = [
     { name = "openmetadata-ingestion", extras = ["dagster", "snowflake", "dbt"], specifier = "==2.0.1" },
     { name = "polars", specifier = ">=1.7" },
     { name = "pyarrow", specifier = ">=17.0" },
+    { name = "pyjwt", specifier = ">=2.9" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "sqlalchemy", specifier = ">=2.0.18" },
 ]

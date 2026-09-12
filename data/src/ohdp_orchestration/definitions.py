@@ -22,12 +22,14 @@ from dagster import Definitions
 from dagster.components import load_defs
 
 from ohdp_orchestration import defs as _defs_module
+from ohdp_orchestration.assets.cube_metrics_sync import openmetadata_cube_metrics_sync
 from ohdp_orchestration.assets.openmetadata_dagster_sync import openmetadata_dagster_sync
 from ohdp_orchestration.assets.openmetadata_sync import (
     openmetadata_dbt_sync,
     openmetadata_snowflake_sync,
 )
 from ohdp_orchestration.assets.snowflake_dbt import DBT_RESOURCE, snowflake_dbt_assets
+from ohdp_orchestration.jobs.cube_metrics_sync import openmetadata_cube_metrics_sync_job
 from ohdp_orchestration.jobs.healthdata_gov import (
     healthdata_gov_daily_ingest_job,
     healthdata_gov_monthly_ingest_job,
@@ -37,6 +39,9 @@ from ohdp_orchestration.jobs.openmetadata_sync import (
     openmetadata_dagster_sync_job,
     openmetadata_dbt_sync_job,
     openmetadata_snowflake_sync_job,
+)
+from ohdp_orchestration.schedules.cube_metrics_sync import (
+    openmetadata_cube_metrics_sync_schedule,
 )
 from ohdp_orchestration.schedules.healthdata_gov import (
     healthdata_gov_daily_schedule,
@@ -62,6 +67,7 @@ defs = Definitions.merge(
     load_defs(_defs_module, project_root=_project_root),
     Definitions(
         assets=[
+            openmetadata_cube_metrics_sync,
             openmetadata_dagster_sync,
             openmetadata_dbt_sync,
             openmetadata_snowflake_sync,
@@ -72,6 +78,7 @@ defs = Definitions.merge(
             healthdata_gov_daily_ingest_job,
             healthdata_gov_weekly_ingest_job,
             healthdata_gov_monthly_ingest_job,
+            openmetadata_cube_metrics_sync_job,
             openmetadata_dagster_sync_job,
             openmetadata_dbt_sync_job,
             openmetadata_snowflake_sync_job,
@@ -80,6 +87,7 @@ defs = Definitions.merge(
             healthdata_gov_daily_schedule,
             healthdata_gov_weekly_schedule,
             healthdata_gov_monthly_schedule,
+            openmetadata_cube_metrics_sync_schedule,
             openmetadata_dagster_sync_schedule,
             openmetadata_dbt_sync_schedule,
             openmetadata_snowflake_sync_schedule,
