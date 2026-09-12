@@ -11,7 +11,12 @@ COPY apps/streamlit/pyproject.toml apps/streamlit/uv.lock apps/streamlit/
 WORKDIR /app/apps/streamlit
 # No --no-install-project needed: `[tool.uv] package = false` (pyproject.toml)
 # makes this a virtual project — nothing here is ever built into a wheel.
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
+# --no-editable IS needed: ohdp-shared is `editable = true` in
+# [tool.uv.sources], and an editable install is just a pointer back to
+# packages/shared/src — which the runtime stage below never copies in. This
+# bakes ohdp-shared's real files into .venv/site-packages instead (same fix
+# apps/api/Dockerfile already applies).
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-editable
 COPY apps/streamlit/ /app/apps/streamlit/
 
 FROM python:3.12-slim-bookworm AS runtime
