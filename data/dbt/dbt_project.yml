@@ -17,13 +17,16 @@ clean-targets: ["target", "dbt_packages"]
 # layer-prefixed-schema layout with one Snowflake database per layer). Plain
 # tables, Snowflake only (ADR-0014).
 #
-# Schema and database are set per folder. generate_schema_name.sql makes the
-# schema land verbatim instead of dbt's default <target_schema>_<custom>
-# double-prefix. generate_database_name.sql applies `+database`.
+# Database is set per folder (generate_database_name.sql applies `+database`).
+# Schema is *not* set here for `clean`: generate_schema_name.sql instead
+# derives it from the model name for any model following the dbt-labs
+# `stg_<source>__<table>` staging convention, so the model's file name (and
+# therefore its unique dbt model ID / ref()) doesn't have to change just to
+# also carry the schema.
 #
-#   clean/<source>/   -> CLEAN.<source>     (typed, deduped, per source)
-#   core/             -> CURATED.core       (conformed, cross-source)
-#   marts/<mart>/     -> CURATED.<mart>     (presentation)
+#   clean/<source>/   -> CLEAN.stg_<source>  (typed, deduped, per source)
+#   core/             -> CURATED.core        (conformed, cross-source)
+#   marts/<mart>/     -> CURATED.<mart>      (presentation)
 models:
   ohdp:
     +meta:
@@ -32,8 +35,6 @@ models:
       +tags: ["clean"]
       +materialized: table
       +database: "CLEAN"
-      healthdata_gov:
-        +schema: "healthdata_gov"
     core:
       +tags: ["core"]
       +materialized: table
