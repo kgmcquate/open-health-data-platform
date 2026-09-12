@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     # group, same as dagster-monitoring.
     dagster_graphql_url: str = "http://localhost:3000"
 
+    # Chat agent (docs/chatbot.md §4). Read as OHDP_ANTHROPIC_API_KEY, which is
+    # deliberately *not* the SDK's own ANTHROPIC_API_KEY: every secret this
+    # platform holds arrives through the OHDP_ prefix and one Kubernetes Secret,
+    # and an SDK that silently picks a key up from an unprefixed env var would
+    # be the one exception (§5).
+    anthropic_api_key: str = ""
+    # OpenMetadata persona FQN whose curated context becomes the system-prompt
+    # preamble (docs/chatbot.md §3.1). Empty until personas are seeded (M3.3),
+    # and the loop falls back to its built-in prompt when it is.
+    chat_persona: str = ""
+
     # Chat quotas (ARCHITECTURE.md §10 open decision 3 — provisional)
     free_monthly_questions: int = 20
     paid_monthly_questions: int = 500
