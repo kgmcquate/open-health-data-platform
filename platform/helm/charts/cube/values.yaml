@@ -92,6 +92,16 @@ securityContext:
 # No Cube Store / scheduledRefreshTimer: matches cube.js (§4 resource budget).
 env:
   CUBEJS_DEV_MODE: "false"
+  # The base image bakes in NODE_ENV=production, and Cube's
+  # detectQueueAndCacheDriver() (query-orchestrator/QueryOrchestrator.js)
+  # defaults to the "cubestore" driver whenever NODE_ENV=production —
+  # unrelated to CUBEJS_DEV_MODE, which only controls the dev playground UI.
+  # Dev mode masks this by auto-spawning an embedded Cube Store; production
+  # mode doesn't, and fails readiness with "Cube Store was specified as
+  # queue/cache driver" unless told otherwise. ADR-0003: no Cube Store, no
+  # pre-aggregations initially — "memory" is the correct driver here, not a
+  # missing piece of config.
+  CUBEJS_CACHE_AND_QUEUE_DRIVER: memory
   CUBEJS_DB_TYPE: snowflake
   # Non-secret Snowflake connection config — mirrors streamlit/values.yaml and
   # platform-base's pipelineConfig. Update all three together if the account/
