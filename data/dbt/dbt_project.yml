@@ -34,18 +34,11 @@ models:
     clean:
       +tags: ["clean"]
       +materialized: table
-      +database: "CLEAN"
-    core:
-      +tags: ["core"]
+      +database: "clean"
+    curated:
+      +tags: ["curated"]
       +materialized: table
-      +database: "CURATED"
-      +schema: "core"
-    marts:
-      +tags: ["marts"]
-      +materialized: table
-      +database: "CURATED"
-      respiratory:
-        +schema: "respiratory"
+      +database: "curated"
 
 # The test gate is load-bearing (ARCHITECTURE.md §3): a failed test must stop
 # the publish. Keep severity at error for anything a dashboard number depends on.
