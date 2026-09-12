@@ -5,7 +5,7 @@
 
 select
     cast(state as varchar)                        as state,
-    try_cast(date as date)                        as report_date,
+    to_date(date)                                 as report_date,
     try_cast(inpatient_beds as double)            as inpatient_beds,
     try_cast(inpatient_beds_used as double)       as inpatient_beds_used,
     try_cast(inpatient_beds_used_covid as double) as inpatient_beds_used_covid
