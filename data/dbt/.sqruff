@@ -1,0 +1,26 @@
+# SQL linter/formatter for this dbt project (https://github.com/quarylabs/sqruff).
+#
+# Not wired into CI: the dbt templater fully renders each model (unlike
+# `dbt parse`, used everywhere else in this repo's CI/image), so any model
+# calling an introspective macro like `is_incremental()` needs a real
+# Snowflake connection to template — CI's `OHDP_SNOWFLAKE_*` vars are
+# deliberately empty (profiles.yml). Run it locally with real creds exported:
+#
+#   cd data/dbt && uvx --with dbt-snowflake --from "sqruff[dbt]" sqruff lint models
+#   cd data/dbt && uvx --with dbt-snowflake --from "sqruff[dbt]" sqruff fix models
+#
+# Kept out of data/pyproject.toml on purpose: pulling the dbt templater into
+# the project's own dependency resolution surfaced a dbt-core/dbt-snowflake
+# version mismatch (adapter ahead of core) that breaks it, even though it
+# doesn't affect dbt itself. `uvx --from` resolves sqruff's own dbt-core +
+# dbt-snowflake pair in an isolated environment instead, matching how
+# `uvx ruff` is invoked repo-wide.
+[sqruff]
+dialect = snowflake
+templater = dbt
+
+[sqruff:templater:dbt]
+project_dir = .
+profiles_dir = .
+profile = ohdp
+target = prod

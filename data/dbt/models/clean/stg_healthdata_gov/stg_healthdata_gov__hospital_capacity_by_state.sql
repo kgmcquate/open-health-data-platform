@@ -10,16 +10,12 @@
     on_schema_change="append_new_columns"
 ) }}
 
-with ranked as (
-    select
-        *,
-        row_number() over (
-            partition by socrata_id
-            order by socrata_updated_at desc, _dlt_load_id desc
-        ) as _rn
-    from {{ source('healthdata_gov', 'covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw') }}
+select
+    *,
+    {{ dlt_load_id_as_ts() }} as ingest_ts
+exclude (_dlt_id, _dlt_load_id)
+from {{ source('healthdata_gov', 'covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw') }}
+qualify row_number() over (
+    partition by socrata_id
+    order by socrata_updated_at desc, _dlt_load_id desc
 )
-
-select * exclude (_rn, _dlt_id, _dlt_load_id)
-from ranked
-where _rn = 1
