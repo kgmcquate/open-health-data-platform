@@ -143,7 +143,16 @@ def _snowflake_workflow_config() -> dict[str, Any]:
                         "includes": ["RAW", "CLEAN", "CURATED"]
                     },
                     "schemaFilterPattern": {
-                        "excludes": ["INFORMATION_SCHEMA", "PUBLIC", "DBT_TEST__AUDIT"]
+                        "excludes": [
+                            "INFORMATION_SCHEMA",
+                            "PUBLIC",
+                            "DBT_TEST__AUDIT"
+                        ]
+                    },
+                    "tableFilterPattern": {
+                        "excludes": [
+                            "_DLT_.*"
+                        ]
                     },
                 }
             },
