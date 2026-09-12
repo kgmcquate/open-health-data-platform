@@ -59,7 +59,7 @@ _KEY_PREFIX = "openmetadata"
 
 def _openmetadata_server_config() -> dict[str, Any]:
     return {
-        "hostPort": f"{settings.openmetadata_url}/api",
+        "hostPort": "https://catalog.open-health-data-platform.org/api",
         "authProvider": "openmetadata",
         "securityConfig": {"jwtToken": settings.openmetadata_jwt},
     }
@@ -114,6 +114,20 @@ def _snowflake_workflow_config() -> dict[str, Any]:
                     "markDeletedSchemas": True,
                     "markDeletedDatabases": True,
                     "includeTags": True,
+                    "includeTables": True,
+                    "includeViews": True,
+                    "includeOwners": True,
+                    "overrideMetadata": True,
+                    "threads": 4,
+                    "incremental": {
+                        "enabled": True,
+                        "lookbackDays": 7,
+                        "safetyMarginDays": 1,
+                    },
+                    "databaseFilterPattern": {
+                        "includes": ["RAW", "CLEAN", "CURATED"],
+                        "excludes": [],
+                    }
                 }
             },
         },
