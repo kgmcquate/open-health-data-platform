@@ -34,6 +34,7 @@ cube-dev: dbt-parse ## Run Cube Core locally, wired to the dbt manifest + Snowfl
 	  -v "$$PWD:/cube/conf" \
 	  -v "$$PWD/../../data/dbt/target:/cube/conf/dbt:ro" \
 	  -e CUBEJS_DEV_MODE=true \
+	  -e CUBEJS_API_SECRET=$$OHDP_CUBE_API_SECRET \
 	  -e CUBEJS_DB_TYPE=snowflake \
 	  -e CUBEJS_DB_SNOWFLAKE_ACCOUNT=$$OHDP_SNOWFLAKE_ACCOUNT \
 	  -e CUBEJS_DB_USER=$$OHDP_SNOWFLAKE_USER \

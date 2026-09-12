@@ -61,6 +61,7 @@ docker run -p 4000:4000 \
   -v "$PWD:/cube/conf" \
   -v "$PWD/../../data/dbt/target:/cube/conf/dbt:ro" \
   -e CUBEJS_DEV_MODE=true \
+  -e CUBEJS_API_SECRET=$OHDP_CUBE_API_SECRET \
   -e CUBEJS_DB_TYPE=snowflake \
   -e CUBEJS_DB_SNOWFLAKE_ACCOUNT=$OHDP_SNOWFLAKE_ACCOUNT \
   -e CUBEJS_DB_USER=$OHDP_SNOWFLAKE_USER \
@@ -70,6 +71,15 @@ docker run -p 4000:4000 \
   -e CUBEJS_DB_SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT \
   cubejs/cube:latest
 ```
+
+`OHDP_CUBE_API_SECRET` must be exported in your shell before either form —
+pick any value (e.g. `export OHDP_CUBE_API_SECRET=$(openssl rand -hex 32)`)
+and put the same value in `data/.env`'s `OHDP_CUBE_API_SECRET`, since that's
+what any local caller — `catalog/openmetadata/sync`'s Cube ingestion
+(`data/src/ohdp_orchestration/assets/cube_metrics_sync.py`), hub-api — signs
+its Cube API JWT with. In the deployed cluster this is `cube-secret`
+(`platform/helm/README.md`'s secrets table), generated once and never
+hand-picked.
 
 Re-run `make dbt-parse` (or `make cube-dev` again) after editing dbt column
 docs — Cube doesn't watch `data/dbt/target/manifest.json` for changes.

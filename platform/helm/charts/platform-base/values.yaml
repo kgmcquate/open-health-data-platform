@@ -50,6 +50,11 @@ pipelineConfig:
   # dagster_graphql_url in packages/shared/src/ohdp_shared/settings.py).
   OHDP_OPENMETADATA_URL: "http://openmetadata.meta.svc.cluster.local:8585"
   OHDP_DAGSTER_GRAPHQL_URL: "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80"
+  # Cube's in-cluster Service DNS (release name must be "cube" — see
+  # platform/helm/charts/cube/values.yaml — same address hub-api's own
+  # OHDP_CUBE_API_URL points at). The JWT half (OHDP_CUBE_API_SECRET) comes
+  # from the cube-secret Secret, not this ConfigMap.
+  OHDP_CUBE_API_URL: "http://cube.data.svc.cluster.local:4000"
 
 postgres:
   image: postgres:16.4-bookworm
