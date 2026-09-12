@@ -40,6 +40,7 @@ cube-dev: dbt-parse ## Run Cube Core locally, wired to the dbt manifest + Snowfl
 	  -e CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY=$$OHDP_SNOWFLAKE_PRIVATE_KEY \
 	  -e CUBEJS_DB_SNOWFLAKE_ROLE=$$OHDP_SNOWFLAKE_ROLE \
 	  -e CUBEJS_DB_SNOWFLAKE_WAREHOUSE=$$OHDP_SNOWFLAKE_WAREHOUSE \
+	  -e CUBEJS_DB_SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT \
 	  cubejs/cube:latest
 
 # --- Deploy (see docs/deploying.md) ----------------------------------------

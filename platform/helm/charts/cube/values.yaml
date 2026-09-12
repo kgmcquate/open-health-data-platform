@@ -109,6 +109,12 @@ env:
   CUBEJS_DB_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
   CUBEJS_DB_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
   CUBEJS_DB_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
+  # Without this, snowflake-sdk's ConnectionConfig defaults to its DEFAULT_AUTHENTICATOR
+  # ("SNOWFLAKE") and requires a password even when a private key is set —
+  # SNOWFLAKE_JWT is snowflake-sdk's KEY_PAIR_AUTHENTICATOR value, the one
+  # that actually skips the password requirement for key-pair auth (the
+  # pipeline role has no password — SERVICE users don't accept one, ADR-0012).
+  CUBEJS_DB_SNOWFLAKE_AUTHENTICATOR: "SNOWFLAKE_JWT"
 
 # Explicit secretKeyRef mappings, not envFrom: the Secret keys use this
 # project's OHDP_* naming convention, but Cube itself only recognizes its own
