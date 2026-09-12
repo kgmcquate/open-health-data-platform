@@ -5,7 +5,7 @@
 # Measures still have to be hand-written: dbt documents columns, it doesn't
 # declare aggregations, so the two measures below are the one place in the
 # whole pipeline where "average occupancy" gets defined as AVG(...).
-{% set model = dbt_model('mart_respiratory_hospital_load') %}
+{% set model = dbt_model('respiratory__hospital_load') %}
 
 cubes:
   - {{ model.as_cube() }}

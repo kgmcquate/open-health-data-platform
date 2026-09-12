@@ -1,7 +1,7 @@
 version: 2
 
 models:
-  - name: mart_respiratory_hospital_load
+  - name: respiratory__hospital_load
     description: >
       Weekly, per-state rollup of hospital load. Cube's respiratory_hospital_load
       cube (semantic/cube/model/respiratory_hospital_load.yml) reads its

@@ -100,7 +100,12 @@ def _fetch_cube_meta() -> list[dict[str, Any]]:
         headers={"Authorization": _cube_auth_token()},
         timeout=30,
     )
-    response.raise_for_status()
+    if response.is_error:
+        # `raise_for_status()` alone drops the response body — Cube puts the
+        # actual schema-compile/auth error there, and the Dagster run's own
+        # log is often the only place that's easier to reach than the Cube
+        # pod's own logs.
+        raise RuntimeError(f"Cube meta request failed ({response.status_code}): {response.text}")
     payload: dict[str, Any] = response.json()
     cubes: list[dict[str, Any]] = payload["cubes"]
     return cubes

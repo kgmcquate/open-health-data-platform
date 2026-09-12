@@ -6,13 +6,15 @@
 # see Makefile), mounted read-only into the Cube container at dbt/manifest.json
 # (see README.md's docker run command).
 #
-# filter(paths=['marts/']) is ADR-0003's "every cube reads a dbt mart, never a
-# staging or raw table" enforced at load time: a cube can't reference a model
-# this filter excludes, because dbt_model() would return None for it.
+# filter(paths=['curated/']) is ADR-0003's "every cube reads a dbt mart, never
+# a staging or raw table" enforced at load time: a cube can't reference a
+# model this filter excludes, because dbt_model() would return None for it.
+# "curated/" (not "marts/") since ADR-0012/0013's medallion rename — CURATED
+# is the presentation layer dashboards/Cube read; RAW/CLEAN are staging.
 from cube import TemplateContext
 from cube_dbt import Dbt
 
-dbt = Dbt.from_file('dbt/manifest.json').filter(paths=['marts/'])
+dbt = Dbt.from_file('dbt/manifest.json').filter(paths=['curated/'])
 
 template = TemplateContext()
 
