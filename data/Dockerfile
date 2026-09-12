@@ -23,19 +23,23 @@ COPY data/pyproject.toml data/uv.lock data/
 
 WORKDIR /app/data
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-install-project --no-editable
+    uv sync --frozen --no-install-project --no-editable
+
+# dbt deps hits the network (dbt Hub); dbt parse is offline — no catalog or
+# Spaces creds needed. Copy just the dbt project first so ordinary source
+# changes elsewhere in data/ don't force a re-fetch of dbt packages: this
+# manifest.json build for the `snowflake` dbt assets (ADR-0010) only reruns
+# when the dbt project itself changes.
+COPY data/dbt/ dbt/
+RUN /app/.venv/bin/dbt deps --project-dir dbt \
+ && /app/.venv/bin/dbt parse --project-dir dbt --profiles-dir dbt
 
 COPY data/ /app/data/
 
 # --no-editable: the default editable install leaves .pth files pointing at
 # /app/data/src/... which do not exist in the runtime stage (ADR-0004).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-editable
-
-# manifest.json for the `snowflake` dbt assets (ADR-0010). `dbt parse` is
-# offline — no catalog or Spaces creds needed.
-RUN /app/.venv/bin/dbt deps --project-dir dbt \
- && /app/.venv/bin/dbt parse --project-dir dbt --profiles-dir dbt
+    uv sync --frozen --no-editable
 
 
 FROM python:3.12-slim-bookworm AS runtime

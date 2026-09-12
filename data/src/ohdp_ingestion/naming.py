@@ -12,7 +12,7 @@ from typing import Literal
 
 Layer = Literal["raw", "clean", "curated"]
 
-_DATABASES: dict[Layer, str] = {"raw": "RAW", "clean": "CLEAN", "curated": "CURATED"}
+_DATABASES: dict[Layer, str] = {"raw": "raw", "clean": "clean", "curated": "curated"}
 
 
 def database(layer: Layer) -> str:
