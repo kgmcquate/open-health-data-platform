@@ -40,9 +40,16 @@ openmetadata:
           # config (host/port/user), and Helm will not merge our key into it.
           secretRef: openmetadata-db-auth
           secretKey: openmetadata-postgres-password
-      maxSize: 20
-      minSize: 5
-      initialSize: 5
+      # maxSize was 20, which OM's own background workers (search index retry,
+      # audit log consumer, workflow/change-event consumers, job recovery)
+      # keep pinned at 100% by themselves, starving real API requests and
+      # causing 30s HikariCP timeouts (SQLTransientConnectionException) that
+      # show up as slow/hung responses in the UI. Postgres has plenty of
+      # headroom (max_connections=100, ~44 in use across all DBs), so raise
+      # the app-side cap instead of trying to shrink worker concurrency.
+      maxSize: 50
+      minSize: 10
+      initialSize: 10
 
     # ---------------------------------------------------------------------
     # Search. Single node, 1 shard, 0 replicas (§4).
