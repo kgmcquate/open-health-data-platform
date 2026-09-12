@@ -6,8 +6,8 @@
 select
     cast(state as varchar)                        as state,
     to_date(date)                                 as report_date,
-    try_cast(inpatient_beds as double)            as inpatient_beds,
-    try_cast(inpatient_beds_used as double)       as inpatient_beds_used,
-    try_cast(inpatient_beds_used_covid as double) as inpatient_beds_used_covid
+    inpatient_beds::int                           as inpatient_beds,
+    inpatient_beds_used::int                      as inpatient_beds_used,
+    inpatient_beds_used_covid::int                as inpatient_beds_used_covid
 from {{ ref('stg_healthdata_gov__hospital_capacity_by_state') }}
 where state is not null
