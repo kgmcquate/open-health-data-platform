@@ -62,13 +62,19 @@ class _Translator(DagsterDbtTranslator):
             return super().get_asset_key(dbt_resource_props)
 
         # Match the structure of the Snowflake catalog: one database per
-        # medallion layer (ADR-0013), a schema per source/mart within it.
+        # medallion layer (ADR-0013), a schema per source/mart within it. Use
+        # the model's alias (its actual table name, e.g. after
+        # generate_alias_name.sql strips the `stg_<source>__` prefix) rather
+        # than its dbt unique-id name, and lowercase every segment — Snowflake
+        # unquoted identifiers get case-folded, but the asset key should stay
+        # stable regardless of how the adapter happens to case them.
+        table_name = dbt_resource_props.get("alias") or dbt_resource_props["name"]
         return AssetKey(
             [
                 self._prefix,
-                dbt_resource_props["database"],
-                dbt_resource_props["schema"],
-                dbt_resource_props["name"],
+                dbt_resource_props["database"].lower(),
+                dbt_resource_props["schema"].lower(),
+                table_name.lower(),
             ]
         )
 
