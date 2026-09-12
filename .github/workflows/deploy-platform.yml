@@ -81,8 +81,8 @@ jobs:
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
           DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          STREAMLIT_OIDC_CLIENT_ID: ${{ secrets.STREAMLIT_OIDC_CLIENT_ID }}
-          STREAMLIT_OIDC_CLIENT_SECRET: ${{ secrets.STREAMLIT_OIDC_CLIENT_SECRET }}
+          STREAMLIT_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
+          STREAMLIT_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
