@@ -74,9 +74,10 @@ class _Translator(DagsterDbtTranslator):
         # should stay stable regardless of how the adapter happens to case
         # them.
 
-        table_name = dbt_resource_props["name"]
-        database = dbt_resource_props["database"]
-        schema = dbt_resource_props["schema"]
+        table_name = dbt_resource_props.get("alias") or dbt_resource_props["name"].split("__")[-1]
+        database = dbt_resource_props["database"].lower()
+        schema = dbt_resource_props["schema"].lower()
+
         return AssetKey([self._prefix, database, schema, table_name])
 
     def get_group_name(self, props: dict[str, Any]) -> str | None:
