@@ -59,17 +59,17 @@ _CADENCES: tuple[Cadence, ...] = ("daily", "weekly", "monthly")
 
 # Asset-key prefixes: unexecutable source-catalog specs live under `sources/`,
 # the dlt-ingested table assets under `ingestion/` — kept distinct from
-# `_WAREHOUSE_PREFIX` below and from each other so the graph reads
-# source -> ingestion -> warehouse left to right.
+# `_SNOWFLAKE_PREFIX` below and from each other so the graph reads
+# source -> ingestion -> snowflake left to right.
 _SOURCES_PREFIX = "sources"
 _INGESTION_PREFIX = "ingestion"
 
-# Must match warehouse/defs.yaml's `key_prefix` — there's no shared constant for
-# it since the two components are independently configured, but the dbt
-# translator's `get_asset_key` (warehouse/component.py) computes
+# Must match ohdp_orchestration.assets.snowflake_dbt's `KEY_PREFIX` — there's
+# no shared constant since the two modules are independent, but the dbt
+# translator's `get_asset_key` (assets/snowflake_dbt.py) computes
 # [prefix, database, schema, name] for dbt's `healthdata_gov` source nodes too,
-# and that key needs to line up with `_warehouse_raw_spec()` below.
-_WAREHOUSE_PREFIX = "warehouse"
+# and that key needs to line up with `_snowflake_raw_spec()` below.
+_SNOWFLAKE_PREFIX = "snowflake"
 
 
 @dataclass
@@ -111,8 +111,8 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
     def table_key(self) -> AssetKey:
         return AssetKey([_INGESTION_PREFIX, _DOMAIN, self.raw_table])
 
-    def _warehouse_raw_key(self, table: str) -> AssetKey:
-        """Label for where a physical table lives in the warehouse's RAW
+    def _snowflake_raw_key(self, table: str) -> AssetKey:
+        """Label for where a physical table lives in Snowflake's RAW
         layer — `[prefix, "RAW", schema, table]`, via the same
         `ohdp_ingestion.naming` module the raw loader itself uses, and
         matching dbt's actual compiled source-node asset key now that
@@ -124,12 +124,12 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         `_assets()` below.
         """
         return AssetKey(
-            [_WAREHOUSE_PREFIX, naming.database("raw"), naming.schema("raw", _SOURCE), table]
+            [_SNOWFLAKE_PREFIX, naming.database("raw"), naming.schema("raw", _SOURCE), table]
         )
 
     @property
-    def warehouse_raw_key(self) -> AssetKey:
-        return self._warehouse_raw_key(self.raw_table)
+    def snowflake_raw_key(self) -> AssetKey:
+        return self._snowflake_raw_key(self.raw_table)
 
     # --- specs -------------------------------------------------------------
     def _advertised_schema(self) -> TableSchema | None:
@@ -198,19 +198,19 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             tags={"ohdp/domain": _DOMAIN, "ohdp/cadence": self.cadence},
         )
 
-    def _warehouse_raw_spec(self) -> AssetSpec:
-        """Unexecutable RAW-layer label for this table (``warehouse_raw_key``),
+    def _snowflake_raw_spec(self) -> AssetSpec:
+        """Unexecutable RAW-layer label for this table (``snowflake_raw_key``),
         downstream of the dlt table. NOT currently the same asset dbt's
         `healthdata_gov` source resolves to in the live graph — see the
-        docstring on `warehouse_raw_key`. `_table_asset()`'s op reports its
+        docstring on `snowflake_raw_key`. `_table_asset()`'s op reports its
         materialization directly (see below); this spec never runs its own op.
         """
         return AssetSpec(
-            key=self.warehouse_raw_key,
+            key=self.snowflake_raw_key,
             deps=[self.table_key],
-            group_name=f"{_WAREHOUSE_PREFIX}_raw",
+            group_name=f"{_SNOWFLAKE_PREFIX}_raw",
             description=f"{self.name} — as dbt's `{_DOMAIN}` source sees it.",
-            tags={"ohdp/domain": _WAREHOUSE_PREFIX, "ohdp/layer": "raw"},
+            tags={"ohdp/domain": _SNOWFLAKE_PREFIX, "ohdp/layer": "raw"},
             kinds={"snowflake"},
         )
 
@@ -253,7 +253,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
                 for table_name in table_names:
                     context.instance.report_runless_asset_event(
                         AssetMaterialization(
-                            asset_key=cfg._warehouse_raw_key(table_name),
+                            asset_key=cfg._snowflake_raw_key(table_name),
                             description="Represents data copied into the raw layer.",
                         )
                     )
@@ -265,7 +265,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
         resources: dict = {}
         if self.enabled:
             assets.append(self._table_asset())
-            assets.append(self._warehouse_raw_spec())
+            assets.append(self._snowflake_raw_spec())
             resources["dlt"] = DLT_RESOURCE
         return Definitions(assets=assets, resources=resources)
 

@@ -26,6 +26,8 @@ clean-targets: ["target", "dbt_packages"]
 #   marts/<mart>/     -> CURATED.<mart>     (presentation)
 models:
   ohdp:
+    +meta:
+      automaterialize: true
     clean:
       +tags: ["clean"]
       +materialized: table

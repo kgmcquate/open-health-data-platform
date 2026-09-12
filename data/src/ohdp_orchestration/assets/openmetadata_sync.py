@@ -1,0 +1,152 @@
+# The @asset bodies' `context` param is resolved by Dagster, not annotated
+# here — `_validate_context_type_hint` compares the raw (string, under
+# `annotations` import) annotation object-identically, so a typed annotation
+# always fails.
+# mypy: disable-error-code="no-untyped-def"
+"""Pulls metadata into OpenMetadata via OM's own connectors
+(``openmetadata-ingestion[dagster,snowflake]``) rather than a bespoke
+integration — ARCHITECTURE.md §2, §6. Each source runs its
+``metadata.workflow.metadata.MetadataWorkflow`` in-process — the same API
+OpenMetadata's own Airflow/Dagster integration snippets use.
+
+* ``openmetadata_dagster_sync`` — pipeline/job/run metadata, read through
+  ``graphql-authz-proxy`` rather than the raw ``dagster-webserver`` Service —
+  same reasoning as ``dagster-monitoring``
+  (``platform/helm/charts/dagster-monitoring/values.yaml``): a pod-to-pod
+  caller with none of oauth2-proxy's ``X-Forwarded-*`` headers falls into the
+  proxy's public-viewer group, so this job is bound by the same read-only
+  allowlist as everyone else rather than a side channel around it. See
+  ``dagster_graphql_url`` in ``ohdp_shared.settings``.
+* ``openmetadata_snowflake_sync`` — database/schema/table/column metadata,
+  authenticating the same key-pair way dlt and dbt-snowflake already do
+  (``ohdp_shared.settings.snowflake_*``). No ``database``/filter patterns: the
+  ``OHDP_PIPELINE`` role only has grants on the medallion-layer databases
+  (RAW/CLEAN/CURATED, ADR-0013) in the first place, so there is nothing else
+  for it to see. Its service name is what the Dagster asset's
+  ``lineageInformation`` points at, so pipeline runs link up with the table
+  lineage dbt/dlt publish under ``snowflake/``.
+
+``openmetadata-ingestion``'s core pulls in ``collate-sqllineage==2.1.7``,
+which hard-pins ``sqlglot==29.0.1`` — a version no released ``dagster-dbt``
+happens to also allow, so plain ``uv add`` here is unsatisfiable. Forced with
+``[tool.uv] override-dependencies`` in ``data/pyproject.toml`` (confirmed:
+``dagster-dbt``'s own sqlglot usage — dbt manifest parsing — works fine
+against 29.0.1, per the `defs/snowflake/` component's own test suite).
+
+Jobs/schedules for these live in ``ohdp_orchestration.jobs``/``.schedules``,
+not here — this module is asset bodies only (``ohdp_orchestration.assets``'s
+own convention, see its ``__init__.py``).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from dagster import asset
+from metadata.workflow.metadata import MetadataWorkflow
+
+from ohdp_shared import get_logger
+from ohdp_shared.settings import settings
+
+log = get_logger(__name__)
+
+_DAGSTER_SERVICE_NAME = "ohdp_dagster"
+_SNOWFLAKE_SERVICE_NAME = "snowflake"
+
+_GROUP_NAME = "openmetadata_sync"
+
+
+def _openmetadata_server_config() -> dict[str, Any]:
+    return {
+        "hostPort": f"{settings.openmetadata_url}/api",
+        "authProvider": "openmetadata",
+        "securityConfig": {"jwtToken": settings.openmetadata_jwt},
+    }
+
+
+def _dagster_workflow_config() -> dict[str, Any]:
+    return {
+        "source": {
+            "type": "dagster",
+            "serviceName": _DAGSTER_SERVICE_NAME,
+            "serviceConnection": {
+                "config": {
+                    "type": "Dagster",
+                    "host": settings.dagster_graphql_url,
+                }
+            },
+            "sourceConfig": {
+                "config": {
+                    "type": "PipelineMetadata",
+                    "includeLineage": True,
+                    "lineageInformation": {"dbServiceNames": [_SNOWFLAKE_SERVICE_NAME]},
+                }
+            },
+        },
+        "sink": {"type": "metadata-rest", "config": {}},
+        "workflowConfig": {
+            "loggerLevel": "INFO",
+            "openMetadataServerConfig": _openmetadata_server_config(),
+        },
+    }
+
+
+def _snowflake_workflow_config() -> dict[str, Any]:
+    return {
+        "source": {
+            "type": "snowflake",
+            "serviceName": _SNOWFLAKE_SERVICE_NAME,
+            "serviceConnection": {
+                "config": {
+                    "type": "Snowflake",
+                    "username": settings.snowflake_user,
+                    "privateKey": settings.snowflake_private_key,
+                    "account": settings.snowflake_account,
+                    "role": settings.snowflake_role,
+                    "warehouse": settings.snowflake_warehouse,
+                }
+            },
+            "sourceConfig": {
+                "config": {
+                    "type": "DatabaseMetadata",
+                    "markDeletedTables": True,
+                    "markDeletedSchemas": True,
+                    "markDeletedDatabases": True,
+                    "includeTags": True,
+                }
+            },
+        },
+        "sink": {"type": "metadata-rest", "config": {}},
+        "workflowConfig": {
+            "loggerLevel": "INFO",
+            "openMetadataServerConfig": _openmetadata_server_config(),
+        },
+    }
+
+
+@asset(group_name=_GROUP_NAME, kinds={"openmetadata"})
+def openmetadata_dagster_sync(context) -> None:
+    """Runs the ``dagster`` source's ``MetadataWorkflow`` against this
+    instance."""
+    context.log.info(
+        f"Ingesting Dagster metadata into OpenMetadata via {settings.dagster_graphql_url}"
+    )
+    workflow = MetadataWorkflow.create(_dagster_workflow_config())
+    workflow.execute()
+    workflow.print_status()
+    workflow.raise_from_status()
+    workflow.stop()
+
+
+@asset(group_name=_GROUP_NAME, kinds={"openmetadata"})
+def openmetadata_snowflake_sync(context) -> None:
+    """Runs the ``snowflake`` source's ``MetadataWorkflow`` against
+    ``settings.snowflake_account``."""
+    context.log.info(
+        f"Ingesting Snowflake metadata into OpenMetadata via {settings.snowflake_account}"
+    )
+    workflow = MetadataWorkflow.create(_snowflake_workflow_config())
+    workflow.execute()
+    workflow.print_status()
+    workflow.raise_from_status()
+    workflow.stop()

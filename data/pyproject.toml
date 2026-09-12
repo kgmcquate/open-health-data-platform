@@ -18,10 +18,19 @@ dependencies = [
     "boto3>=1.35",
     "pyarrow>=17.0",
     "polars>=1.7",
+    "openmetadata-ingestion[dagster,snowflake]==2.0.1",
 ]
 
 [tool.uv.sources]
 ohdp-shared = { path = "../packages/shared", editable = true }
+
+# dagster-dbt's sqlglot[rs] pin shifts across its own release history and never
+# lands on the exact 29.0.1 openmetadata-ingestion needs (via
+# collate-sqllineage==2.1.7) — confirmed unsatisfiable with plain `uv add`.
+# Force sqlglot to the band OM needs; dagster-dbt's own sqlglot usage is narrow
+# (dbt manifest parsing) and has tested fine against it in this project.
+[tool.uv]
+override-dependencies = ["sqlglot~=29.0.0"]
 
 [dependency-groups]
 dev = [

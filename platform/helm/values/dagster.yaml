@@ -176,7 +176,7 @@ pythonLogs:
 # header, never a URL query param (ohdp_ingestion/healthdata_gov/source.py),
 # and dlt runs at its unconfigured default log level (WARNING) everywhere in
 # this repo; dbt-snowflake auths by key pair only, its own connection-info
-# logging explicitly excludes private_key, and the warehouse component never
+# logging explicitly excludes private_key, and the snowflake dbt assets never
 # passes --debug. Re-audit before lowering dlt's log level, adding --debug to
 # the dbt component, or routing any other subprocess through this — a raw
 # traceback from a connection failure is the one path not covered above.

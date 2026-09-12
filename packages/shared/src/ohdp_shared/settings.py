@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     cube_api_secret: str = ""
     openmetadata_url: str = "http://localhost:8585"
     openmetadata_jwt: str = ""
+    # GraphQL endpoint OpenMetadata's Dagster connector reads pipeline/run
+    # metadata from. In-cluster this is graphql-authz-proxy, not the raw
+    # dagster-webserver Service (ARCHITECTURE.md §5) — a pod-to-pod caller with
+    # none of oauth2-proxy's headers falls into the proxy's public-viewer
+    # group, same as dagster-monitoring.
+    dagster_graphql_url: str = "http://localhost:3000"
 
     # Chat quotas (ARCHITECTURE.md §10 open decision 3 — provisional)
     free_monthly_questions: int = 20

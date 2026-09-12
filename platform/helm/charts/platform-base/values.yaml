@@ -44,6 +44,12 @@ pipelineConfig:
   OHDP_SNOWFLAKE_USER: "OHDP_PIPELINE"
   OHDP_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
   OHDP_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
+  # OpenMetadata's own REST API (the JWT half is OHDP_OPENMETADATA_JWT, in
+  # ohdp-pipeline-secrets) and its Dagster connector's GraphQL source — routed
+  # through graphql-authz-proxy, not dagster-webserver directly (see
+  # dagster_graphql_url in packages/shared/src/ohdp_shared/settings.py).
+  OHDP_OPENMETADATA_URL: "http://openmetadata.meta.svc.cluster.local:8585"
+  OHDP_DAGSTER_GRAPHQL_URL: "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80"
 
 postgres:
   image: postgres:16.4-bookworm

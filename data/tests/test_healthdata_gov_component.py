@@ -111,7 +111,8 @@ def test_three_cadence_jobs_and_schedules_regardless_of_enabled_set() -> None:
         "healthdata_gov_weekly_ingest",
         "healthdata_gov_monthly_ingest",
     }
-    assert {s.name for s in rd.schedule_defs} == {
+    hd_schedules = {s.name for s in rd.schedule_defs if s.name.startswith("healthdata_gov_")}
+    assert hd_schedules == {
         "healthdata_gov_daily_schedule",
         "healthdata_gov_weekly_schedule",
         "healthdata_gov_monthly_schedule",

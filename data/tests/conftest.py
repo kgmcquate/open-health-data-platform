@@ -1,6 +1,6 @@
 """Ensure the dbt manifest exists before any test imports the code location.
 
-The `warehouse` component needs `dbt/target/manifest.json` (gitignored). CI's dbt
+The `snowflake` dbt assets need `dbt/target/manifest.json` (gitignored). CI's dbt
 job and the image build produce it; this makes `pytest` self-sufficient too.
 """
 

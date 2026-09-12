@@ -1,18 +1,26 @@
 # mypy: disable-error-code="no-untyped-def, no-untyped-call, type-arg, arg-type, override"
-"""The dbt medallion project as Dagster assets, under the ``warehouse/`` prefix
-(dbt-snowflake only, ADR-0014).
+"""The dbt medallion project as Dagster assets, under the ``snowflake/`` prefix
+(dbt-snowflake only, ADR-0014). Named to match the service OpenMetadata's own
+Snowflake/dbt connectors will ingest under, not ``warehouse`` (a generic word
+that also means Snowflake compute elsewhere in this repo).
 
-* models  -> ``warehouse/<database>/<schema>/<model_name>``, grouped
-  ``warehouse_<layer>`` (`clean` / `core` / `marts`), kinds ``dbt`` + ``snowflake``.
-* dbt **sources** map back to the warehouse RAW-layer keys the ingestion
-  components already own (``warehouse/RAW/<schema>/<table>``, see
-  ``HealthDataGovDataset.warehouse_raw_key``) — so the graph is continuous:
+Plain module-level ``@dbt_assets``, not a ``Component`` — there is exactly one
+dbt project, so a `defs.yaml` config layer would only add indirection.
+
+* models  -> ``snowflake/<database>/<schema>/<model_name>``, grouped
+  ``snowflake_<layer>`` (`clean` / `core` / `marts`), kinds ``dbt`` + ``snowflake``.
+* dbt **sources** map back to the RAW-layer keys the ingestion components
+  already own (``snowflake/RAW/<schema>/<table>``, see
+  ``HealthDataGovDataset.snowflake_raw_key``) — so the graph is continuous:
 
       sources/healthdata_gov/… → ingestion/healthdata_gov/<raw_table> (dlt)
-        → warehouse/RAW/… → warehouse/stg_… (clean) → warehouse/core_… → warehouse/mart_…
+        → snowflake/RAW/… → snowflake/stg_… (clean) → snowflake/core_… → snowflake/mart_…
 
 Needs ``dbt/target/manifest.json``. ``dagster dev`` builds it (``prepare_if_dev``);
 CI and the image run ``dbt parse``. Locally: ``cd data/dbt && uv run dbt parse``.
+
+The automation-condition sensor for these assets lives in
+``ohdp_orchestration.sensors.snowflake_dbt``.
 """
 
 from __future__ import annotations
@@ -21,8 +29,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from dagster import AssetKey, AutomationCondition, Definitions
-from dagster.components import Component, ComponentLoadContext, Model, Resolvable
+from dagster import AssetKey, AutomationCondition
 from dagster_dbt import DagsterDbtTranslator, DbtCliResource, DbtProject, dbt_assets
 
 from ohdp_shared import get_logger
@@ -30,6 +37,8 @@ from ohdp_shared import get_logger
 log = get_logger(__name__)
 
 _LAYERS = ("clean", "core", "marts")
+
+KEY_PREFIX = "snowflake"
 
 
 class _Translator(DagsterDbtTranslator):
@@ -74,7 +83,7 @@ class _Translator(DagsterDbtTranslator):
         # Drop the bare dbt selection tags (`clean` / `core` / `marts`); keep the
         # rest, add ohdp/* and the materialization (for asset selection).
         tags = {k: v for k, v in super().get_tags(props).items() if k not in _LAYERS}
-        tags["ohdp/domain"] = "warehouse"
+        tags["ohdp/domain"] = "snowflake"
         tags["dbt_materialized"] = props.get("config", {}).get("materialized", "view").strip()
         fqn = props.get("fqn") or []
         layer = next((p for p in fqn if p in _LAYERS), None)
@@ -97,22 +106,17 @@ class _Translator(DagsterDbtTranslator):
         return spec
 
     def get_automation_condition(self, props: dict[str, Any]) -> AutomationCondition | None:
-        """Opt-in declarative automation, driven by each model's `+meta.dagster`
-        config — nothing currently schedules `warehouse_dbt`, so this is the
-        mechanism that lets a model ask to rebuild itself.
-        """
+        """Opt-in declarative automation, driven by each model's ``+meta.dagster`` config."""
         resource_type = props.get("resource_type")
         materialized = props.get("config", {}).get("materialized", "view").strip()
         automaterialize = props.get("config", {}).get("meta", {}).get("automaterialize", False)
         refresh_limit = props.get("config", {}).get("meta", {}).get("refresh_limit")
 
-        # Always rebuild views on code change; everything else needs an opt-in.
         if not automaterialize:
             if materialized == "view":
                 return AutomationCondition.code_version_changed()
             return None
 
-        # Only if newly true, so a failed run doesn't re-trigger on its own.
         dbt_model_changed = (
             AutomationCondition.missing() | AutomationCondition.code_version_changed()
         ).newly_true()
@@ -140,53 +144,37 @@ class _Translator(DagsterDbtTranslator):
 
         if resource_type == "seed":
             return dbt_model_changed
-        
+
         return None
 
 
-
-def _default_project_dir() -> Path:
+def _project_dir() -> Path:
     # DBT_PROJECT_DIR is set in the image (Dockerfile) and CI; otherwise resolve
     # data/dbt relative to this installed package.
     env = os.environ.get("DBT_PROJECT_DIR")
     if env:
         return Path(env)
-    # .../ohdp_orchestration/defs/warehouse/component.py -> parents[4] == data/
-    return Path(__file__).resolve().parents[4] / "dbt"
+    # .../ohdp_orchestration/assets/snowflake_dbt.py -> parents[3] == data/
+    return Path(__file__).resolve().parents[3] / "dbt"
 
 
-class DbtWarehouse(Component, Model, Resolvable):
-    """The dbt project (`data/dbt`) as Dagster assets under `warehouse/`."""
+_project = DbtProject(project_dir=_project_dir())
+_project.prepare_if_dev()
+if not _project.manifest_path.exists():
+    raise FileNotFoundError(
+        f"{_project.manifest_path} missing — run `cd {_project_dir()} && uv run dbt parse` "
+        "(CI and the image do this in the build)."
+    )
 
-    # Empty -> $DBT_PROJECT_DIR, else data/dbt next to the package.
-    project_dir: str = ""
-    key_prefix: str = "warehouse"
+DBT_RESOURCE = DbtCliResource(project_dir=_project)
+
+
+@dbt_assets(
+    manifest=_project.manifest_path,
+    project=_project,
+    dagster_dbt_translator=_Translator(KEY_PREFIX),
+    name="snowflake_dbt",
+)
+def snowflake_dbt_assets(context, dbt: DbtCliResource):
     # `dbt build` runs tests inline; a failed test fails the asset (ARCHITECTURE §3).
-    dbt_command: list[str] = ["build"]
-
-    def build_defs(self, context: ComponentLoadContext) -> Definitions:
-        project_dir = (
-            Path(self.project_dir).resolve() if self.project_dir else _default_project_dir()
-        )
-        project = DbtProject(project_dir=project_dir)
-        project.prepare_if_dev()
-        if not project.manifest_path.exists():
-            raise FileNotFoundError(
-                f"{project.manifest_path} missing — run `cd {project_dir} && uv run dbt parse` "
-                "(CI and the image do this in the build)."
-            )
-
-        translator = _Translator(
-            self.key_prefix
-        )
-
-        @dbt_assets(
-            manifest=project.manifest_path,
-            project=project,
-            dagster_dbt_translator=translator,
-            name="warehouse_dbt",
-        )
-        def _assets(context, dbt: DbtCliResource):
-            yield from dbt.cli(self.dbt_command, context=context).stream()
-
-        return Definitions(assets=[_assets], resources={"dbt": DbtCliResource(project_dir=project)})
+    yield from dbt.cli(["build"], context=context).stream()

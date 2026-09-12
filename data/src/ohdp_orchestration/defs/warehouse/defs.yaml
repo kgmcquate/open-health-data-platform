@@ -1,5 +1,0 @@
-type: ohdp_orchestration.defs.warehouse.component.DbtWarehouse
-
-attributes:
-  project_dir: dbt
-  key_prefix: warehouse

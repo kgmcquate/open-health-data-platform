@@ -249,5 +249,5 @@ def test_nested_json_reports_a_materialization_per_child_table(
     assert result.success
 
     for table in ("nested", "nested__tags"):
-        key = AssetKey(["warehouse", "RAW", "healthdata_gov", table])
+        key = AssetKey(["snowflake", "RAW", "healthdata_gov", table])
         assert instance.get_latest_materialization_event(key) is not None, table

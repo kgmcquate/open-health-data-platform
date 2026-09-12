@@ -32,7 +32,7 @@ COPY data/ /app/data/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-editable
 
-# manifest.json for the `warehouse` Dagster component (ADR-0010). `dbt parse` is
+# manifest.json for the `snowflake` dbt assets (ADR-0010). `dbt parse` is
 # offline — no catalog or Spaces creds needed.
 RUN /app/.venv/bin/dbt deps --project-dir dbt \
  && /app/.venv/bin/dbt parse --project-dir dbt --profiles-dir dbt
