@@ -22,8 +22,8 @@ from dagster import Definitions
 from dagster.components import load_defs
 
 from ohdp_orchestration import defs as _defs_module
+from ohdp_orchestration.assets.openmetadata_dagster_sync import openmetadata_dagster_sync
 from ohdp_orchestration.assets.openmetadata_sync import (
-    openmetadata_dagster_sync,
     openmetadata_dbt_sync,
     openmetadata_snowflake_sync,
 )

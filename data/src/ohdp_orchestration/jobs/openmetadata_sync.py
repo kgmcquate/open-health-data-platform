@@ -1,11 +1,12 @@
-"""One job per OpenMetadata sync asset (``ohdp_orchestration.assets.openmetadata_sync``)."""
+"""One job per OpenMetadata sync asset (``ohdp_orchestration.assets.openmetadata_sync`` /
+``.openmetadata_dagster_sync``)."""
 
 from __future__ import annotations
 
 from dagster import AssetSelection, define_asset_job
 
+from ohdp_orchestration.assets.openmetadata_dagster_sync import openmetadata_dagster_sync
 from ohdp_orchestration.assets.openmetadata_sync import (
-    openmetadata_dagster_sync,
     openmetadata_dbt_sync,
     openmetadata_snowflake_sync,
 )

@@ -4,26 +4,24 @@
 # always fails.
 # mypy: disable-error-code="no-untyped-def"
 """Pulls metadata into OpenMetadata via OM's own connectors
-(``openmetadata-ingestion[dagster,snowflake]``) rather than a bespoke
+(``openmetadata-ingestion[snowflake,dbt]``) rather than a bespoke
 integration — ARCHITECTURE.md §2, §6. Each source runs its
 ``metadata.workflow.metadata.MetadataWorkflow`` in-process — the same API
 OpenMetadata's own Airflow/Dagster integration snippets use.
+``openmetadata_dagster_sync`` lives in its own module
+(``ohdp_orchestration.assets.openmetadata_dagster_sync``) instead — it talks
+to Dagster and OpenMetadata directly rather than through
+``MetadataWorkflow``, so it doesn't share this file's pattern; see that
+module's docstring for why.
 
-* ``openmetadata_dagster_sync`` — pipeline/job/run metadata, read through
-  ``graphql-authz-proxy`` rather than the raw ``dagster-webserver`` Service —
-  same reasoning as ``dagster-monitoring``
-  (``platform/helm/charts/dagster-monitoring/values.yaml``): a pod-to-pod
-  caller with none of oauth2-proxy's ``X-Forwarded-*`` headers falls into the
-  proxy's public-viewer group, so this job is bound by the same read-only
-  allowlist as everyone else rather than a side channel around it. See
-  ``dagster_graphql_url`` in ``ohdp_shared.settings``.
 * ``openmetadata_snowflake_sync`` — database/schema/table/column metadata,
   authenticating the same key-pair way dlt and dbt-snowflake already do
   (``ohdp_shared.settings.snowflake_*``). No ``database``/filter patterns: the
   ``OHDP_PIPELINE`` role only has grants on the medallion-layer databases
   (RAW/CLEAN/CURATED, ADR-0013) in the first place, so there is nothing else
-  for it to see. Its service name is what the Dagster asset's
-  ``lineageInformation`` points at, so pipeline runs link up with the table
+  for it to see. Its service name is what
+  ``openmetadata_dagster_sync``'s lineage edges resolve Snowflake tables
+  against, so that sync's asset-graph lineage links up with the table
   lineage dbt/dlt publish under ``snowflake/``.
 * ``openmetadata_dbt_sync`` — model descriptions/tags/tests and source/ref
   lineage from the dbt project, run the "external" way (`run-dbt-workflow-
@@ -65,7 +63,6 @@ from ohdp_shared.settings import settings
 
 log = get_logger(__name__)
 
-_DAGSTER_SERVICE_NAME = "ohdp_dagster"
 _SNOWFLAKE_SERVICE_NAME = "snowflake"
 
 _GROUP_NAME = "openmetadata_sync"
@@ -77,34 +74,6 @@ def _openmetadata_server_config() -> dict[str, Any]:
         "hostPort": "https://catalog.open-health-data-platform.org/api",
         "authProvider": "openmetadata",
         "securityConfig": {"jwtToken": settings.openmetadata_jwt},
-    }
-
-
-def _dagster_workflow_config() -> dict[str, Any]:
-    return {
-        "source": {
-            "type": "dagster",
-            "serviceName": _DAGSTER_SERVICE_NAME,
-            "serviceConnection": {
-                "config": {
-                    "type": "Dagster",
-                    "host": settings.dagster_graphql_url,
-                    "stripAssetKeyPrefixLength": 1,
-                }
-            },
-            "sourceConfig": {
-                "config": {
-                    "type": "PipelineMetadata",
-                    "includeLineage": True,
-                    "lineageInformation": {"dbServiceNames": [_SNOWFLAKE_SERVICE_NAME]},
-                }
-            },
-        },
-        "sink": {"type": "metadata-rest", "config": {}},
-        "workflowConfig": {
-            "loggerLevel": "INFO",
-            "openMetadataServerConfig": _openmetadata_server_config(),
-        },
     }
 
 
@@ -192,20 +161,6 @@ def _dbt_workflow_config() -> dict[str, Any]:
             "openMetadataServerConfig": _openmetadata_server_config(),
         },
     }
-
-
-@asset(key_prefix=_KEY_PREFIX, group_name=_GROUP_NAME, kinds={"openmetadata"})
-def openmetadata_dagster_sync(context) -> None:
-    """Runs the ``dagster`` source's ``MetadataWorkflow`` against this
-    instance."""
-    context.log.info(
-        f"Ingesting Dagster metadata into OpenMetadata via {settings.dagster_graphql_url}"
-    )
-    workflow = MetadataWorkflow.create(_dagster_workflow_config())
-    workflow.execute()
-    workflow.print_status()
-    workflow.raise_from_status()
-    workflow.stop()
 
 
 @asset(key_prefix=_KEY_PREFIX, group_name=_GROUP_NAME, kinds={"openmetadata"})
