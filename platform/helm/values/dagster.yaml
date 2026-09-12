@@ -158,10 +158,14 @@ dagster-user-deployments:
       resources:
         requests:
           cpu: 50m
-          memory: 256Mi
+          # Loading ohdp_orchestration.definitions imports OpenMetadata ingestion
+          # (dbt, Snowflake, Postgres source models) at module-load time; 256Mi/384Mi
+          # OOMKilled the code server mid-import (grpc-health-check readiness probe
+          # then times out because the server never comes up).
+          memory: 512Mi
         limits:
           cpu: 500m
-          memory: 384Mi
+          memory: 1Gi
 
 # Run logs are world-readable. Keep the level at INFO and make sure the
 # redaction filter in packages/shared/src/ohdp_shared/logging.py is installed in
