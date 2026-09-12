@@ -16,10 +16,9 @@
     ``ohdp_orchestration.resources.dlt.DLT_RESOURCE`` — see that module for
     why a plain ``dlt.run()`` isn't safe here.
 
-* ``HealthDataGovCadenceSchedules`` — one instance (``schedules/defs.yaml``).
-  Builds exactly three asset jobs + schedules, one per cadence, selecting table
-  assets by their ``cadence`` tag. It never looks at the dataset files, so
-  adding datasets never touches it.
+The three cadence asset jobs + schedules are plain code, not a component —
+see ``ohdp_orchestration.jobs.healthdata_gov`` /
+``ohdp_orchestration.schedules.healthdata_gov``.
 """
 
 from __future__ import annotations
@@ -30,22 +29,18 @@ from dagster import (
     AssetKey,
     AssetMaterialization,
     AssetsDefinition,
-    AssetSelection,
     AssetSpec,
-    DefaultScheduleStatus,
     Definitions,
     MetadataValue,
-    ScheduleDefinition,
     TableColumn,
     TableSchema,
-    define_asset_job,
 )
-from dagster.components import Component, ComponentLoadContext, Model, Resolvable
+from dagster.components import Component, ComponentLoadContext, Resolvable
 from dagster_dlt import DagsterDltResource, DagsterDltTranslator, dlt_assets
 from dagster_dlt.translator import DltResourceTranslatorData
 
 from ohdp_ingestion import naming
-from ohdp_ingestion.healthdata_gov.config import Cadence, DatasetConfig
+from ohdp_ingestion.healthdata_gov.config import DatasetConfig
 from ohdp_ingestion.healthdata_gov.source import build_pipeline, socrata_source
 from ohdp_orchestration.resources.dlt import DLT_RESOURCE
 from ohdp_shared import get_logger
@@ -55,7 +50,6 @@ log = get_logger(__name__)
 _DOMAIN = "healthdata_gov"
 _SOURCE = "healthdata_gov"
 _RAW_NS = naming.namespace("raw", _SOURCE)  # "RAW.healthdata_gov" (ADR-0013)
-_CADENCES: tuple[Cadence, ...] = ("daily", "weekly", "monthly")
 
 # Asset-key prefixes: unexecutable source-catalog specs live under `sources/`,
 # the dlt-ingested table assets under `ingestion/` — kept distinct from
@@ -268,44 +262,3 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             assets.append(self._snowflake_raw_spec())
             resources["dlt"] = DLT_RESOURCE
         return Definitions(assets=assets, resources=resources)
-
-
-class HealthDataGovCadenceSchedules(Component, Model, Resolvable):
-    """The three cadence jobs + schedules. One instance, no coupling to datasets."""
-
-    daily_cron: str = "0 7 * * *"
-    weekly_cron: str = "0 7 * * 1"
-    monthly_cron: str = "0 7 1 * *"
-    # STOPPED until a deploy turns them on.
-    default_status: str = "STOPPED"
-
-    def build_defs(self, context: ComponentLoadContext) -> Definitions:
-        status = (
-            DefaultScheduleStatus.RUNNING
-            if str(self.default_status).upper() == "RUNNING"
-            else DefaultScheduleStatus.STOPPED
-        )
-        crons = {"daily": self.daily_cron, "weekly": self.weekly_cron, "monthly": self.monthly_cron}
-
-        jobs = []
-        schedules = []
-        for cadence in _CADENCES:
-            selection = AssetSelection.tag("domain", _DOMAIN) & AssetSelection.tag(
-                "cadence", cadence
-            )
-            job = define_asset_job(
-                name=f"healthdata_gov_{cadence}_ingest",
-                selection=selection,
-                description=f"HealthData.gov {cadence} ingestion bucket.",
-                tags={"domain": _DOMAIN, "cadence": cadence},
-            )
-            jobs.append(job)
-            schedules.append(
-                ScheduleDefinition(
-                    name=f"healthdata_gov_{cadence}_schedule",
-                    job=job,
-                    cron_schedule=crons[cadence],
-                    default_status=status,
-                )
-            )
-        return Definitions(jobs=jobs, schedules=schedules)

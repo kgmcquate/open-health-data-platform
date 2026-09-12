@@ -28,10 +28,20 @@ from ohdp_orchestration.assets.openmetadata_sync import (
     openmetadata_snowflake_sync,
 )
 from ohdp_orchestration.assets.snowflake_dbt import DBT_RESOURCE, snowflake_dbt_assets
+from ohdp_orchestration.jobs.healthdata_gov import (
+    healthdata_gov_daily_ingest_job,
+    healthdata_gov_monthly_ingest_job,
+    healthdata_gov_weekly_ingest_job,
+)
 from ohdp_orchestration.jobs.openmetadata_sync import (
     openmetadata_dagster_sync_job,
     openmetadata_dbt_sync_job,
     openmetadata_snowflake_sync_job,
+)
+from ohdp_orchestration.schedules.healthdata_gov import (
+    healthdata_gov_daily_schedule,
+    healthdata_gov_monthly_schedule,
+    healthdata_gov_weekly_schedule,
 )
 from ohdp_orchestration.schedules.openmetadata_sync import (
     openmetadata_dagster_sync_schedule,
@@ -59,11 +69,17 @@ defs = Definitions.merge(
         ],
         resources={"dbt": DBT_RESOURCE},
         jobs=[
+            healthdata_gov_daily_ingest_job,
+            healthdata_gov_weekly_ingest_job,
+            healthdata_gov_monthly_ingest_job,
             openmetadata_dagster_sync_job,
             openmetadata_dbt_sync_job,
             openmetadata_snowflake_sync_job,
         ],
         schedules=[
+            healthdata_gov_daily_schedule,
+            healthdata_gov_weekly_schedule,
+            healthdata_gov_monthly_schedule,
             openmetadata_dagster_sync_schedule,
             openmetadata_dbt_sync_schedule,
             openmetadata_snowflake_sync_schedule,

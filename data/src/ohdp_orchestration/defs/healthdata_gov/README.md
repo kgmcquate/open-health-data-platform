@@ -4,10 +4,14 @@ Config-driven ingestion for the [HealthData.gov](https://healthdata.gov/browse)
 Socrata catalog. See [ADR-0008](../../../../../../docs/decisions/0008-config-driven-healthdata-gov-ingestion.md).
 
 ```
-component.py                     HealthDataGovDataset + HealthDataGovCadenceSchedules
-schedules/defs.yaml              the one schedules instance (cron strings)
+component.py                     HealthDataGovDataset
 datasets/<slug>/defs.yaml        one HealthDataGovDataset instance per dataset (generated)
 ```
+
+The three cadence jobs + schedules aren't a component (no per-instance
+config) — they're plain code in
+[`jobs/healthdata_gov.py`](../../jobs/healthdata_gov.py) and
+[`schedules/healthdata_gov.py`](../../schedules/healthdata_gov.py).
 
 **One component instance per dataset.** Each `datasets/<slug>/defs.yaml` is a
 `HealthDataGovDataset` instance; its `attributes` block is the `DatasetConfig`
@@ -21,8 +25,8 @@ cd data && uv run python scripts/scrape_healthdata_gov.py --top-n 8
 ```
 
 Walks the Socrata catalog API, (re)writes every `datasets/<slug>/defs.yaml`
-(including the column schema), prunes dirs no longer in the catalog, ensures
-`schedules/defs.yaml` exists, and regenerates
+(including the column schema), prunes dirs no longer in the catalog, and
+regenerates
 `data/dbt/models/clean/healthdata_gov/_healthdata_gov__sources.yml`. Safe to
 re-run: your edits to `enabled`, `cadence`, `row_limit` and
 `incremental_cursor` in an instance are preserved.
@@ -60,13 +64,15 @@ loaded after a run.
 
 ## Schedules
 
-`schedules/defs.yaml` (a single `HealthDataGovCadenceSchedules` instance) builds
-**exactly three** asset jobs + schedules —
-`healthdata_gov_{daily,weekly,monthly}_ingest` — each selecting table assets by
-their `cadence` tag. It never reads the dataset files, so adding datasets
-never touches it. A cadence with no enabled datasets yet gets an empty job (its
+[`jobs/healthdata_gov.py`](../../jobs/healthdata_gov.py) builds **exactly
+three** asset jobs — `healthdata_gov_{daily,weekly,monthly}_ingest` — each
+selecting table assets by their `cadence` tag.
+[`schedules/healthdata_gov.py`](../../schedules/healthdata_gov.py) wraps each
+in a cron schedule. Neither reads the dataset files, so adding datasets never
+touches them. A cadence with no enabled datasets yet gets an empty job (its
 scheduled run is a no-op until a dataset of that cadence is enabled). Schedules
-are created **stopped** (`default_status` in `schedules/defs.yaml`).
+are created **stopped**; flip `default_status` in `schedules/healthdata_gov.py`
+to turn them on.
 
 ## Notes
 
