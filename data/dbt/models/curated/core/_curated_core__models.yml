@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: core__hospitalization_utilization_daily
+    description: >
+      Daily hospitalization utilization metrics.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: state
+        description: US state postal code.
+        data_type: varchar
+      - name: report_date
+        description: Report date of the row.
+        data_type: date
+      - name: covid_inpatients
+        description: Number of COVID-19 inpatients reported for the state on the report_date.
+        data_type: integer
+      - name: occupancy
+        description: Inpatient bed occupancy
+        data_type: double
+      - name: staffed_beds
+        description: Number of staffed inpatient beds reported for the state on the report_date.
+        data_type: integer

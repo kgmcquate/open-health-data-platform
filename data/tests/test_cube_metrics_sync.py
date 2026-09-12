@@ -4,6 +4,9 @@ network."""
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+
 
 def _air_quality_cube() -> dict:
     return {
@@ -79,7 +82,7 @@ def test_metric_request_from_cube_measure() -> None:
 
     cube = _air_quality_cube()
     dimensions = [_metric_dimension(d) for d in cube["dimensions"]]
-    request = _metric_request(cube["measures"][0], dimensions)
+    request = _metric_request(cube["measures"][0], dimensions, None)
 
     assert str(request.name.root) == "air_quality__avg_value"
     assert request.displayName == "Air Quality Avg Value"
@@ -92,7 +95,7 @@ def test_metric_request_from_cube_measure() -> None:
 def test_metric_request_maps_sum_agg_type() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
-    request = _metric_request(_air_quality_cube()["measures"][1], [])
+    request = _metric_request(_air_quality_cube()["measures"][1], [], None)
 
     assert str(request.name.root) == "air_quality__measurement_count"
     assert request.metricType.value == "SUM"
@@ -103,7 +106,75 @@ def test_metric_request_falls_back_to_other_for_unknown_agg_type() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
     request = _metric_request(
-        {"name": "air_quality.some_custom_measure", "aggType": "runningTotal"}, []
+        {"name": "air_quality.some_custom_measure", "aggType": "runningTotal"}, [], None
     )
 
     assert request.metricType.value == "OTHER"
+
+
+def test_metric_request_carries_through_assets() -> None:
+    from metadata.generated.schema.type.entityReferenceList import EntityReferenceList
+
+    from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
+
+    assets = EntityReferenceList([])
+    request = _metric_request(_air_quality_cube()["measures"][0], [], assets)
+
+    assert request.assets is assets
+
+
+def test_dbt_model_table_index_upper_cases_and_uses_alias(tmp_path, monkeypatch) -> None:
+    import ohdp_orchestration.assets.cube_metrics_sync as sync
+
+    manifest = {
+        "nodes": {
+            "model.ohdp.respiratory__hospital_load": {
+                "resource_type": "model",
+                "name": "respiratory__hospital_load",
+                "database": "curated",
+                "schema": "respiratory",
+                "alias": "hospital_load",
+            },
+            "seed.ohdp.some_seed": {
+                "resource_type": "seed",
+                "name": "some_seed",
+                "database": "curated",
+                "schema": "respiratory",
+            },
+        }
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(sync, "_dbt_project", SimpleNamespace(manifest_path=manifest_path))
+
+    index = sync._dbt_model_table_index()
+
+    assert index == {"respiratory__hospital_load": ("CURATED", "RESPIRATORY", "HOSPITAL_LOAD")}
+
+
+def test_dbt_model_table_index_falls_back_to_name_without_alias(tmp_path, monkeypatch) -> None:
+    import ohdp_orchestration.assets.cube_metrics_sync as sync
+
+    manifest = {
+        "nodes": {
+            "model.ohdp.widgets": {
+                "resource_type": "model",
+                "name": "widgets",
+                "database": "curated",
+                "schema": "core",
+            },
+        }
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(sync, "_dbt_project", SimpleNamespace(manifest_path=manifest_path))
+
+    index = sync._dbt_model_table_index()
+
+    assert index == {"widgets": ("CURATED", "CORE", "WIDGETS")}
+
+
+def test_table_assets_returns_none_when_cube_has_no_matching_dbt_model() -> None:
+    from ohdp_orchestration.assets.cube_metrics_sync import _table_assets
+
+    assert _table_assets("air_quality", {}, metadata=None) is None
