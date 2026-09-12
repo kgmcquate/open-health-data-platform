@@ -23,7 +23,7 @@ def test_models_are_snowflake_prefixed_and_grouped_by_layer() -> None:
     assert models, "no dbt models found under snowflake/*"
     for node in models.values():
         assert "dbt" in node.kinds and "snowflake" in node.kinds
-        assert node.tags["ohdp/domain"] == "snowflake"
+        assert node.tags["domain"] == "snowflake"
 
     assert "stg_healthdata_gov__hospital_capacity_by_state" in models
     assert models["core_hospital_utilization_daily"].group_name == "snowflake_core"
@@ -72,8 +72,8 @@ def test_healthdata_gov_bridges_the_dlt_table_to_a_snowflake_raw_asset() -> None
         "ingestion/healthdata_gov/"
         "covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
     }
-    assert bridge.tags["ohdp/domain"] == "snowflake"
-    assert bridge.tags["ohdp/layer"] == "raw"
+    assert bridge.tags["domain"] == "snowflake"
+    assert bridge.tags["layer"] == "raw"
 
 
 def test_dbt_resource_is_registered() -> None:

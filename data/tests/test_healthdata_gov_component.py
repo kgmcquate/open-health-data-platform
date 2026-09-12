@@ -98,7 +98,7 @@ def test_catalog_assets_carry_column_schema_and_metadata() -> None:
         schema = node.metadata["dagster/column_schema"]
         assert {c.name for c in schema.columns} == {c.name for c in cfg.columns}
         assert node.metadata["socrata_id"] == cfg.id
-        assert node.tags["ohdp/enabled"] == str(cfg.enabled).lower()
+        assert node.tags["enabled"] == str(cfg.enabled).lower()
 
 
 def test_three_cadence_jobs_and_schedules_regardless_of_enabled_set() -> None:

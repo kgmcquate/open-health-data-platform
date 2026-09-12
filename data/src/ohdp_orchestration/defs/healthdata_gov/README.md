@@ -63,7 +63,7 @@ loaded after a run.
 `schedules/defs.yaml` (a single `HealthDataGovCadenceSchedules` instance) builds
 **exactly three** asset jobs + schedules —
 `healthdata_gov_{daily,weekly,monthly}_ingest` — each selecting table assets by
-their `ohdp/cadence` tag. It never reads the dataset files, so adding datasets
+their `cadence` tag. It never reads the dataset files, so adding datasets
 never touches it. A cadence with no enabled datasets yet gets an empty job (its
 scheduled run is a no-op until a dataset of that cadence is enabled). Schedules
 are created **stopped** (`default_status` in `schedules/defs.yaml`).

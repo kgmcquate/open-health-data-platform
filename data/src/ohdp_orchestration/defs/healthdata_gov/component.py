@@ -18,7 +18,7 @@
 
 * ``HealthDataGovCadenceSchedules`` — one instance (``schedules/defs.yaml``).
   Builds exactly three asset jobs + schedules, one per cadence, selecting table
-  assets by their ``ohdp/cadence`` tag. It never looks at the dataset files, so
+  assets by their ``cadence`` tag. It never looks at the dataset files, so
   adding datasets never touches it.
 """
 
@@ -166,7 +166,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             group_name=f"{_SOURCES_PREFIX}_{self.group_name}",
             description=self.description or self.name,
             metadata=metadata,
-            tags={"ohdp/domain": _DOMAIN, "ohdp/enabled": str(self.enabled).lower()},
+            tags={"domain": _DOMAIN, "enabled": str(self.enabled).lower()},
             kinds={"socrata"},
         )
 
@@ -193,9 +193,9 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             group_name=f"{_INGESTION_PREFIX}_{self.group_name}",
             description=(f"{self.name} — appended to {_RAW_NS}.{self.raw_table} by dlt."),
             metadata=metadata,
-            # ohdp/cadence lives only on the table asset: it is what the cadence
+            # cadence lives only on the table asset: it is what the cadence
             # schedules select on.
-            tags={"ohdp/domain": _DOMAIN, "ohdp/cadence": self.cadence},
+            tags={"domain": _DOMAIN, "cadence": self.cadence},
         )
 
     def _snowflake_raw_spec(self) -> AssetSpec:
@@ -210,7 +210,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             deps=[self.table_key],
             group_name=f"{_SNOWFLAKE_PREFIX}_raw",
             description=f"{self.name} — as dbt's `{_DOMAIN}` source sees it.",
-            tags={"ohdp/domain": _SNOWFLAKE_PREFIX, "ohdp/layer": "raw"},
+            tags={"domain": _SNOWFLAKE_PREFIX, "layer": "raw"},
             kinds={"snowflake"},
         )
 
@@ -230,7 +230,7 @@ class HealthDataGovDataset(Component, DatasetConfig, Resolvable):
             dlt_pipeline=build_pipeline(pipeline_name=f"{_SOURCE}_{cfg.raw_table}", source=_SOURCE),
             name=cfg.raw_table,
             dagster_dlt_translator=translator,
-            op_tags={"ohdp/cadence": cfg.cadence},
+            op_tags={"cadence": cfg.cadence},
         )
         def _assets(context, dlt: DagsterDltResource):
             # dlt normalizes nested JSON (arrays/objects) into their own child
@@ -290,14 +290,14 @@ class HealthDataGovCadenceSchedules(Component, Model, Resolvable):
         jobs = []
         schedules = []
         for cadence in _CADENCES:
-            selection = AssetSelection.tag("ohdp/domain", _DOMAIN) & AssetSelection.tag(
-                "ohdp/cadence", cadence
+            selection = AssetSelection.tag("domain", _DOMAIN) & AssetSelection.tag(
+                "cadence", cadence
             )
             job = define_asset_job(
                 name=f"healthdata_gov_{cadence}_ingest",
                 selection=selection,
                 description=f"HealthData.gov {cadence} ingestion bucket.",
-                tags={"ohdp/domain": _DOMAIN, "ohdp/cadence": cadence},
+                tags={"domain": _DOMAIN, "cadence": cadence},
             )
             jobs.append(job)
             schedules.append(

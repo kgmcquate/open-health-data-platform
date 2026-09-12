@@ -50,7 +50,7 @@ Ingestion for a bulk catalog is **config, not code**.
 
 4. **Rich catalog metadata.** The catalog asset carries the Socrata column
    schema as `dagster/column_schema` (`TableSchema`), plus publisher, source
-   URL, keywords, cadence, page views, and `ohdp/*` tags. The table asset
+   URL, keywords, cadence, page views, and `domain`/`enabled` tags. The table asset
    carries `dagster/table_name` and, after a run, the column schema `dlt`
    actually inferred and a `dagster/row_count`. `@multi_asset` over
    `@dlt_assets` on purpose: one clean key per dataset instead of dlt's
@@ -65,7 +65,7 @@ Ingestion for a bulk catalog is **config, not code**.
 
 6. **Three jobs, three schedules — total.** `HealthDataGovCadenceSchedules`
    builds one asset job + schedule per `cadence` (`daily` | `weekly` |
-   `monthly`), each selecting table assets by their `ohdp/cadence` **tag** — so
+   `monthly`), each selecting table assets by their `cadence` **tag** — so
    it needs no knowledge of the dataset instances. A cadence with nothing
    enabled yet is an empty job (its scheduled run is a no-op). Adding datasets
    never touches this component.

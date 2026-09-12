@@ -81,14 +81,14 @@ class _Translator(DagsterDbtTranslator):
 
     def get_tags(self, props: dict[str, Any]) -> dict[str, str]:
         # Drop the bare dbt selection tags (`clean` / `core` / `marts`); keep the
-        # rest, add ohdp/* and the materialization (for asset selection).
+        # rest, add domain/layer and the materialization (for asset selection).
         tags = {k: v for k, v in super().get_tags(props).items() if k not in _LAYERS}
-        tags["ohdp/domain"] = "snowflake"
+        tags["domain"] = "snowflake"
         tags["dbt_materialized"] = props.get("config", {}).get("materialized", "view").strip()
         fqn = props.get("fqn") or []
         layer = next((p for p in fqn if p in _LAYERS), None)
         if layer:
-            tags["ohdp/layer"] = layer
+            tags["layer"] = layer
         return tags
 
     def get_metadata(self, props: dict[str, Any]) -> dict[str, Any]:
