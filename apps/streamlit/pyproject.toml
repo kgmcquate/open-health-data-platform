@@ -1,0 +1,38 @@
+[project]
+name = "ohdp-streamlit"
+version = "0.0.0"
+description = "Dashboards — Streamlit, queried directly against Snowflake"
+requires-python = ">=3.12"
+dependencies = [
+    "ohdp-shared",
+    "streamlit>=1.38",
+    "pandas>=2.2",
+    "snowflake-connector-python>=3.12",
+    "cryptography>=43.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "ruff>=0.6",
+]
+
+[tool.uv.sources]
+ohdp-shared = { path = "../../packages/shared", editable = true }
+
+# A virtual (non-installable) project: `streamlit run Home.py` executes this
+# app by path, nothing here is ever imported as a library, so there is no
+# wheel to build — `uv sync` just resolves dependencies into .venv.
+[tool.uv]
+package = false
+
+# Lint/format: repo-root ruff.toml.
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

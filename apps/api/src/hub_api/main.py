@@ -3,7 +3,7 @@
 Responsibilities (ARCHITECTURE.md §2, §5, §6):
   - OIDC session verification, `tier` claim extraction
   - entitlement + monthly quota checks BEFORE the chat agent is invoked
-  - mint short-lived Cube service tokens and Superset guest tokens
+  - mint short-lived Cube service tokens (chat agent + dashboards)
   - Stripe webhook handling for tier changes
   - log every chat question/plan/result to Postgres (eval set)
 
@@ -28,6 +28,6 @@ def healthz() -> dict[str, str]:
 
 
 # Routers to be added per milestone:
-#   M2: /auth, /dashboards (guest token mint)
+#   M2: /auth, /dashboards (link out to Streamlit — see ADR-0015)
 #   M3: /chat  (quota gate -> agent -> logged result)
 #   M4: /billing/webhook, /tickets

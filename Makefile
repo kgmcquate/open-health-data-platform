@@ -43,6 +43,7 @@ act-plan: ## terraform plan via act
 act-build: ## Build images via act without pushing
 	act workflow_dispatch -W .github/workflows/build-images.yml --input push=false
 
-images: ## Build both images directly with docker (faster than act)
+images: ## Build all images directly with docker (faster than act)
 	docker build -f apps/api/Dockerfile -t ohdp-hub-api:dev .
+	docker build -f apps/streamlit/Dockerfile -t ohdp-streamlit:dev .
 	docker build -f data/Dockerfile -t ohdp-pipeline:dev .

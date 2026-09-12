@@ -58,7 +58,7 @@ variable "dns_hostnames" {
   type        = list(string)
   # "catalog" is OpenMetadata, not Snowflake — the warehouse (ADR-0012) is a
   # Snowflake-hosted endpoint, nothing of ours is served for it.
-  default = ["app", "dagster", "catalog", "cube", "superset"]
+  default = ["app", "dagster", "catalog", "cube", "streamlit"]
 }
 
 variable "loadbalancer_ip" {

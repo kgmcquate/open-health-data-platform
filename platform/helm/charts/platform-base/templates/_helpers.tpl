@@ -22,20 +22,15 @@ value is freshly random — fine for validation, never written anywhere.
 {{- $fernet := (lookup "v1" "Secret" "meta" "openmetadata-fernet-secret").data | default dict -}}
 {{- $cube := (lookup "v1" "Secret" "data" "cube-secret").data | default dict -}}
 {{- $oauth2 := (lookup "v1" "Secret" "data" "oauth2-proxy-secret").data | default dict -}}
-{{- $oauth2Superset := (lookup "v1" "Secret" "bi" "oauth2-proxy-superset-secret").data | default dict -}}
-{{- $supersetKey := (lookup "v1" "Secret" "bi" "superset-secret").data | default dict -}}
+{{- $oauth2Streamlit := (lookup "v1" "Secret" "bi" "oauth2-proxy-streamlit-secret").data | default dict -}}
 postgres: {{ (index $pg "postgres-password") | default (randAlphaNum $len | b64enc) }}
 dagster: {{ (index $pg "dagster-password") | default (randAlphaNum $len | b64enc) }}
-superset: {{ (index $pg "superset-password") | default (randAlphaNum $len | b64enc) }}
 openmetadata: {{ (index $pg "openmetadata-password") | default (randAlphaNum $len | b64enc) }}
 app: {{ (index $pg "app-password") | default (randAlphaNum $len | b64enc) }}
 fernet: {{ (index $fernet "fernetKey") | default ((randAlphaNum 32 | b64enc | replace "+" "-" | replace "/" "_") | b64enc) }}
 cube: {{ (index $cube "OHDP_CUBE_API_SECRET") | default (randAlphaNum $len | b64enc) }}
 {{/* oauth2-proxy cookie secrets — must decode to exactly 32 bytes. Two
-     independent releases (Dagster's wall, Superset's wall) get their own. */}}
+     independent releases (Dagster's wall, Streamlit's wall) get their own. */}}
 oauth2Cookie: {{ (index $oauth2 "cookie-secret") | default (randAlphaNum 32 | b64enc) }}
-oauth2CookieSuperset: {{ (index $oauth2Superset "cookie-secret") | default (randAlphaNum 32 | b64enc) }}
-{{/* Superset's Flask SECRET_KEY — session signing + at-rest encryption of
-     stored DB credentials, so longer than the standard passwordLength. */}}
-supersetSecretKey: {{ (index $supersetKey "secret-key") | default (randAlphaNum 42 | b64enc) }}
+oauth2CookieStreamlit: {{ (index $oauth2Streamlit "cookie-secret") | default (randAlphaNum 32 | b64enc) }}
 {{- end -}}

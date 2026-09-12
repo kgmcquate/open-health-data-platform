@@ -1,6 +1,6 @@
 # Cube Core — semantic layer
 
-One definition per metric. Three consumers (Superset, chatbot, alerting) read
+One definition per metric. Three consumers (Streamlit, chatbot, alerting) read
 from here and must never disagree (ARCHITECTURE.md §1.5).
 
 - `cube.js` — config: `queryRewrite` for tier limits + hard safety caps.

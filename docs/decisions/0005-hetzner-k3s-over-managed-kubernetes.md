@@ -43,9 +43,11 @@ free control plane and Hetzner-class compute pricing, revisit this.
 
 ### Why Kubernetes at all on one node
 
-- Dagster, OpenMetadata, Superset and OpenSearch all ship maintained **Helm
-  charts** as their supported deployment path. Hand-translating those to Compose
-  is real work, repeated on every upgrade, off the supported path.
+- Dagster, OpenMetadata and OpenSearch all ship maintained **Helm charts** as
+  their supported deployment path. Hand-translating those to Compose is real
+  work, repeated on every upgrade, off the supported path. (Streamlit does
+  not — it is a plain Deployment we wrote ourselves, ADR-0015 — but the other
+  three alone already justify Kubernetes over Compose.)
 - Dagster's `K8sRunLauncher` runs each pipeline run as an ephemeral Job. That is
   exactly the memory-capped, concurrency-1 dbt build pod §3 and §4 describe —
   for free, rather than as something we build.

@@ -22,14 +22,10 @@ DAGSTER_VERSION         ?= 1.13.21
 TRAEFIK_VERSION         ?= 41.5.0
 CERT_MANAGER_VERSION    ?= v1.21.1
 OAUTH2_PROXY_VERSION    ?= 10.7.0
-# The Superset Kubernetes Operator's own CRD/controller chart (not Superset
-# itself — that is the `superset` target below, a Superset CR our own chart
-# renders once this operator is watching the `bi` namespace).
-SUPERSET_OPERATOR_VERSION ?= 0.2.0
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \
-        superset-operator superset hub-api
+        streamlit oauth2-proxy-streamlit hub-api
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -48,14 +44,14 @@ lint: ## Lint the charts we own
 	$(HELM) lint $(CHARTS)/hub-api --set image.tag=0.0.0-dev
 	$(HELM) lint $(CHARTS)/graphql-authz-proxy
 	$(HELM) lint $(CHARTS)/dagster-monitoring
-	$(HELM) lint $(CHARTS)/superset
+	$(HELM) lint $(CHARTS)/streamlit --set image.tag=0.0.0-dev
 
 template: ## Render the charts we own locally (catches template errors without a cluster)
 	$(HELM) template platform-base $(CHARTS)/platform-base >/dev/null && echo "platform-base OK"
 	$(HELM) template hub-api $(CHARTS)/hub-api --set image.tag=0.0.0-dev >/dev/null && echo "hub-api OK"
 	$(HELM) template gqlproxy $(CHARTS)/graphql-authz-proxy >/dev/null && echo "graphql-authz-proxy OK"
 	$(HELM) template dagster-monitoring $(CHARTS)/dagster-monitoring >/dev/null && echo "dagster-monitoring OK"
-	$(HELM) template superset $(CHARTS)/superset >/dev/null && echo "superset OK"
+	$(HELM) template streamlit $(CHARTS)/streamlit --set image.tag=0.0.0-dev >/dev/null && echo "streamlit OK"
 
 # --------------------------------------------------------------------------
 # Cluster foundation
@@ -117,25 +113,17 @@ oauth2-proxy: ## Install the Google login wall in front of the authz proxy + dag
 		-n data --create-namespace -f $(VALUES)/oauth2-proxy.yaml --wait --timeout 5m
 
 # --------------------------------------------------------------------------
-# Superset — the Apache Superset Kubernetes Operator (CRD + controller) plus
-# our own chart, which renders a Superset CR and a small hand-rolled Valkey
-# (no Bitnami dependency, no separate operator for a single-instance cache —
-# same reasoning as platform-base's hand-rolled Postgres). superset-operator
-# must be installed, and its CRDs established, before `make superset`.
+# Streamlit — a plain Deployment via our own chart (ADR-0015). No operator,
+# no metastore: dashboards are Python files in git, not stored objects.
 # --------------------------------------------------------------------------
-superset-operator: ## Install the Apache Superset Kubernetes Operator (CRDs + controller, watches only `bi`)
-	$(HELM) upgrade --install superset-operator \
-		oci://ghcr.io/apache/superset-kubernetes-operator/charts/superset-operator \
-		--version $(SUPERSET_OPERATOR_VERSION) \
-		-n superset-operator-system --create-namespace -f $(VALUES)/superset-operator.yaml --wait --timeout 5m
+streamlit: ## Install Streamlit (TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install streamlit $(CHARTS)/streamlit \
+		-n bi --create-namespace --set image.tag=$(TAG) --wait --timeout 5m
 
-superset: ## Install Superset (the Superset CR + Valkey) via our chart, once superset-operator is running
-	$(HELM) upgrade --install superset $(CHARTS)/superset \
-		-n bi --create-namespace --wait --timeout 10m
-
-oauth2-proxy-superset: ## Install the Google login wall in front of Superset (kgmcquate@gmail.com only)
-	$(HELM) upgrade --install oauth2-proxy-superset oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
-		-n bi --create-namespace -f $(VALUES)/oauth2-proxy-superset.yaml --wait --timeout 5m
+oauth2-proxy-streamlit: ## Install the Google login wall in front of Streamlit (kgmcquate@gmail.com only)
+	$(HELM) upgrade --install oauth2-proxy-streamlit oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
+		-n bi --create-namespace -f $(VALUES)/oauth2-proxy-streamlit.yaml --wait --timeout 5m
 
 hub-api: ## Install the FastAPI backend (TAG defaults to the current commit's sha-<12>)
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }

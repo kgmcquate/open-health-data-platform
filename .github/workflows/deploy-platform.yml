@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
       image_tag:
-        description: Override the dagster + hub-api image tag (blank = the sha-<12> of the deployed commit).
+        description: Override the dagster + hub-api + streamlit image tag (blank = the sha-<12> of the deployed commit).
         type: string
         default: ""
 
@@ -52,9 +52,9 @@ jobs:
         with:
           kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
 
-      # dagster + hub-api run this tag. Defaults to the sha-<12> of the checked-
-      # out commit — the tag build-images.yml pushed for it. Never `latest`, so
-      # `helm rollback` and pod restarts stay pinned to a known build.
+      # dagster + hub-api + streamlit run this tag. Defaults to the sha-<12> of
+      # the checked-out commit — the tag build-images.yml pushed for it. Never
+      # `latest`, so `helm rollback` and pod restarts stay pinned to a known build.
       - name: Resolve image tag
         run: echo "TAG=${IMAGE_TAG:-sha-${GITHUB_SHA::12}}" >> "$GITHUB_ENV"
         env:
@@ -81,8 +81,8 @@ jobs:
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
           DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          SUPERSET_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
-          SUPERSET_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
+          STREAMLIT_OIDC_CLIENT_ID: ${{ secrets.STREAMLIT_OIDC_CLIENT_ID }}
+          STREAMLIT_OIDC_CLIENT_SECRET: ${{ secrets.STREAMLIT_OIDC_CLIENT_SECRET }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
@@ -99,6 +99,11 @@ jobs:
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
+            --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
+          # Streamlit queries Snowflake directly with the same pipeline
+          # role/key (ADR-0015 — a deliberate, temporary privilege trade-off;
+          # a dedicated read-only role is a documented follow-up).
+          upsert bi streamlit-snowflake \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
@@ -122,12 +127,12 @@ jobs:
             "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")
           kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$patch"
 
-          # Same trick, second release: the Superset auth wall's own Google
+          # Same trick, second release: the Streamlit auth wall's own Google
           # OAuth client (separate from Dagster's — different redirect URI).
           patch=$(printf '{"data":{"client-id":"%s","client-secret":"%s"}}' \
-            "$(printf %s "$SUPERSET_OIDC_CLIENT_ID" | base64 -w0)" \
-            "$(printf %s "$SUPERSET_OIDC_CLIENT_SECRET" | base64 -w0)")
-          kubectl -n bi patch secret oauth2-proxy-superset-secret --type merge -p "$patch"
+            "$(printf %s "$STREAMLIT_OIDC_CLIENT_ID" | base64 -w0)" \
+            "$(printf %s "$STREAMLIT_OIDC_CLIENT_SECRET" | base64 -w0)")
+          kubectl -n bi patch secret oauth2-proxy-streamlit-secret --type merge -p "$patch"
 
       - name: OpenSearch
         run: make -C platform/helm opensearch
@@ -147,14 +152,11 @@ jobs:
       - name: Dagster
         run: make -C platform/helm dagster TAG="$TAG"
 
-      - name: Superset operator
-        run: make -C platform/helm superset-operator
+      - name: Streamlit
+        run: make -C platform/helm streamlit TAG="$TAG"
 
-      - name: Superset
-        run: make -C platform/helm superset
-
-      - name: oauth2-proxy (Google login wall — Superset)
-        run: make -C platform/helm oauth2-proxy-superset
+      - name: oauth2-proxy (Google login wall — Streamlit)
+        run: make -C platform/helm oauth2-proxy-streamlit
 
       - name: hub-api
         run: make -C platform/helm hub-api TAG="$TAG"

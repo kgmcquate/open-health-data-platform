@@ -4,9 +4,9 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 
 | Workflow | Does | Needs a cluster? |
 |---|---|---|
-| [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
+| [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api`, `ohdp-streamlit`, and `ohdp-pipeline`, pushes to GHCR | no |
 | [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket, Cloudflare DNS records | no |
-| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Superset operator + Superset, oauth2-proxy-superset, hub-api | when `deploy` ticked |
+| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Streamlit, oauth2-proxy-streamlit, hub-api | when `deploy` ticked |
 
 ## Setup
 
@@ -68,7 +68,7 @@ Order matters, and two steps are deliberately manual.
    Set it as the `LOADBALANCER_IP` secret (`.env` for `act`, wired to
    `TF_VAR_loadbalancer_ip`) and re-run `deploy-infra` with `action=apply`. It
    creates one A record per entry in `dns_hostnames` (`app`, `dagster`,
-   `catalog`, `cube`, `superset`).
+   `catalog`, `cube`, `streamlit`).
 
    cert-manager then issues a cert per host on the first request; check with
    `kubectl get certificate -A`. Switching a record to proxied (orange cloud)
@@ -111,6 +111,7 @@ act -l
   ```bash
   docker build -f data/Dockerfile -t ohdp-pipeline .
   docker build -f apps/api/Dockerfile -t ohdp-hub-api .
+  docker build -f apps/streamlit/Dockerfile -t ohdp-streamlit .
   ```
 - **Apple Silicon.** `.actrc` forces `linux/amd64` because most actions publish
   amd64 only. Remove that line for native speed if nothing breaks.
@@ -134,12 +135,12 @@ act -l
 
 ## What is still missing
 
-- **Superset** is deployed (M1) via the Superset Kubernetes Operator, pointed
-  directly at the shared Postgres — no Cube yet. Celery worker/beat are not
-  enabled, so scheduled reports and async SQL Lab queries are not available;
-  see `platform/helm/charts/superset`. It sits behind its own Google login wall
-  (`oauth2-proxy-superset`, `kgmcquate@gmail.com` only) rather than the
-  self-service public exposure M1 originally sketched — see ARCHITECTURE.md §5.
+- **Streamlit** is deployed (M1) as a plain Deployment via our own chart,
+  pointed directly at Snowflake — no Cube yet, no metastore, no scheduled
+  reports; see `platform/helm/charts/streamlit` (ADR-0015). It sits behind its
+  own Google login wall (`oauth2-proxy-streamlit`, `kgmcquate@gmail.com` only)
+  rather than the self-service public exposure M1 originally sketched — see
+  ARCHITECTURE.md §5.
 - **Cube** and **hub-web** are not deployed — M2.
 - **No rollback step.** `helm rollback <release>` by hand; snapshot rollback is a
   pointer change, see the [runbook](runbook.md).

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: streamlit
+description: Streamlit dashboards — plain Deployment, direct Snowflake connection
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - ohdp
+  - streamlit
+maintainers:
+  - name: kgmcquate

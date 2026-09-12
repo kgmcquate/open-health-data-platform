@@ -26,7 +26,8 @@ _Must be tested before M4 (§11)._
 
 1. Latest dump: `s3://$OHDP_SPACES_BUCKET/backups/pg-*.sql.gz`
 2. `gunzip -c pg-*.sql.gz | psql -h $OHDP_POSTGRES_HOST -U postgres`
-3. Restart consumers: Dagster, Superset, OpenMetadata, hub-api.
+3. Restart consumers: Dagster, OpenMetadata, hub-api. (Streamlit has no
+   metastore, so it has nothing to restart on account of this.)
 
 ## Node memory pressure
 

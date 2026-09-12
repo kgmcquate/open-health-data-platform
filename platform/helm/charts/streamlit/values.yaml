@@ -1,0 +1,105 @@
+# Streamlit dashboards — a plain Deployment, no operator, no metastore
+# (ADR-0015). Single replica by design (ARCHITECTURE.md §1.4, §9).
+#
+# NOT exposed by this chart's own Ingress (ingress.enabled: false below).
+# Reached only through the oauth2-proxy-streamlit release (values/
+# oauth2-proxy-streamlit.yaml) that owns streamlit.open-health-data-platform.org
+# and restricts entry to kgmcquate@gmail.com — same internal-tool posture
+# Superset had, just renamed.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kgmcquate/ohdp-streamlit
+  # Pin an immutable tag in production — never "latest".
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 8501
+
+ingress:
+  enabled: false
+  className: traefik
+  annotations: {}
+  host: streamlit.open-health-data-platform.org
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: false
+    secretName: streamlit-tls
+
+# A single dashboard process holding query results in memory. Bump the limit
+# if a dashboard pulls a large result set into pandas.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /_stcore/health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 20
+
+readinessProbe:
+  httpGet:
+    path: /_stcore/health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  # Streamlit writes to its own home/cache dirs (~/.streamlit) at runtime —
+  # same exception charts/superset/values.yaml documented for the same reason.
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+# Non-secret Snowflake connection config — mirrors platform-base's
+# pipelineConfig (charts/platform-base/values.yaml). Direct-Snowflake, not
+# Cube (M1 scope, ADR-0015): update both places together if the account/
+# warehouse ever changes.
+env:
+  OHDP_ENVIRONMENT: prod
+  OHDP_LOG_JSON: "true"
+  OHDP_LOG_LEVEL: INFO
+  OHDP_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
+  OHDP_SNOWFLAKE_USER: "OHDP_PIPELINE"
+  OHDP_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
+  OHDP_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
+
+envFrom:
+  # streamlit-snowflake — mirrored by the `secrets` step of deploy-platform.yml
+  # from the same SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret the pipeline
+  # pod uses: OHDP_SNOWFLAKE_PRIVATE_KEY.
+  secrets:
+    - streamlit-snowflake
+  configMaps: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

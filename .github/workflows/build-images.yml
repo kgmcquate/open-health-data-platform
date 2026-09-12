@@ -35,6 +35,8 @@ jobs:
         include:
           - name: ohdp-hub-api
             dockerfile: apps/api/Dockerfile
+          - name: ohdp-streamlit
+            dockerfile: apps/streamlit/Dockerfile
           - name: ohdp-pipeline
             dockerfile: data/Dockerfile
     outputs:

@@ -14,8 +14,9 @@ as a product.
 
 | Path | What lives here |
 |---|---|
-| `apps/web` | Next.js hub — landing, chat UI, embedded dashboards |
+| `apps/web` | Next.js hub — landing, chat UI, links out to every tool |
 | `apps/api` | FastAPI — chat orchestration, entitlements, Stripe webhooks |
+| `apps/streamlit` | Streamlit dashboards — direct Snowflake queries, AI-authored |
 | `data/src/ohdp_ingestion` | One typed client per public source |
 | `data/src/ohdp_orchestration` | Dagster: ingestion, dbt build, snapshot publish, alerts |
 | `data/dbt` | SQL transformation + tests against Snowflake (source of truth for models) |
@@ -23,7 +24,7 @@ as a product.
 | `semantic/cube` | Cube Core semantic layer — one definition per metric |
 | `catalog/openmetadata` | Catalog sync (Cube → metrics, dbt → lineage) and seed data |
 | `platform/terraform` | DigitalOcean VM, DNS + Spaces, k3s bootstrap |
-| `platform/helm` | Charts for hub-api and the authz proxy; values for upstream charts |
+| `platform/helm` | Charts for hub-api, streamlit, and the authz proxy; values for upstream charts |
 | `platform/k3s` | Base manifests — namespaces, ingress, cert-manager |
 | `packages/shared` | Shared Python config, types, redacting logger |
 | `docs` | Architecture, ADRs, runbook |
@@ -42,7 +43,7 @@ locally with `act`).
 
 ```bash
 make act-preflight   # validate charts, policy and manifests — no cluster needed
-make images          # build both container images with docker
+make images          # build all container images with docker
 ```
 
 ## Build order

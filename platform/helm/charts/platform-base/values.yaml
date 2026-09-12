@@ -58,15 +58,16 @@ postgres:
     limits:
       cpu: "2"
       memory: 1Gi
-  # The four logical databases (ARCHITECTURE.md §2, §9 — one instance, do not
+  # The three logical databases (ARCHITECTURE.md §2, §9 — one instance, do not
   # split). Each gets an owner role with the matching generated password.
   #
-  # The `polaris` database went with the Polaris catalog (ADR-0011). Dropping it
-  # from this list stops it being *created*; an existing one is left in place,
-  # so reclaim the disk with a manual `DROP DATABASE polaris` once you are
-  # satisfied nothing wants it.
+  # The `polaris` database went with the Polaris catalog (ADR-0011), and
+  # `superset` with the Superset->Streamlit swap (ADR-0015) — Streamlit has no
+  # metastore, so it never needed one. Dropping an entry from this list stops
+  # it being *created*; an existing database is left in place, so reclaim the
+  # disk with a manual `DROP DATABASE <name>` once you are satisfied nothing
+  # wants it.
   databases:
     - dagster
-    - superset
     - openmetadata
     - app

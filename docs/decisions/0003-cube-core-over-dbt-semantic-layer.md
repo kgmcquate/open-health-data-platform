@@ -10,15 +10,15 @@ definition (ARCHITECTURE.md §1.5). Options considered:
 - **dbt Semantic Layer / MetricFlow serving APIs** — require dbt Cloud at
   ~$100/user/month. Out of budget (§9). MetricFlow itself is OSS; the serving
   tier is not.
-- **Metrics defined ad hoc in Superset** — no shared definition; the chatbot and
-  alerting would re-implement them and drift.
+- **Metrics defined ad hoc in the dashboard tool** — no shared definition; the
+  chatbot and alerting would re-implement them and drift.
 - **Cube Core (OSS)** — self-hostable in ~0.5 GB, exposes a REST/SQL/MCP
   interface, has `queryRewrite` for per-tier limits, and gives the chat agent a
   bounded measure/dimension surface instead of raw SQL (§6).
 
 ## Decision
 
-Cube Core is the single semantic layer. Superset queries Cube, not DuckDB. The
+Cube Core is the single semantic layer. Streamlit queries Cube, not DuckDB. The
 chat agent reaches data only through Cube's MCP endpoint. Every cube reads a dbt
 **mart**, never a staging or raw table.
 

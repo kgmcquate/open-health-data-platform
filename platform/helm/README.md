@@ -9,17 +9,15 @@ charts/
   hub-api/              our chart — the FastAPI backend
   graphql-authz-proxy/  our chart — wraps kgmcquate/graphql-authz-proxy
   dagster-monitoring/   our chart — wraps kgmcquate/dagster-monitoring
-  superset/              our chart — a Superset CR (Superset Kubernetes
-                        Operator) + a hand-rolled Valkey cache
+  streamlit/            our chart — a plain Deployment, dashboards (ADR-0015)
 values/
-  traefik.yaml               for traefik/traefik
-  cert-manager.yaml          for jetstack/cert-manager
-  dagster.yaml               for dagster/dagster
-  openmetadata.yaml          for open-metadata/openmetadata  (pinned to 2.0.x)
-  opensearch.yaml            for opensearch/opensearch
-  oauth2-proxy.yaml          for oauth2-proxy/oauth2-proxy  (Google wall → Dagster + dagster-monitoring, ADR-0007)
-  superset-operator.yaml     for the Superset Kubernetes Operator's own chart (CRD + controller)
-  oauth2-proxy-superset.yaml for oauth2-proxy/oauth2-proxy  (Google wall → Superset, kgmcquate@gmail.com only)
+  traefik.yaml                for traefik/traefik
+  cert-manager.yaml           for jetstack/cert-manager
+  dagster.yaml                for dagster/dagster
+  openmetadata.yaml           for open-metadata/openmetadata  (pinned to 2.0.x)
+  opensearch.yaml             for opensearch/opensearch
+  oauth2-proxy.yaml           for oauth2-proxy/oauth2-proxy  (Google wall → Dagster + dagster-monitoring, ADR-0007)
+  oauth2-proxy-streamlit.yaml for oauth2-proxy/oauth2-proxy  (Google wall → Streamlit, kgmcquate@gmail.com only)
 ```
 
 There is no data warehouse here. It is Snowflake, created by
@@ -40,20 +38,18 @@ migration job, JWT config and search bootstrap. Vendoring that means redoing it
 on every upgrade, for no gain. We own the *values*, which is where all our
 actual decisions live. See [ADR-0006](../../docs/decisions/0006-upstream-charts-and-external-authz-proxy.md).
 
-`hub-api`, `graphql-authz-proxy` and `dagster-monitoring` get real charts
-because nothing upstream exists for them.
+`hub-api`, `graphql-authz-proxy`, `dagster-monitoring`, and `streamlit` get
+real charts because nothing upstream exists for them.
 
-## Why Superset is the Kubernetes Operator, not the Helm chart
+## Streamlit is a plain Deployment (ADR-0015)
 
-The apache/superset Helm chart is deprecated upstream in favor of the [Superset
-Kubernetes Operator](https://github.com/apache/superset-kubernetes-operator);
-we followed that migration rather than adopt a chart with no further updates.
-The operator (`values/superset-operator.yaml`) is a values file for the same
-reason as Dagster/OpenMetadata above — it owns real lifecycle logic (migration
-Jobs, secret-key rotation, config rendering). Our `charts/superset` just renders
-the `Superset` CR plus a small hand-rolled Valkey cache: no Bitnami dependency
-and no separate Redis operator, same reasoning as platform-base's hand-rolled
-Postgres StatefulSet.
+Streamlit replaced Superset — a Kubernetes-Operator-based deployment (CRDs, a
+controller, its own Postgres metastore, a hand-rolled Valkey cache) that was
+disproportionate operational complexity for the value it delivered here. Since
+dashboards are AI-authored Python files, not stored objects built through a
+chart-builder UI, Streamlit needs no metastore and no operator — `charts/
+streamlit` is a plain `Deployment` + `Service` + `Ingress`, the same shape as
+`charts/hub-api`. See [ADR-0015](../../docs/decisions/0015-streamlit-over-superset.md).
 
 ## Prerequisites
 
@@ -73,9 +69,7 @@ keeps it stable across upgrades:
 | `cube-secret` | `data` | hub-api ↔ Cube shared secret |
 | `hub-api-db` | `app` | `OHDP_APP_DATABASE_URL`, `OHDP_CUBE_API_SECRET` |
 | `oauth2-proxy-secret` | `data` | oauth2-proxy `cookie-secret` for Dagster + dagster-monitoring (Google `client-id`/`client-secret` merged in externally) |
-| `superset-db-auth` | `bi` | mirror of the superset password |
-| `superset-secret` | `bi` | Superset Flask `SECRET_KEY` |
-| `oauth2-proxy-superset-secret` | `bi` | oauth2-proxy `cookie-secret` for Superset (Google `client-id`/`client-secret` merged in externally) |
+| `oauth2-proxy-streamlit-secret` | `bi` | oauth2-proxy `cookie-secret` for Streamlit (Google `client-id`/`client-secret` merged in externally) |
 | `ohdp-pipeline-config` (ConfigMap) | `data` | non-secret pipeline env |
 
 The **external** secrets are GitHub Actions repo secrets, injected by the
@@ -100,6 +94,12 @@ kubectl -n data create secret generic ohdp-pipeline-secrets \
 # database, update `pipelineConfig` in charts/platform-base/values.yaml to
 # match the `snowflake_*` outputs.
 
+# Streamlit queries Snowflake directly with the same pipeline role/key —
+# a deliberate, temporary privilege trade-off (ADR-0015). Mirrored into `bi`
+# the same way superset-db-auth used to be.
+kubectl -n bi create secret generic streamlit-snowflake \
+  --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$(cd ../terraform && terraform output -raw snowflake_private_key)"
+
 kubectl -n app create secret generic hub-api-secrets \
   --from-literal=OHDP_OPENMETADATA_JWT= \
   --from-literal=STRIPE_SECRET_KEY= \
@@ -114,13 +114,13 @@ kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$(printf \
   "$(printf %s "$DAGSTER_OIDC_CLIENT_ID" | base64 -w0)" \
   "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")"
 
-# Same trick, second release: Superset's own Google OAuth client (separate app
-# registration from Dagster's), redirect URI
-# https://superset.open-health-data-platform.org/oauth2/callback
-kubectl -n bi patch secret oauth2-proxy-superset-secret --type merge -p "$(printf \
+# Same trick, second release: Streamlit's own Google OAuth client (separate
+# app registration from Dagster's), redirect URI
+# https://streamlit.open-health-data-platform.org/oauth2/callback
+kubectl -n bi patch secret oauth2-proxy-streamlit-secret --type merge -p "$(printf \
   '{"data":{"client-id":"%s","client-secret":"%s"}}' \
-  "$(printf %s "$SUPERSET_OIDC_CLIENT_ID" | base64 -w0)" \
-  "$(printf %s "$SUPERSET_OIDC_CLIENT_SECRET" | base64 -w0)")"
+  "$(printf %s "$STREAMLIT_OIDC_CLIENT_ID" | base64 -w0)" \
+  "$(printf %s "$STREAMLIT_OIDC_CLIENT_SECRET" | base64 -w0)")"
 ```
 
 `OHDP_OPENMETADATA_JWT` is minted by OpenMetadata itself (Settings → Bots →
@@ -136,26 +136,24 @@ make infra                 # platform-base, Traefik, cert-manager, ClusterIssuer
 make install                # opensearch, openmetadata, proxy, dagster
 make dagster-monitoring      # the /monitoring dashboard (before oauth2-proxy, below)
 make oauth2-proxy           # Google wall: Dagster + dagster-monitoring
-make superset-operator      # the Superset Kubernetes Operator (CRDs + controller)
-make superset                # the Superset CR + Valkey, once the operator above is running
-make oauth2-proxy-superset   # Google wall: Superset (kgmcquate@gmail.com only)
+make streamlit               # the Streamlit Deployment (TAG defaults to git rev-parse HEAD)
+make oauth2-proxy-streamlit  # Google wall: Streamlit (kgmcquate@gmail.com only)
 make hub-api                # deployed on its own for now
 ```
 
 Order matters — OpenSearch must be green before OpenMetadata starts or its
-migration job fails (`make install` sequences this for you), and
-`superset-operator` must be running (and its CRD established) before
-`make superset` applies a `Superset` CR for it to reconcile.
+migration job fails (`make install` sequences this for you).
 
 The warehouse is not installed here: `terraform apply` in `platform/terraform`
 creates the Snowflake database, schemas, role, service user and token, and the
 pipeline connects directly over SQL. Inspection is Snowsight — there is no
 in-cluster admin UI (ADR-0012).
 
-`dagster` and `hub-api` run `ghcr.io/kgmcquate/ohdp-{pipeline,hub-api}` at the
-`sha-<12>` tag of the current commit — `TAG` defaults to `git rev-parse HEAD`,
-which `build-images.yml` pushes on every merge to `main`. Pass `TAG=sha-…` to
-pin an older build. Never `latest`: the hub-api chart refuses it, so a pod
+`dagster`, `hub-api` and `streamlit` run `ghcr.io/kgmcquate/ohdp-{pipeline,hub-api,streamlit}`
+at the `sha-<12>` tag of the current commit — `TAG` defaults to `git rev-parse
+HEAD`, which `build-images.yml` pushes on every merge to `main`. Pass
+`TAG=sha-…` to pin an older build. Never `latest`: the hub-api and streamlit
+charts refuse it, so a pod
 restart or `helm rollback` always lands on a known image.
 
 ## Before trusting the proxy
