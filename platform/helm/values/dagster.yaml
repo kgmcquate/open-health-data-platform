@@ -97,6 +97,10 @@ runLauncher:
         # RSA private key (SERVICE users don't accept password auth) from
         # Terraform (ADR-0012).
         - name: ohdp-pipeline-secrets
+        # platform-base's generated hub-api<->Cube shared secret (same Secret
+        # Cube itself reads CUBEJS_API_SECRET from) — needed by
+        # openmetadata_cube_metrics_sync to sign its Cube API JWT.
+        - name: cube-secret
       envConfigMaps:
         - name: ohdp-pipeline-config
       resources:
@@ -153,6 +157,8 @@ dagster-user-deployments:
         enabled: false
       envSecrets:
         - name: ohdp-pipeline-secrets
+        # See runLauncher.config.k8sRunLauncher.envSecrets above — same reason.
+        - name: cube-secret
       envConfigMaps:
         - name: ohdp-pipeline-config
       resources:

@@ -66,7 +66,7 @@ keeps it stable across upgrades:
 | `dagster-postgresql-secret` | `data` | mirror of the dagster password |
 | `openmetadata-db-auth` | `meta` | mirror of the openmetadata password |
 | `openmetadata-fernet-secret` | `meta` | OpenMetadata fernet key |
-| `cube-secret` | `data` | hub-api ↔ Cube shared secret |
+| `cube-secret` | `data` | Cube API shared secret (`CUBEJS_API_SECRET`) — read by Cube itself, Dagster's run-launcher + `ohdp-pipeline` user-deployment (`openmetadata_cube_metrics_sync`), and mirrored into `hub-api-db` for hub-api |
 | `hub-api-db` | `app` | `OHDP_APP_DATABASE_URL`, `OHDP_CUBE_API_SECRET` |
 | `oauth2-proxy-secret` | `data` | oauth2-proxy `cookie-secret` for Dagster + dagster-monitoring (Google `client-id`/`client-secret` merged in externally) |
 | `oauth2-proxy-streamlit-secret` | `bi` | oauth2-proxy `cookie-secret` for Streamlit (Google `client-id`/`client-secret` merged in externally) |
