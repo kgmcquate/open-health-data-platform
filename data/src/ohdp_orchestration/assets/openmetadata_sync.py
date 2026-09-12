@@ -140,9 +140,11 @@ def _snowflake_workflow_config() -> dict[str, Any]:
                         "safetyMarginDays": 1,
                     },
                     "databaseFilterPattern": {
-                        "includes": ["RAW", "CLEAN", "CURATED"],
-                        "excludes": [],
-                    }
+                        "includes": ["RAW", "CLEAN", "CURATED"]
+                    },
+                    "schemaFilterPattern": {
+                        "excludes": ["INFORMATION_SCHEMA", "PUBLIC", "DBT_TEST__AUDIT"]
+                    },
                 }
             },
         },

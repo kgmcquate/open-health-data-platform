@@ -139,7 +139,7 @@ resources:
     memory: 1536Mi
   limits:
     cpu: "2"
-    memory: 2Gi
+    memory: 4Gi
 
 extraEnvs:
   - name: OPENMETADATA_HEAP_OPTS
