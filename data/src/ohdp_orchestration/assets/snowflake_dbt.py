@@ -7,7 +7,8 @@ that also means Snowflake compute elsewhere in this repo).
 Plain module-level ``@dbt_assets``, not a ``Component`` — there is exactly one
 dbt project, so a `defs.yaml` config layer would only add indirection.
 
-* models  -> ``snowflake/<database>/<schema>/<model_name>``, grouped
+* models  -> ``snowflake/<database>/<schema>/<table_name>`` (lowercased,
+  table name not dbt unique-id name), grouped
   ``snowflake_<layer>`` (`clean` / `core` / `marts`), kinds ``dbt`` + ``snowflake``.
 * dbt **sources** map back to the RAW-layer keys the ingestion components
   already own (``snowflake/RAW/<schema>/<table>``, see
@@ -62,21 +63,21 @@ class _Translator(DagsterDbtTranslator):
             return super().get_asset_key(dbt_resource_props)
 
         # Match the structure of the Snowflake catalog: one database per
-        # medallion layer (ADR-0013), a schema per source/mart within it. Use
-        # the model's alias (its actual table name, e.g. after
+        # medallion layer (ADR-0013), a schema per source/mart within it.
+        # dbt **sources** keep the untouched database/name so they stay equal
+        # to the RAW-layer keys the ingestion side already owns
+        # (`HealthDataGovDataset.snowflake_raw_key`, e.g. `snowflake/RAW/...`).
+        # Models instead use the alias (the actual table name, e.g. after
         # generate_alias_name.sql strips the `stg_<source>__` prefix) rather
-        # than its dbt unique-id name, and lowercase every segment — Snowflake
-        # unquoted identifiers get case-folded, but the asset key should stay
-        # stable regardless of how the adapter happens to case them.
-        table_name = dbt_resource_props.get("alias") or dbt_resource_props["name"]
-        return AssetKey(
-            [
-                self._prefix,
-                dbt_resource_props["database"].lower(),
-                dbt_resource_props["schema"].lower(),
-                table_name.lower(),
-            ]
-        )
+        # than the dbt unique-id name, and lowercase database/schema —
+        # Snowflake unquoted identifiers get case-folded, but the asset key
+        # should stay stable regardless of how the adapter happens to case
+        # them.
+
+        table_name = dbt_resource_props["name"]
+        database = dbt_resource_props["database"]
+        schema = dbt_resource_props["schema"]
+        return AssetKey([self._prefix, database, schema, table_name])
 
     def get_group_name(self, props: dict[str, Any]) -> str | None:
         if props["resource_type"] != "model":
