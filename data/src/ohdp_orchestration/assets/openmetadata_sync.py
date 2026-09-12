@@ -54,6 +54,7 @@ _DAGSTER_SERVICE_NAME = "ohdp_dagster"
 _SNOWFLAKE_SERVICE_NAME = "snowflake"
 
 _GROUP_NAME = "openmetadata_sync"
+_KEY_PREFIX = "openmetadata"
 
 
 def _openmetadata_server_config() -> dict[str, Any]:
@@ -124,7 +125,7 @@ def _snowflake_workflow_config() -> dict[str, Any]:
     }
 
 
-@asset(group_name=_GROUP_NAME, kinds={"openmetadata"})
+@asset(key_prefix=_KEY_PREFIX, group_name=_GROUP_NAME, kinds={"openmetadata"})
 def openmetadata_dagster_sync(context) -> None:
     """Runs the ``dagster`` source's ``MetadataWorkflow`` against this
     instance."""
@@ -138,7 +139,7 @@ def openmetadata_dagster_sync(context) -> None:
     workflow.stop()
 
 
-@asset(group_name=_GROUP_NAME, kinds={"openmetadata"})
+@asset(key_prefix=_KEY_PREFIX, group_name=_GROUP_NAME, kinds={"openmetadata"})
 def openmetadata_snowflake_sync(context) -> None:
     """Runs the ``snowflake`` source's ``MetadataWorkflow`` against
     ``settings.snowflake_account``."""
