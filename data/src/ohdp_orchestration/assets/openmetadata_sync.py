@@ -89,6 +89,7 @@ def _dagster_workflow_config() -> dict[str, Any]:
                 "config": {
                     "type": "Dagster",
                     "host": settings.dagster_graphql_url,
+                    "stripAssetKeyPrefixLength": 1,
                 }
             },
             "sourceConfig": {
@@ -180,8 +181,7 @@ def _dbt_workflow_config() -> dict[str, Any]:
                     "dbtUpdateDescriptions": True,
                     "includeTags": True,
                     "databaseFilterPattern": {
-                        "includes": ["CLEAN", "CURATED"],
-                        "excludes": [],
+                        "includes": ["RAW", "CLEAN", "CURATED"],
                     },
                 }
             },
