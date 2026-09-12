@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: mart_respiratory_hospital_load
+    description: >
+      Weekly, per-state rollup of hospital load. Cube's respiratory_hospital_load
+      cube (semantic/cube/model/respiratory_hospital_load.yml) reads its
+      dimensions and measure descriptions from the column docs below via
+      cube-dbt — this file is the source of truth for those, not the Cube model.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: state
+        description: US state postal code.
+        data_type: varchar
+
+      - name: week
+        description: Week start (Monday), truncated from report_date.
+        data_type: date
+
+      - name: avg_covid_inpatients
+        description: >-
+          Mean daily COVID-19 inpatients for the state, averaged over the week.
+        data_type: double
+
+      - name: avg_occupancy
+        description: >-
+          Mean daily inpatient bed occupancy ratio (beds used divided by beds
+          staffed) for the state, averaged over the week.
+        data_type: double

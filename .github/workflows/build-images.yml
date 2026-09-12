@@ -39,6 +39,8 @@ jobs:
             dockerfile: apps/streamlit/Dockerfile
           - name: ohdp-pipeline
             dockerfile: data/Dockerfile
+          - name: ohdp-cube
+            dockerfile: semantic/cube/Dockerfile
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
     steps:

@@ -1,0 +1,16 @@
+cube {{ .Chart.Version }} deployed as {{ include "cube.fullname" . }}.
+
+In-cluster: http://{{ include "cube.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+{{ if .Values.ingress.enabled -}}
+Public:     https://{{ .Values.ingress.host }}{{ .Values.ingress.path }}
+{{- end }}
+
+Auth is a JWT signed with CUBEJS_API_SECRET (ARCHITECTURE.md §5) — there is no
+oauth2-proxy wall in front of this chart's ingress.
+
+Secrets expected in namespace {{ .Release.Namespace }}:
+{{- range .Values.secretEnv }}
+  - {{ .secretName }} (key {{ .secretKey }})
+{{- end }}
+Verify they exist before reporting a CrashLoopBackOff:
+  kubectl -n {{ .Release.Namespace }} get secret {{ range .Values.secretEnv }}{{ .secretName }} {{ end }}

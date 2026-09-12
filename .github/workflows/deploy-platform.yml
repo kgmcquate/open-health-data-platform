@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
       image_tag:
-        description: Override the dagster + hub-api + streamlit image tag (blank = the sha-<12> of the deployed commit).
+        description: Override the dagster + hub-api + streamlit + cube image tag (blank = the sha-<12> of the deployed commit).
         type: string
         default: ""
 
@@ -52,7 +52,7 @@ jobs:
         with:
           kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
 
-      # dagster + hub-api + streamlit run this tag. Defaults to the sha-<12> of
+      # dagster + hub-api + streamlit + cube run this tag. Defaults to the sha-<12> of
       # the checked-out commit — the tag build-images.yml pushed for it. Never
       # `latest`, so `helm rollback` and pod restarts stay pinned to a known build.
       - name: Resolve image tag
@@ -105,6 +105,10 @@ jobs:
           # a dedicated read-only role is a documented follow-up).
           upsert bi streamlit-snowflake \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
+          # Cube queries Snowflake directly too, same pipeline role/key,
+          # same temporary trade-off as streamlit-snowflake above.
+          upsert data cube-snowflake \
+            --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
@@ -151,6 +155,9 @@ jobs:
 
       - name: Dagster
         run: make -C platform/helm dagster TAG="$TAG"
+
+      - name: Cube
+        run: make -C platform/helm cube TAG="$TAG"
 
       - name: Streamlit
         run: make -C platform/helm streamlit TAG="$TAG"

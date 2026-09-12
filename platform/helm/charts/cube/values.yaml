@@ -1,0 +1,125 @@
+# Cube Core — the semantic layer (ARCHITECTURE.md §1.5, ADR-0003). Custom
+# image (semantic/cube/Dockerfile) because Cube ships no official Helm chart
+# and our model files + a compiled dbt manifest (cube-dbt) have to be baked
+# in — see that Dockerfile for why this isn't just the upstream cubejs/cube
+# image with a ConfigMap, the way graphql-authz-proxy is.
+#
+# Auth is Cube's own JWT security context, not an oauth2-proxy wall
+# (ARCHITECTURE.md §5: "Cube | Service token from hub-api"). Ingress is
+# enabled by default here, unlike the streamlit chart.
+#
+# Release name must be "cube" — hub-api reaches this Service at
+# cube.data.svc.cluster.local (hub-api/values.yaml OHDP_CUBE_API_URL), and
+# that hostname is derived from the Helm release name.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kgmcquate/ohdp-cube
+  # Pin an immutable tag in production — never "latest".
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 4000
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  host: cube.open-health-data-platform.org
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: true
+    secretName: cube-tls
+
+# ARCHITECTURE.md §4 budgets 0.5 GB for cube; no Cube Store, no
+# pre-aggregations initially.
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+# /livez tests the actual Snowflake connection; /readyz is deployment state
+# only (docs.cube.dev/product/deployment/core).
+livenessProbe:
+  httpGet:
+    path: /livez
+    port: http
+  initialDelaySeconds: 20
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  # Cube writes its own cache/tmp files at runtime — same exception
+  # streamlit/values.yaml documents for the same reason.
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+# Non-secret config only. queryRewrite (tier limits, hard row caps) lives in
+# semantic/cube/cube.js, baked into the image — not here.
+#
+# No Cube Store / scheduledRefreshTimer: matches cube.js (§4 resource budget).
+env:
+  CUBEJS_DEV_MODE: "false"
+  CUBEJS_DB_TYPE: snowflake
+  # Non-secret Snowflake connection config — mirrors streamlit/values.yaml and
+  # platform-base's pipelineConfig. Update all three together if the account/
+  # warehouse ever changes.
+  CUBEJS_DB_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
+  CUBEJS_DB_SNOWFLAKE_USER: "OHDP_PIPELINE"
+  CUBEJS_DB_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
+  CUBEJS_DB_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
+
+# Explicit secretKeyRef mappings, not envFrom: the Secret keys use this
+# project's OHDP_* naming convention, but Cube itself only recognizes its own
+# CUBEJS_* env var names, so the two can't share a key name the way
+# streamlit/hub-api's envFrom does.
+secretEnv:
+  # platform-base generates this — the shared HMAC secret hub-api signs
+  # service tokens with (ARCHITECTURE.md §5).
+  - name: CUBEJS_API_SECRET
+    secretName: cube-secret
+    secretKey: OHDP_CUBE_API_SECRET
+  # Mirrored by deploy-platform.yml's `secrets` step from the same
+  # SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret streamlit-snowflake uses
+  # (ADR-0015's same temporary privilege trade-off: shared pipeline role,
+  # not a dedicated read-only one, until that's built).
+  - name: CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY
+    secretName: cube-snowflake
+    secretKey: OHDP_SNOWFLAKE_PRIVATE_KEY
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

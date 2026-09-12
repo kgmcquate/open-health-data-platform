@@ -1,0 +1,33 @@
+# Dimensions and their descriptions come straight from dbt's column docs
+# (globals.py / cube-dbt) — edit descriptions in
+# data/dbt/models/marts/respiratory/_mart_respiratory__models.yml, not here.
+#
+# Measures still have to be hand-written: dbt documents columns, it doesn't
+# declare aggregations, so the two measures below are the one place in the
+# whole pipeline where "average occupancy" gets defined as AVG(...).
+{% set model = dbt_model('mart_respiratory_hospital_load') %}
+
+cubes:
+  - {{ model.as_cube() }}
+
+    dimensions:
+      {{ model.as_dimensions(skip=['avg_covid_inpatients', 'avg_occupancy']) }}
+
+    measures:
+      # mart_respiratory_hospital_load pre-aggregates to one row per
+      # state+week, so these are a mean of weekly means, not of raw daily
+      # values — an avg-of-an-avg. Fine for this stub; revisit against
+      # core_hospital_utilization_daily's daily grain if a real KPI needs it.
+      - name: avg_covid_inpatients
+        sql: avg_covid_inpatients
+        type: avg
+        description: "{{ model.column('avg_covid_inpatients').description }}"
+
+      - name: avg_occupancy
+        sql: avg_occupancy
+        type: avg
+        description: "{{ model.column('avg_occupancy').description }}"
+
+      - name: state_week_count
+        type: count
+        description: "Number of state-weeks in the current filter — a sanity-check measure, not a KPI."

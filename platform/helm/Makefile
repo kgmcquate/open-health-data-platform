@@ -25,7 +25,7 @@ OAUTH2_PROXY_VERSION    ?= 10.7.0
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \
-        streamlit oauth2-proxy-streamlit hub-api
+        streamlit oauth2-proxy-streamlit hub-api cube
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -45,6 +45,7 @@ lint: ## Lint the charts we own
 	$(HELM) lint $(CHARTS)/graphql-authz-proxy
 	$(HELM) lint $(CHARTS)/dagster-monitoring
 	$(HELM) lint $(CHARTS)/streamlit --set image.tag=0.0.0-dev
+	$(HELM) lint $(CHARTS)/cube --set image.tag=0.0.0-dev
 
 template: ## Render the charts we own locally (catches template errors without a cluster)
 	$(HELM) template platform-base $(CHARTS)/platform-base >/dev/null && echo "platform-base OK"
@@ -52,6 +53,7 @@ template: ## Render the charts we own locally (catches template errors without a
 	$(HELM) template gqlproxy $(CHARTS)/graphql-authz-proxy >/dev/null && echo "graphql-authz-proxy OK"
 	$(HELM) template dagster-monitoring $(CHARTS)/dagster-monitoring >/dev/null && echo "dagster-monitoring OK"
 	$(HELM) template streamlit $(CHARTS)/streamlit --set image.tag=0.0.0-dev >/dev/null && echo "streamlit OK"
+	$(HELM) template cube $(CHARTS)/cube --set image.tag=0.0.0-dev >/dev/null && echo "cube OK"
 
 # --------------------------------------------------------------------------
 # Cluster foundation
@@ -103,6 +105,11 @@ dagster: ## Install Dagster (TAG defaults to the current commit's sha-<12>)
 proxy: ## Install the GraphQL authz proxy in front of Dagster
 	$(HELM) upgrade --install gqlproxy $(CHARTS)/graphql-authz-proxy \
 		-n data --create-namespace --wait
+
+cube: ## Install Cube Core, the semantic layer (TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install cube $(CHARTS)/cube \
+		-n data --create-namespace --set image.tag=$(TAG) --wait --timeout 5m
 
 dagster-monitoring: ## Install the read-only Dagster monitoring dashboard (mounted at /monitoring, see values/oauth2-proxy.yaml)
 	$(HELM) upgrade --install dagster-monitoring $(CHARTS)/dagster-monitoring \

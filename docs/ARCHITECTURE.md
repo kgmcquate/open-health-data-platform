@@ -191,6 +191,7 @@ flowchart TB
     CF --> ING
     ING --> A1
     ING --> D4
+    ING --> D6
     ING --> B0
     ING --> M1
     D4 --> D3
@@ -200,6 +201,11 @@ flowchart TB
     vm -.->|metrics, logs| GC
 ```
 
+> `cube` (D6) is reached directly through ingress, not behind oauth2-proxy —
+> unlike Dagster and Streamlit, its authn/authz is Cube's own JWT security
+> context (§5: "Service token from hub-api"), so a browser SSO wall in front
+> of it would be redundant, not additive.
+>
 > **DNS / edge, as built.** One DigitalOcean load balancer fronts everything
 > (Traefik `Service type: LoadBalancer`); Ingresses route by hostname. Public
 > hosts are `app`, `dagster`, `catalog`, `cube`, `streamlit` under

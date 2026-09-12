@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt types test dbt-parse dagster-dev api-dev \
+.PHONY: help setup lint fmt types test dbt-parse dagster-dev api-dev cube-dev \
         act-list act-preflight act-build act-plan images
 
 help: ## List targets
@@ -29,6 +29,19 @@ dagster-dev: ## Run the Dagster webserver against the local code location
 api-dev: ## Run the hub API locally
 	cd apps/api && uv run uvicorn hub_api.main:app --reload --port 8000
 
+cube-dev: dbt-parse ## Run Cube Core locally, wired to the dbt manifest + Snowflake
+	cd semantic/cube && docker run -p 4000:4000 \
+	  -v "$$PWD:/cube/conf" \
+	  -v "$$PWD/../../data/dbt/target:/cube/conf/dbt:ro" \
+	  -e CUBEJS_DEV_MODE=true \
+	  -e CUBEJS_DB_TYPE=snowflake \
+	  -e CUBEJS_DB_SNOWFLAKE_ACCOUNT=$$OHDP_SNOWFLAKE_ACCOUNT \
+	  -e CUBEJS_DB_SNOWFLAKE_USER=$$OHDP_SNOWFLAKE_USER \
+	  -e CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY=$$OHDP_SNOWFLAKE_PRIVATE_KEY \
+	  -e CUBEJS_DB_SNOWFLAKE_ROLE=$$OHDP_SNOWFLAKE_ROLE \
+	  -e CUBEJS_DB_SNOWFLAKE_WAREHOUSE=$$OHDP_SNOWFLAKE_WAREHOUSE \
+	  cubejs/cube:latest
+
 # --- Deploy (see docs/deploying.md) ----------------------------------------
 
 act-list: ## List workflows and jobs act can see
@@ -47,3 +60,4 @@ images: ## Build all images directly with docker (faster than act)
 	docker build -f apps/api/Dockerfile -t ohdp-hub-api:dev .
 	docker build -f apps/streamlit/Dockerfile -t ohdp-streamlit:dev .
 	docker build -f data/Dockerfile -t ohdp-pipeline:dev .
+	docker build -f semantic/cube/Dockerfile -t ohdp-cube:dev .

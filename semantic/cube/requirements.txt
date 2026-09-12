@@ -1,0 +1,5 @@
+# Installed with pip on Cube container startup (Cube's own convention — see
+# https://docs.cube.dev/product/data-modeling/dynamic/jinja). cube_dbt lets
+# the Jinja-templated cubes in model/ read dimensions straight out of the dbt
+# manifest instead of a hand-typed copy.
+cube_dbt>=0.6,<0.7
