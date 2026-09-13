@@ -27,12 +27,12 @@ def _cadence_job(cadence: Cadence) -> UnresolvedAssetJobDefinition:
         description=f"HealthData.gov {cadence} ingestion bucket.",
         tags={"domain": _DOMAIN, "cadence": cadence},
         run_tags={
-            "dagster/max_concurrent": "2",
+            "dagster/max_concurrent": "1",
             "dagster-k8s/config": {
                 "container_config": {
                     "resources": {
-                        "requests": {"memory": "1Gi"},
-                        "limits": {"memory": "2Gi"},
+                        "requests": {"memory": "2Gi"},
+                        "limits": {"memory": "6Gi"},
                     }
                 }
             },
