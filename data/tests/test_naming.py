@@ -7,9 +7,9 @@ from ohdp_ingestion.naming import database, namespace, schema
 
 
 def test_database() -> None:
-    assert database("raw") == "RAW"
-    assert database("clean") == "CLEAN"
-    assert database("curated") == "CURATED"
+    assert database("raw") == "raw"
+    assert database("clean") == "clean"
+    assert database("curated") == "curated"
 
 
 def test_schema() -> None:
@@ -20,7 +20,7 @@ def test_schema() -> None:
 
 
 def test_namespace() -> None:
-    assert namespace("raw", "healthdata_gov") == "RAW.healthdata_gov"
-    assert namespace("clean", "cdc") == "CLEAN.cdc"
-    assert namespace("curated") == "CURATED.core"
-    assert namespace("curated", "respiratory") == "CURATED.respiratory"
+    assert namespace("raw", "healthdata_gov") == "raw.healthdata_gov"
+    assert namespace("clean", "cdc") == "clean.cdc"
+    assert namespace("curated") == "curated.core"
+    assert namespace("curated", "respiratory") == "curated.respiratory"

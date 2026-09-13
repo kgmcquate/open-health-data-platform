@@ -4,8 +4,13 @@ walk). Nothing here hits the network."""
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
 
-def _catalog_node(*, enabled: bool = True) -> dict:
+if TYPE_CHECKING:
+    from metadata.generated.schema.type.tagLabel import TagLabel
+
+
+def _catalog_node(*, enabled: bool = True) -> dict[str, Any]:
     return {
         "assetKey": {"path": ["sources", "healthdata_gov", "perpetrators_trend"]},
         "description": "Child fatalities by state.",
@@ -30,7 +35,7 @@ def _catalog_node(*, enabled: bool = True) -> dict:
     }
 
 
-def _fake_tags() -> dict:
+def _fake_tags() -> dict[str, TagLabel]:
     from metadata.generated.schema.type.tagLabel import (
         LabelType,
         State,
@@ -70,7 +75,7 @@ def test_dagster_sync_asset_is_registered() -> None:
 
     graph = defs.resolve_asset_graph()
     keys = {k.to_user_string() for k in graph.get_all_asset_keys()}
-    assert "openmetadata_dagster_sync" in keys
+    assert "openmetadata/openmetadata_dagster_sync" in keys
 
 
 def test_endpoint_request_from_catalog_node() -> None:
@@ -81,9 +86,11 @@ def test_endpoint_request_from_catalog_node() -> None:
     assert str(request.name.root) == "perpetrators_trend"
     assert str(request.apiCollection.root) == "healthdata_gov.datasets"
     assert str(request.endpointURL) == "https://healthdata.gov/d/ttus-3dym"
+    assert request.tags is not None
     tag_fqns = {str(t.tagFQN.root) for t in request.tags}
     assert tag_fqns == {"Ingestion.Ingested", "Cadence.Weekly"}
     assert request.responseSchema is not None
+    assert request.responseSchema.schemaFields is not None
     field_names = {str(f.name.root) for f in request.responseSchema.schemaFields}
     assert field_names == {"state", "_2017"}
 
@@ -95,6 +102,7 @@ def test_endpoint_request_tags_dataset_as_available_when_disabled() -> None:
         _catalog_node(enabled=False), "healthdata_gov.datasets", _fake_tags()
     )
 
+    assert request.tags is not None
     tag_fqns = {str(t.tagFQN.root) for t in request.tags}
     assert "Ingestion.Available" in tag_fqns
     assert "Ingestion.Ingested" not in tag_fqns
@@ -120,6 +128,7 @@ def test_endpoint_request_works_for_a_source_with_no_domain_specific_metadata() 
     assert str(request.apiCollection.root) == "some_other_api.datasets"
     assert request.endpointURL is None
     assert request.responseSchema is None
+    assert request.tags is not None
     tag_fqns = {str(t.tagFQN.root) for t in request.tags}
     assert tag_fqns == {"Ingestion.Available", "Cadence.Weekly"}
 
@@ -138,7 +147,7 @@ def test_find_downstream_snowflake_key_walks_through_ingestion_hop() -> None:
         "assetKey": {"path": ["snowflake", "RAW", "healthdata_gov", "perpetrators_trend"]},
         "dependedByKeys": [],
     }
-    nodes_by_key = {
+    nodes_by_key: dict[tuple[str, ...], dict[str, Any]] = {
         ("ingestion", "healthdata_gov", "perpetrators_trend"): ingestion_node,
         ("snowflake", "RAW", "healthdata_gov", "perpetrators_trend"): snowflake_node,
     }

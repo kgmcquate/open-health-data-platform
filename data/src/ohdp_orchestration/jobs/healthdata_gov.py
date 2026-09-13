@@ -10,22 +10,22 @@ scheduled run is a no-op).
 from __future__ import annotations
 
 from dagster import AssetSelection, define_asset_job
+from dagster._core.definitions.unresolved_asset_job_definition import (
+    UnresolvedAssetJobDefinition,
+)
 
 from ohdp_ingestion.healthdata_gov.config import Cadence
 
 _DOMAIN = "healthdata_gov"
 
 
-def _cadence_job(cadence: Cadence):
+def _cadence_job(cadence: Cadence) -> UnresolvedAssetJobDefinition:
     selection = AssetSelection.tag("domain", _DOMAIN) & AssetSelection.tag("cadence", cadence)
     return define_asset_job(
         name=f"healthdata_gov_{cadence}_ingest",
         selection=selection,
         description=f"HealthData.gov {cadence} ingestion bucket.",
-        tags={
-            "domain": _DOMAIN,
-            "cadence": cadence
-        },
+        tags={"domain": _DOMAIN, "cadence": cadence},
         run_tags={
             "dagster/max_concurrent": "2",
             "dagster-k8s/config": {
@@ -36,7 +36,7 @@ def _cadence_job(cadence: Cadence):
                     }
                 }
             },
-        }
+        },
     )
 
 

@@ -52,11 +52,7 @@ class _Translator(DagsterDbtTranslator):
 
         # Allow the asset key to be overridden if set explicitly in the model config
         hardcoded_asset_key = (
-            dbt_resource_props
-            .get("config", {})
-            .get("meta", {})
-            .get("dagster", {})
-            .get("asset_key")
+            dbt_resource_props.get("config", {}).get("meta", {}).get("dagster", {}).get("asset_key")
         )
 
         if hardcoded_asset_key:

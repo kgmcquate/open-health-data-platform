@@ -231,9 +231,7 @@ def _bootstrap_tags(metadata: OpenMetadata[Any, Any]) -> dict[str, TagLabel]:
     metadata.create_or_update(
         CreateClassificationRequest(
             name=EntityName(_CADENCE_CLASSIFICATION),
-            description=Markdown(
-                "How often a cataloged sources/ dataset refreshes once ingested."
-            ),
+            description=Markdown("How often a cataloged sources/ dataset refreshes once ingested."),
         )
     )
 

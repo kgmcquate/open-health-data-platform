@@ -22,7 +22,7 @@ def test_sync_assets_are_registered() -> None:
 
     graph = defs.resolve_asset_graph()
     keys = {k.to_user_string() for k in graph.get_all_asset_keys()}
-    assert "openmetadata_snowflake_sync" in keys
+    assert "openmetadata/openmetadata_snowflake_sync" in keys
 
 
 def test_snowflake_workflow_config_shape() -> None:

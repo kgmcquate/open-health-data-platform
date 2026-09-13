@@ -80,14 +80,19 @@ class _TableTranslator(DagsterDltTranslator):
     spec: AssetSpec
 
     def get_asset_spec(self, data: DltResourceTranslatorData) -> AssetSpec:
-        return super().get_asset_spec(data).replace_attributes(
-            key=self.spec.key,
-            deps=self.spec.deps,
-            description=self.spec.description,
-            group_name=self.spec.group_name,
-        ).merge_attributes(
-            tags=self.spec.tags,
-            metadata=self.spec.metadata,
+        return (
+            super()
+            .get_asset_spec(data)
+            .replace_attributes(
+                key=self.spec.key,
+                deps=self.spec.deps,
+                description=self.spec.description,
+                group_name=self.spec.group_name,
+            )
+            .merge_attributes(
+                tags=self.spec.tags,
+                metadata=self.spec.metadata,
+            )
         )
 
 

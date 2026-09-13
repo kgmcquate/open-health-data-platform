@@ -3,7 +3,6 @@ ingestion lineage."""
 
 from __future__ import annotations
 
-
 _LAYER_GROUPS = ("snowflake_clean", "snowflake_core", "snowflake_marts")
 
 
@@ -15,25 +14,34 @@ def test_models_are_snowflake_prefixed_and_grouped_by_layer() -> None:
     from ohdp_orchestration.definitions import defs
 
     graph = defs.resolve_asset_graph()
+    # Keyed by the full `snowflake/<database>/<schema>/<name>` string: with
+    # `_Translator.get_asset_key` on `[prefix, database, schema, name]`, the
+    # trailing name alone is no longer unique across layers.
     snowflake_nodes = {
-        k.path[-1]: graph.get(k) for k in graph.get_all_asset_keys() if k.path[0] == "snowflake"
+        k.to_user_string(): graph.get(k)
+        for k in graph.get_all_asset_keys()
+        if k.path[0] == "snowflake"
     }
     assert snowflake_nodes, "no snowflake/* assets — did `dbt parse` run?"
-    models = {name: node for name, node in snowflake_nodes.items() if node.group_name in _LAYER_GROUPS}
+    models = {
+        name: node for name, node in snowflake_nodes.items() if node.group_name in _LAYER_GROUPS
+    }
     assert models, "no dbt models found under snowflake/*"
     for node in models.values():
         assert "dbt" in node.kinds and "snowflake" in node.kinds
         assert node.tags["domain"] == "snowflake"
 
-    assert "stg_healthdata_gov__hospital_capacity_by_state" in models
-    assert models["core_hospital_utilization_daily"].group_name == "snowflake_core"
+    assert "snowflake/clean/stg_healthdata_gov/hospital_capacity_by_state" in models
+    assert (
+        models["snowflake/curated/core/hospital_utilization_daily"].group_name == "snowflake_core"
+    )
 
 
 def test_dbt_sources_are_snowflake_prefixed() -> None:
     """dbt's `healthdata_gov` source no longer resolves to the flat
     `healthdata_gov/<raw_table>` ingestion key (that mapping was removed when
     `_Translator.get_asset_key` switched to `[prefix, database, schema, name]`
-    for every resource type). The source's parent is a `snowflake/RAW/...` key
+    for every resource type). The source's parent is a `snowflake/raw/...` key
     — now always compiled against the one Snowflake target (ADR-0014), so it
     equals `HealthDataGovDataset.snowflake_raw_key` exactly rather than just
     sharing a prefix/suffix with it."""
@@ -42,11 +50,10 @@ def test_dbt_sources_are_snowflake_prefixed() -> None:
     graph = defs.resolve_asset_graph()
     by_str = {k.to_user_string(): k for k in graph.get_all_asset_keys()}
 
-    stg_key = next(k for k in by_str if k.endswith("stg_healthdata_gov__hospital_capacity_by_state"))
-    stg = graph.get(by_str[stg_key])
+    stg = graph.get(by_str["snowflake/clean/stg_healthdata_gov/hospital_capacity_by_state"])
     parents = {p.to_user_string() for p in stg.parent_keys}
     assert parents == {
-        "snowflake/RAW/healthdata_gov/"
+        "snowflake/raw/healthdata_gov/"
         "covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
     }
 
@@ -62,7 +69,7 @@ def test_healthdata_gov_bridges_the_dlt_table_to_a_snowflake_raw_asset() -> None
     by_str = {k.to_user_string(): k for k in graph.get_all_asset_keys()}
 
     bridge_str = (
-        "snowflake/RAW/healthdata_gov/"
+        "snowflake/raw/healthdata_gov/"
         "covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
     )
     assert bridge_str in by_str, "did HealthDataGovDataset._snowflake_raw_spec() change key shape?"

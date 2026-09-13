@@ -109,21 +109,11 @@ def _snowflake_workflow_config() -> dict[str, Any]:
                         "lookbackDays": 7,
                         "safetyMarginDays": 1,
                     },
-                    "databaseFilterPattern": {
-                        "includes": ["RAW", "CLEAN", "CURATED"]
-                    },
+                    "databaseFilterPattern": {"includes": ["RAW", "CLEAN", "CURATED"]},
                     "schemaFilterPattern": {
-                        "excludes": [
-                            "INFORMATION_SCHEMA",
-                            "PUBLIC",
-                            "DBT_TEST__AUDIT"
-                        ]
+                        "excludes": ["INFORMATION_SCHEMA", "PUBLIC", "DBT_TEST__AUDIT"]
                     },
-                    "tableFilterPattern": {
-                        "excludes": [
-                            "_DLT_.*"
-                        ]
-                    },
+                    "tableFilterPattern": {"excludes": ["_DLT_.*"]},
                 }
             },
         },
@@ -182,9 +172,7 @@ def openmetadata_dbt_sync(context) -> None:
     """Runs the ``dbt`` source's ``MetadataWorkflow`` against the manifest
     baked into this image, attaching model descriptions/tags/tests/lineage to
     the tables ``openmetadata_snowflake_sync`` already ingested."""
-    context.log.info(
-        f"Ingesting dbt metadata into OpenMetadata from {_dbt_project.manifest_path}"
-    )
+    context.log.info(f"Ingesting dbt metadata into OpenMetadata from {_dbt_project.manifest_path}")
     workflow = MetadataWorkflow.create(_dbt_workflow_config())
     workflow.execute()
     workflow.print_status()

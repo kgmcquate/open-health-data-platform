@@ -16,7 +16,12 @@ from typing import Any
 
 import dlt
 import pytest
-from dagster import AssetKey, DagsterInstance, materialize
+from dagster import (
+    AssetKey,
+    DagsterInstance,
+    ExecuteInProcessResult,
+    materialize,
+)
 from dagster_dlt import dlt_assets
 
 from ohdp_ingestion.healthdata_gov.config import ColumnSpec
@@ -89,7 +94,7 @@ def _load(
     source: str = "healthdata_gov",
     incremental_cursor: str | None = "socrata_updated_at",
     columns: list[ColumnSpec] | None = None,
-):
+) -> ExecuteInProcessResult:
     """Materialize one table asset the same way the component does, through
     ``CustomDagsterDltResource``."""
 
@@ -100,7 +105,10 @@ def _load(
         dlt_pipeline=build_pipeline(pipeline_name=f"{source}_{table_name}", source=source),
         name=table_name,
     )
-    def _assets(context, dlt: CustomDagsterDltResource):
+    # Dagster identity-checks this annotation against AssetExecutionContext, and
+    # this module's `from __future__ import annotations` would stringify it, so
+    # `context` has to stay unannotated.
+    def _assets(context, dlt: CustomDagsterDltResource) -> Any:  # type: ignore[no-untyped-def]
         yield from dlt.run(context=context)
 
     return materialize([_assets], resources={"dlt": CustomDagsterDltResource()})
@@ -249,5 +257,5 @@ def test_nested_json_reports_a_materialization_per_child_table(
     assert result.success
 
     for table in ("nested", "nested__tags"):
-        key = AssetKey(["snowflake", "RAW", "healthdata_gov", table])
+        key = AssetKey(["snowflake", "raw", "healthdata_gov", table])
         assert instance.get_latest_materialization_event(key) is not None, table
