@@ -159,6 +159,9 @@ flowchart TB
         subgraph nsapp["namespace: app"]
             A1["hub-web"]
             A2["hub-api"]
+            A3["oauth2-proxy-app"]
+            A4["open-webui"]
+            A5["mcp-cube"]
         end
 
         subgraph nsdata["namespace: data"]
@@ -190,6 +193,11 @@ flowchart TB
 
     CF --> ING
     ING --> A1
+    ING --> A3
+    A3 --> A2
+    ING --> A4
+    A4 --> A5
+    A5 --> D6
     ING --> D4
     ING --> D6
     ING --> B0
@@ -201,6 +209,12 @@ flowchart TB
     vm -.->|metrics, logs| GC
 ```
 
+> `open-webui` (A4) is the second chat surface (ADR-0017), at `chat.` — reached
+> through ingress with **no oauth2-proxy in front**, because it has a user model
+> of its own and gates sign-in with its own Google OAuth. `mcp-cube` (A5) serves
+> Cube's tool surface to it over MCP and is ClusterIP-only. `hub-api` (A2) and
+> its own chat UI stay at `app.`, behind `oauth2-proxy-app` (A3).
+>
 > `cube` (D6) is reached directly through ingress, not behind oauth2-proxy —
 > unlike Dagster and Streamlit, its authn/authz is Cube's own JWT security
 > context (§5: "Service token from hub-api"), so a browser SSO wall in front
@@ -208,7 +222,7 @@ flowchart TB
 >
 > **DNS / edge, as built.** One DigitalOcean load balancer fronts everything
 > (Traefik `Service type: LoadBalancer`); Ingresses route by hostname. Public
-> hosts are `app`, `dagster`, `catalog`, `cube`, `streamlit` under
+> hosts are `app`, `chat`, `dagster`, `catalog`, `cube`, `streamlit` under
 > `open-health-data-platform.org`. `open-health-data-platform.org` is a Cloudflare zone; the records
 > are managed by Terraform (`platform/terraform/dns.tf`, `cloudflare` provider)
 > but are **DNS-only** — Cloudflare is not in the request path, so TLS is Let's
@@ -220,7 +234,7 @@ flowchart TB
 
 ### Resource budget
 
-Steady state ~13 GB, burst ~15 GB during a build.
+Steady state ~14.5 GB, burst ~16 GB during a build.
 
 | Workload | Memory request | Notes |
 |---|---|---|
@@ -231,6 +245,8 @@ Steady state ~13 GB, burst ~15 GB during a build.
 | dagster-webserver + daemon | 1 GB | |
 | cube | 0.5 GB | No Cube Store, no pre-aggregations initially; queries Snowflake directly |
 | hub-web + hub-api | 0.5 GB | |
+| open-webui | 1 GB | Chat UI (ADR-0017). Ollama, Pipelines, Tika and the bundled Redis subcharts are all off — with them it is ~2.5 GB |
+| mcp-cube | 0.25 GB | Cube's tool surface over MCP; the hub-api image with a different command |
 | ingress, cert-manager, oauth2-proxy, graphql-proxy | 0.3 GB | |
 | k3s system | 1 GB | |
 | pipeline pod | 1.5 GB | Burst only, concurrency capped at 1; compute is Snowflake, not this pod |
@@ -259,6 +275,8 @@ Tokens carry a `tier` claim (`free` | `paid`).
 | Surface | Authn | Authz |
 |---|---|---|
 | Hub app | OIDC session | Entitlement checks in hub-api against `tier` |
+| Open WebUI | Its own Google OAuth — no oauth2-proxy wall (ADR-0017) | New accounts default to `pending` and see nothing until an admin promotes them; no quota gate |
+| mcp-cube | Static bearer token, ClusterIP-only | `CubeQuery` validation and Cube's `queryRewrite` — the same controls the in-process agent gets |
 | Streamlit | oauth2-proxy Google wall, `kgmcquate@gmail.com` only | No role mapping — one operator, not a multi-tenant surface |
 | OpenMetadata | Native OIDC | Default viewer role for all authenticated users |
 | Dagster | oauth2-proxy gates the hostname | GraphQL allowlist proxy enforces read-only |
@@ -345,6 +363,7 @@ health-data-platform/
 ├── apps/
 │   ├── web/                    # Next.js hub: landing, chat UI, links out to Streamlit
 │   ├── api/                    # FastAPI: chat orchestration, entitlements, Stripe webhooks
+│   │                           #   src/hub_api, src/ohdp_agent, src/ohdp_mcp (the Cube MCP server, ADR-0017)
 │   └── streamlit/              # Streamlit dashboards — direct Snowflake queries
 │
 ├── data/

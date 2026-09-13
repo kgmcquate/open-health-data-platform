@@ -78,7 +78,13 @@ postgres:
   # it being *created*; an existing database is left in place, so reclaim the
   # disk with a manual `DROP DATABASE <name>` once you are satisfied nothing
   # wants it.
+  #
+  # The init script above runs only on an *empty* data directory, so adding an
+  # entry here does nothing on a cluster that already has a Postgres volume.
+  # templates/db-bootstrap-job.yaml closes that gap: it runs on every
+  # install/upgrade and creates whatever is missing, idempotently.
   databases:
     - dagster
     - openmetadata
     - app
+    - openwebui
