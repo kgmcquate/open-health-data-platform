@@ -113,7 +113,7 @@ extraEnvVars:
   - name: "ENABLE_MEMORY_SYSTEM_CONTEXT"
     value: "true"
   - name: DEFAULT_PROMPT_SUGGESTIONS
-    value: [] # [{"title": ["Title part 1", "Title part 2"], "content": "prompt"}]
+    value: "[]" # [{"title": ["Title part 1", "Title part 2"], "content": "prompt"}]
   - name: ENABLE_TOOL_PERMISSIONS
     value: "true"
   # The gate. `sso.enableSignup` below lets any Google account create an
