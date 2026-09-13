@@ -1,0 +1,61 @@
+# Therapeutic access — COVID-19 and influenza dispensing sites from the ASPR
+# Treatments Locator. Dimensions and their descriptions come from dbt's column
+# docs via cube-dbt — edit them in
+# data/dbt/models/curated/access/_curated_access__models.yml.
+#
+# The mart is at site grain, so `count` is the headline measure: "how many
+# sites stock X in state Y" is a count of rows, and the boolean stock flags are
+# dimensions to filter on rather than measures to sum.
+{% set model = dbt_model('access__treatment_sites') %}
+
+cubes:
+  - {{ model.as_cube() }}
+
+    dimensions:
+      {{ model.as_dimensions(skip=['days_since_report']) }}
+
+    measures:
+      - name: site_count
+        type: count
+        description: "Dispensing sites matching the current filter."
+
+      - name: sites_with_covid_therapeutic
+        type: count
+        filters:
+          - sql: "{CUBE}.has_any_covid_therapeutic"
+        description: >-
+          Sites reporting at least one COVID-19 therapeutic in stock. Counts a
+          site's LAST REPORTED inventory — filter on is_stale_report to exclude
+          sites that stopped reporting.
+
+      - name: sites_with_flu_therapeutic
+        type: count
+        filters:
+          - sql: "{CUBE}.has_any_flu_therapeutic"
+        description: >-
+          Sites reporting at least one influenza antiviral in stock, on the same
+          last-reported basis as sites_with_covid_therapeutic.
+
+      - name: sites_with_paxlovid
+        type: count
+        filters:
+          - sql: "{CUBE}.has_paxlovid"
+        description: "Sites reporting Paxlovid in stock as of their last report."
+
+      - name: fresh_site_count
+        type: count
+        filters:
+          - sql: "NOT {CUBE}.is_stale_report"
+        description: >-
+          Sites that reported inventory within the last 14 days — the honest
+          denominator for any availability share.
+
+      - name: avg_days_since_report
+        sql: days_since_report
+        type: avg
+        description: {{ model.column('days_since_report').description }}
+
+      - name: states_covered
+        sql: state
+        type: count_distinct
+        description: "Distinct states or territories with a matching site."

@@ -4,8 +4,8 @@ attributes:
   id: 9c49-3jtk
   name: Child Fatalities by Submission Type
   publisher: U.S. Department of Health and Human Services
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: child_fatalities_by_submission_type
   incremental_cursor: socrata_updated_at
   row_limit: 500000

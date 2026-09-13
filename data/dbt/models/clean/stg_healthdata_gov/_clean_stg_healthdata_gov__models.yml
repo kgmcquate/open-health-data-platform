@@ -1,10 +1,190 @@
 version: 2
 
+# Every model here is macros/healthdata_gov_current_rows.sql over one raw
+# table: latest row per Socrata :id, dlt bookkeeping dropped. Columns stay as
+# the source publishes them, so only the dedupe key is documented and tested
+# here -- typed, renamed columns are `core`'s job.
+
 models:
   - name: stg_healthdata_gov__hospital_capacity_by_state
     description: >
       Current-state hospital utilization by state, deduped from the append-only
       raw table. One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__child_victims_by_age
+    description: >
+      NCANDS child maltreatment victims by single year of age and state, for the
+      most recent federal fiscal year. Wide: one column pair (count, rate per
+      1,000 children) per age.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__child_victims_trend
+    description: >
+      NCANDS child maltreatment victim counts and rates per 1,000 children, by
+      state, for the last five federal fiscal years. Wide: one column pair per
+      year.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__maltreatment_types_of_victims
+    description: >
+      NCANDS substantiated maltreatment types by state for the most recent federal
+      fiscal year. Duplicate counts -- a victim is counted once per maltreatment
+      category, so the type columns sum to more than total_victims.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__child_fatalities_trend
+    description: >
+      NCANDS child fatalities (unique count) by state for the last five federal
+      fiscal years. Wide: one column per year.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__child_fatalities_by_submission_type
+    description: >
+      NCANDS child fatalities by NCANDS file submission type (Child File vs Agency
+      File) and state, for the most recent federal fiscal year.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__perpetrators_by_relationship
+    description: >
+      NCANDS perpetrator counts by relationship to their victims and state, for
+      the most recent federal fiscal year. Unique counts; perpetrators with two or
+      more relationships fall in multiple_relationships.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__perpetrators_trend
+    description: >
+      NCANDS perpetrator counts (unique count) by state for the last five federal
+      fiscal years. Wide: one column per year.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__screened_referrals
+    description: >
+      NCANDS child protective services referrals by state for the most recent
+      federal fiscal year -- totals, screened-in/screened-out splits, and referral
+      rate per 100,000 children.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__children_by_disposition
+    description: >
+      NCANDS children by CPS investigation/alternative-response disposition and
+      state. Duplicate counts -- a child is counted once per disposition reached.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__children_investigated_trend
+    description: >
+      NCANDS children who received a CPS investigation or alternative response,
+      counts and rates per 1,000 children, by state, for the last five federal
+      fiscal years. Wide: one column pair per year.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__notifiable_disease_tycho
+    description: >
+      Project Tycho Level 1 notifiable-disease surveillance: case counts and
+      incidence per 100,000 by disease, location and CDC epi week. All columns
+      arrive as text from Socrata; `core` does the casting.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__treatments_locator
+    description: >
+      ASPR Treatments Locator: one row per provider site dispensing COVID-19 and
+      influenza therapeutics, with geo coordinates and per-drug availability flags.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__school_learning_modalities_2020_2021
+    description: >
+      Weekly K-12 district learning modality (in-person / hybrid / remote) for the
+      2020-2021 school year. Union'd with the 2021-2022 file in `core`.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_healthdata_gov__school_learning_modalities_2021_2022
+    description: >
+      Weekly K-12 district learning modality (in-person / hybrid / remote) for the
+      2021-2022 school year. Union'd with the 2020-2021 file in `core`.
     config:
       contract:
         enforced: false

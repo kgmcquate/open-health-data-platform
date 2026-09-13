@@ -4,8 +4,8 @@ attributes:
   id: tw7x-jbvq
   name: Perpetrators by Relationship to Their Victims
   publisher: U.S. Department of Health and Human Services
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: perpetrators_by_relationship_to_their_victims
   incremental_cursor: socrata_updated_at
   row_limit: 500000

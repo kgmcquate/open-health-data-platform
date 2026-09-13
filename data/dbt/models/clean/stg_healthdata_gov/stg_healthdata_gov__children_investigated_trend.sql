@@ -7,4 +7,4 @@
     on_schema_change="append_new_columns"
 ) }}
 
-{{ healthdata_gov_current_rows('covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw') }}
+{{ healthdata_gov_current_rows('children_who_received_an_investigation_or_alternative_response') }}

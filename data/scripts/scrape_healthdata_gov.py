@@ -35,7 +35,7 @@ from ohdp_ingestion.naming import schema as ns_schema
 _REPO = Path(__file__).resolve().parents[2]
 _DEFS = _REPO / "data/src/ohdp_orchestration/defs/healthdata_gov"
 _DEFAULT_OUT = _DEFS / "datasets"
-_DBT_SOURCES = _REPO / "data/dbt/models/clean/healthdata_gov/_healthdata_gov__sources.yml"
+_DBT_SOURCES = _REPO / "data/dbt/models/raw/_stg_healthdata_gov__sources.yml"
 # ADR-0013: RAW.healthdata_gov on Snowflake.
 _RAW_DATABASE = ns_database("raw")
 _RAW_SCHEMA = ns_schema("raw", "healthdata_gov")

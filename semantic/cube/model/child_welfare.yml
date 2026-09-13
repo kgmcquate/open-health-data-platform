@@ -1,0 +1,172 @@
+# Child maltreatment (NCANDS). Dimensions and their descriptions come straight
+# from dbt's column docs (globals.py / cube-dbt) — edit descriptions in
+# data/dbt/models/curated/child_welfare/_curated_child_welfare__models.yml, not
+# here. Measures are hand-written: dbt documents columns, it does not declare
+# aggregations.
+#
+# Three cubes, three grains — state x fiscal year, state x maltreatment type,
+# and state. Keeping them separate is what lets every count below be a plain
+# SUM; the marts deliberately do not repeat a state total across type rows.
+{% set trend = dbt_model('child_welfare__state_year_trend') %}
+{% set profile = dbt_model('child_welfare__maltreatment_profile') %}
+{% set funnel = dbt_model('child_welfare__cps_funnel') %}
+
+{% set trend_measures = [
+    'victims', 'victim_rate_per_1000', 'fatalities', 'perpetrators',
+    'children_investigated', 'children_investigated_rate_per_1000',
+    'victim_substantiation_ratio',
+] %}
+{% set profile_measures = ['victims', 'pct_of_victims'] %}
+{% set funnel_measures = [
+    'total_referrals', 'referral_rate_per_100k', 'screened_in_referrals',
+    'screened_out_referrals', 'screened_in_pct', 'children_with_disposition',
+    'substantiated', 'indicated', 'alternative_response', 'unsubstantiated',
+    'total_victims', 'total_child_fatalities', 'fatality_rate_per_100k',
+    'screen_in_rate', 'substantiation_rate',
+] %}
+
+cubes:
+  - {{ trend.as_cube() }}
+
+    dimensions:
+      {{ trend.as_dimensions(skip=trend_measures) }}
+
+    measures:
+      - name: total_victims
+        sql: victims
+        type: sum
+        description: {{ trend.column('victims').description }}
+
+      - name: total_fatalities
+        sql: fatalities
+        type: sum
+        description: {{ trend.column('fatalities').description }}
+
+      - name: total_perpetrators
+        sql: perpetrators
+        type: sum
+        description: {{ trend.column('perpetrators').description }}
+
+      - name: total_children_investigated
+        sql: children_investigated
+        type: sum
+        description: {{ trend.column('children_investigated').description }}
+
+      # Rates are per-state population ratios, so the only sound aggregate is a
+      # mean across states — and an unweighted one at that, which treats Wyoming
+      # and California alike. For a population-weighted national figure, divide
+      # total_victims by the matching population; NCANDS's own National row
+      # (excluded from this mart) is the published alternative.
+      - name: avg_victim_rate_per_1000
+        sql: victim_rate_per_1000
+        type: avg
+        description: {{ trend.column('victim_rate_per_1000').description }}
+
+      - name: avg_children_investigated_rate_per_1000
+        sql: children_investigated_rate_per_1000
+        type: avg
+        description: {{ trend.column('children_investigated_rate_per_1000').description }}
+
+      # Computed from the summed counts, not averaged from the per-state ratio
+      # column — this is the number that stays correct at every grain, which is
+      # exactly what a semantic layer is for.
+      - name: substantiation_ratio
+        sql: "SUM({CUBE}.victims) / NULLIF(SUM({CUBE}.children_investigated), 0)"
+        type: number
+        description: >-
+          Victims divided by children investigated, computed from summed counts
+          so it holds at any grain — nationally, per state, or per year.
+
+      - name: states_reporting
+        sql: state
+        type: count_distinct
+        description: "Distinct states in the current filter — a coverage check, not a KPI."
+
+  - {{ profile.as_cube() }}
+
+    joins:
+      - name: child_welfare__cps_funnel
+        relationship: many_to_one
+        sql: "{CUBE}.state = {child_welfare__cps_funnel}.state"
+
+    dimensions:
+      {{ profile.as_dimensions(skip=profile_measures) }}
+
+    measures:
+      - name: victims_with_type
+        sql: victims
+        type: sum
+        description: {{ profile.column('victims').description }}
+
+      - name: avg_pct_of_victims
+        sql: pct_of_victims
+        type: avg
+        description: {{ profile.column('pct_of_victims').description }}
+
+  - {{ funnel.as_cube() }}
+
+    dimensions:
+      {{ funnel.as_dimensions(skip=funnel_measures) }}
+
+    measures:
+      - name: total_referrals
+        sql: total_referrals
+        type: sum
+        description: {{ funnel.column('total_referrals').description }}
+
+      - name: screened_in_referrals
+        sql: screened_in_referrals
+        type: sum
+        description: {{ funnel.column('screened_in_referrals').description }}
+
+      - name: screened_out_referrals
+        sql: screened_out_referrals
+        type: sum
+        description: {{ funnel.column('screened_out_referrals').description }}
+
+      - name: children_with_disposition
+        sql: children_with_disposition
+        type: sum
+        description: {{ funnel.column('children_with_disposition').description }}
+
+      - name: substantiated_children
+        sql: substantiated
+        type: sum
+        description: {{ funnel.column('substantiated').description }}
+
+      - name: total_victims
+        sql: total_victims
+        type: sum
+        description: {{ funnel.column('total_victims').description }}
+
+      - name: total_child_fatalities
+        sql: total_child_fatalities
+        type: sum
+        description: {{ funnel.column('total_child_fatalities').description }}
+
+      # Both ratios recomputed from summed counts rather than averaged from the
+      # per-state columns, so they stay correct when several states are rolled
+      # up together.
+      - name: screen_in_rate
+        sql: "SUM({CUBE}.screened_in_referrals) / NULLIF(SUM({CUBE}.total_referrals), 0)"
+        type: number
+        description: >-
+          Share of referrals accepted for a CPS response, computed from summed
+          counts so it holds at any grain.
+
+      - name: substantiation_rate
+        sql: "SUM({CUBE}.substantiated) / NULLIF(SUM({CUBE}.children_with_disposition), 0)"
+        type: number
+        description: >-
+          Share of children reaching a disposition whose maltreatment was
+          substantiated, computed from summed counts so it holds at any grain.
+
+      - name: avg_fatality_rate_per_100k
+        sql: fatality_rate_per_100k
+        type: avg
+        description: {{ funnel.column('fatality_rate_per_100k').description }}
+
+      - name: avg_referral_rate_per_100k
+        sql: referral_rate_per_100k
+        type: avg
+        description: {{ funnel.column('referral_rate_per_100k').description }}

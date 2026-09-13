@@ -1,9 +1,14 @@
 version: 2
 
 models:
-  - name: core__hospitalization_utilization_daily
+  # NOTE: this block previously described a model named
+  # `core__hospitalization_utilization_daily` with columns (covid_inpatients,
+  # occupancy, staffed_beds) that the SQL never produced. Corrected to the
+  # model that actually exists and the columns it actually selects.
+  - name: core__hospital_utilization_daily
     description: >
-      Daily hospitalization utilization metrics.
+      Daily hospital utilization by state, typed off the clean COVID-19
+      hospital-capacity timeseries. One row per state x report_date.
     config:
       contract:
         enforced: false
@@ -11,15 +16,476 @@ models:
       - name: state
         description: US state postal code.
         data_type: varchar
+        data_tests: [not_null]
       - name: report_date
         description: Report date of the row.
         data_type: date
-      - name: covid_inpatients
-        description: Number of COVID-19 inpatients reported for the state on the report_date.
+        data_tests: [not_null]
+      - name: inpatient_beds
+        description: Total staffed inpatient beds reported for the state that day.
         data_type: integer
-      - name: occupancy
-        description: Inpatient bed occupancy
+      - name: inpatient_beds_used
+        description: Inpatient beds occupied by any patient, reported for the state that day.
+        data_type: integer
+      - name: inpatient_beds_used_covid
+        description: Inpatient beds occupied by confirmed COVID-19 patients that day.
+        data_type: integer
+
+  - name: core__child_maltreatment_state_year
+    description: >
+      NCANDS child maltreatment trend, conformed to one row per state x federal
+      fiscal year (2015-2019) from four separately published wide-by-year
+      tables. Includes NCANDS's own "National" row, flagged by is_national so
+      state-level aggregates can exclude it.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state, fiscal_year]
+    columns:
+      - name: state
+        description: NCANDS reporting unit -- the 50 states, DC, Puerto Rico, plus a "National" row.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: fiscal_year
+        description: Federal fiscal year the counts were reported for.
+        data_type: integer
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [2015, 2016, 2017, 2018, 2019]
+                quote: false
+      - name: is_national
+        description: >-
+          True for NCANDS's rolled-up National row, which sums only the states
+          included in that year's analysis. Exclude it when aggregating states.
+        data_type: boolean
+      - name: victims
+        description: Children determined to be victims of maltreatment (unique count).
+        data_type: integer
+      - name: victim_rate_per_1000
+        description: >-
+          Victims per 1,000 children younger than 18 in the state population
+          (US Census Bureau estimates).
         data_type: double
-      - name: staffed_beds
-        description: Number of staffed inpatient beds reported for the state on the report_date.
+      - name: fatalities
+        description: >-
+          Child fatalities from abuse or neglect (unique count), where the
+          maltreatment caused or contributed to the death.
+        data_type: integer
+      - name: perpetrators
+        description: >-
+          People determined to have caused or knowingly allowed the
+          maltreatment (unique count).
+        data_type: integer
+      - name: children_investigated
+        description: Children who received a CPS investigation or alternative response.
+        data_type: integer
+      - name: children_investigated_rate_per_1000
+        description: Children investigated per 1,000 children younger than 18 in the state population.
+        data_type: double
+
+  - name: core__child_maltreatment_type_state
+    description: >
+      NCANDS substantiated maltreatment types, long form -- one row per state x
+      maltreatment type for the most recent federal fiscal year. Counts are
+      DUPLICATE counts (a victim is counted once per category substantiated),
+      so they sum to more than total_victims.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state, maltreatment_type]
+    columns:
+      - name: state
+        description: NCANDS reporting unit, including a "National" row.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: is_national
+        description: True for NCANDS's rolled-up National row.
+        data_type: boolean
+      - name: maltreatment_type
+        description: Maltreatment category code (snake_case, stable across runs).
+        data_type: varchar
+        data_tests: [not_null]
+      - name: maltreatment_type_label
+        description: Human-readable maltreatment category, for display.
+        data_type: varchar
+      - name: victims
+        description: Victims with this maltreatment type (duplicate count).
+        data_type: integer
+      - name: pct_of_victims
+        description: >-
+          The source's own percentage of victims with this type, computed
+          against the unique victim count. Do not re-derive from victims.
+        data_type: double
+      - name: total_victims
+        description: Total victims for the state (unique count), repeated on every type row.
+        data_type: integer
+
+  - name: core__child_perpetrator_relationship_state
+    description: >
+      NCANDS perpetrators, long form -- one row per state x relationship to
+      their victims for the most recent federal fiscal year. Unique counts:
+      anyone with two or more relationships falls in multiple_relationships, so
+      these rows do sum to total_perpetrators.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state, relationship]
+    columns:
+      - name: state
+        description: NCANDS reporting unit, including a "National" row.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: is_national
+        description: True for NCANDS's rolled-up National row.
+        data_type: boolean
+      - name: relationship
+        description: Perpetrator's relationship to the victim, as a stable code.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: relationship_label
+        description: Human-readable relationship, for display.
+        data_type: varchar
+      - name: perpetrators
+        description: Perpetrators in this relationship category (unique count).
+        data_type: integer
+      - name: total_perpetrators
+        description: Total perpetrators for the state, repeated on every relationship row.
+        data_type: integer
+
+  - name: core__child_victims_by_age_state
+    description: >
+      NCANDS victims by single year of age, long form -- one row per state x age
+      group for the most recent federal fiscal year.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state, age_group]
+    columns:
+      - name: state
+        description: NCANDS reporting unit, including a "National" row.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: is_national
+        description: True for NCANDS's rolled-up National row.
+        data_type: boolean
+      - name: age_group
+        description: >-
+          Age of the victim as published: "unborn", "<1", or a single year from
+          "1" to "17".
+        data_type: varchar
+        data_tests: [not_null]
+      - name: age_years
+        description: >-
+          Numeric age for ordering and banding; 0 for "<1" and null for
+          "unborn", which has no numeric age.
+        data_type: integer
+      - name: victims
+        description: Victims of this age in the state (unique count).
+        data_type: integer
+      - name: rate_per_1000_children
+        description: >-
+          Victims of this age per 1,000 children of the same age in the state
+          population. Null for "unborn", which the source does not rate.
+        data_type: double
+      - name: total_victims
+        description: Total victims of all ages for the state, repeated on every age row.
+        data_type: integer
+
+  - name: core__cps_referral_funnel_state
+    description: >
+      The child protective services front door, one row per state for the most
+      recent federal fiscal year: referrals received and screened in or out,
+      what the resulting investigations concluded, and child fatalities by which
+      NCANDS file reported them.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: state
+        description: NCANDS reporting unit, including a "National" row.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: is_national
+        description: True for NCANDS's rolled-up National row.
+        data_type: boolean
+      - name: fiscal_year
+        description: >-
+          Federal fiscal year, from the dispositions file -- the only one of the
+          three sources that publishes the collection year as a column.
+        data_type: integer
+      - name: total_referrals
+        description: Notifications to the CPS agency of suspected maltreatment. A referral may cover more than one child.
+        data_type: integer
+      - name: referral_rate_per_100k
+        description: Referrals alleging maltreatment per 100,000 children in the state population.
+        data_type: double
+      - name: screened_in_referrals
+        description: Referrals accepted for an investigation or alternative response.
+        data_type: integer
+      - name: screened_in_pct
+        description: Screened-in referrals as a percentage of total referrals, as published.
+        data_type: double
+      - name: screened_out_referrals
+        description: Referrals not accepted for a CPS response.
+        data_type: integer
+      - name: screened_out_pct
+        description: Screened-out referrals as a percentage of total referrals, as published.
+        data_type: double
+      - name: children_with_disposition
+        description: Children reaching a disposition (duplicate count -- once per disposition reached).
+        data_type: integer
+      - name: substantiated
+        description: Children whose maltreatment allegation was supported by state law or policy.
+        data_type: integer
+      - name: indicated
+        description: Children whose allegation could not be substantiated but where maltreatment was suspected.
+        data_type: integer
+      - name: alternative_response
+        description: Children served through a non-investigative alternative response track.
+        data_type: integer
+      - name: unsubstantiated
+        description: Children whose allegation was not supported by the evidence.
+        data_type: integer
+      - name: intentionally_false
+        description: Children whose allegation was found to have been knowingly fabricated.
+        data_type: integer
+      - name: no_alleged_maltreatment
+        description: Children in a report where no maltreatment was alleged for them.
+        data_type: integer
+      - name: closed_with_no_finding
+        description: Children whose case closed without reaching a conclusion.
+        data_type: integer
+      - name: other_disposition
+        description: Children with a disposition the state reports outside the standard categories.
+        data_type: integer
+      - name: unknown_disposition
+        description: Children whose disposition was not reported.
+        data_type: integer
+      - name: total_child_fatalities
+        description: Child fatalities from abuse or neglect reported by the state (unique count).
+        data_type: integer
+      - name: fatalities_reported_child_file
+        description: Fatalities reported through the case-level NCANDS Child File.
+        data_type: integer
+      - name: fatalities_reported_agency_file
+        description: Fatalities reported through the aggregate NCANDS Agency File, often sourced outside CPS.
+        data_type: integer
+      - name: fatality_rate_per_100k
+        description: Child fatalities per 100,000 children in the state population.
+        data_type: double
+
+  - name: core__notifiable_disease_weekly
+    description: >
+      Project Tycho Level 1 notifiable-disease surveillance, typed from the
+      all-text source. One row per disease x location x CDC epi week, spanning
+      roughly a century of US NNDSS reporting.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: disease
+        description: Notifiable disease or condition reported, as named by Project Tycho.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: state
+        description: US state postal code the location sits in.
+        data_type: varchar
+      - name: location
+        description: Reporting location -- a state or a city, depending on location_type.
+        data_type: varchar
+      - name: location_type
+        description: Granularity of `location` (e.g. STATE, CITY).
+        data_type: varchar
+      - name: epi_week
+        description: CDC epi-week key as published, of the form YYYYWW.
+        data_type: integer
+      - name: epi_year
+        description: Epi year parsed from epi_week. Not always the calendar year of the week's days.
+        data_type: integer
+      - name: epi_week_of_year
+        description: Week number within the epi year, 1-53.
+        data_type: integer
+      - name: epi_week_start_date
+        description: >-
+          Sunday that starts the epi week, resolved from epi_year and
+          epi_week_of_year using the CDC rule that week 1 contains January 4.
+        data_type: date
+      - name: cases
+        description: Reported cases of the disease at this location in this week.
+        data_type: double
+      - name: incidence_per_100000
+        description: Reported cases per 100,000 population at this location in this week.
+        data_type: double
+
+  - name: core__treatment_site
+    description: >
+      ASPR Treatments Locator, one row per provider site dispensing COVID-19 or
+      influenza therapeutics, with geo coordinates, per-drug stock flags and two
+      rolled-up any-therapeutic booleans.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: site_id
+        description: Socrata row id for the site; the stable key for this grain.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: provider_name
+        description: Name of the dispensing provider (pharmacy, clinic, health centre).
+        data_type: varchar
+      - name: address_line_1
+        description: Street address of the site.
+        data_type: varchar
+      - name: address_line_2
+        description: Second address line (suite, unit), where published.
+        data_type: varchar
+      - name: city
+        description: City of the site.
+        data_type: varchar
+      - name: state
+        description: US state or territory postal code, upper-cased.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: zip_code
+        description: Postal code of the site.
+        data_type: varchar
+      - name: public_phone
+        description: Public contact number for the site.
+        data_type: varchar
+      - name: appointment_url
+        description: Link for booking an appointment at the site, where published.
+        data_type: varchar
+      - name: grantee_code
+        description: Code of the federal grantee the site reports under.
+        data_type: varchar
+      - name: latitude
+        description: Site latitude, WGS84.
+        data_type: double
+      - name: longitude
+        description: Site longitude, WGS84.
+        data_type: double
+      - name: last_report_date
+        description: Date the site last reported its inventory. Stale dates mean stale stock flags.
+        data_type: date
+      - name: treats_covid
+        description: Site participates in the COVID-19 therapeutics programme.
+        data_type: boolean
+      - name: treats_flu
+        description: Site participates in the influenza therapeutics programme.
+        data_type: boolean
+      - name: is_icatt_site
+        description: Site is an Increasing Community Access To Testing (ICATT) location.
+        data_type: boolean
+      - name: is_patient_assistance_program
+        description: Site dispenses through a patient assistance programme.
+        data_type: boolean
+      - name: has_prescribing_services
+        description: Site can prescribe on-site, not only dispense.
+        data_type: boolean
+      - name: has_home_delivery
+        description: Site offers home delivery of the therapeutic.
+        data_type: boolean
+      - name: has_paxlovid
+        description: Site reports Paxlovid (nirmatrelvir/ritonavir) in stock.
+        data_type: boolean
+      - name: has_lagevrio
+        description: Site reports Lagevrio (molnupiravir) in stock.
+        data_type: boolean
+      - name: has_veklury
+        description: Site reports Veklury (remdesivir) in stock.
+        data_type: boolean
+      - name: has_oseltamivir_tamiflu
+        description: Site reports branded Tamiflu (oseltamivir) in stock.
+        data_type: boolean
+      - name: has_oseltamivir_generic
+        description: Site reports generic oseltamivir capsules in stock.
+        data_type: boolean
+      - name: has_oseltamivir_suspension
+        description: Site reports oseltamivir oral suspension (paediatric form) in stock.
+        data_type: boolean
+      - name: has_baloxavir
+        description: Site reports baloxavir (Xofluza) in stock.
+        data_type: boolean
+      - name: has_zanamivir
+        description: Site reports zanamivir (Relenza) in stock.
+        data_type: boolean
+      - name: has_peramivir
+        description: Site reports peramivir (Rapivab) in stock.
+        data_type: boolean
+      - name: has_usg_supplied_product
+        description: Site holds US-government-supplied product.
+        data_type: boolean
+      - name: has_commercial_product
+        description: Site holds commercially purchased product.
+        data_type: boolean
+      - name: has_any_covid_therapeutic
+        description: Site reports at least one of Paxlovid, Lagevrio or Veklury in stock.
+        data_type: boolean
+      - name: has_any_flu_therapeutic
+        description: Site reports at least one influenza antiviral in stock.
+        data_type: boolean
+
+  - name: core__school_learning_modality_weekly
+    description: >
+      K-12 district learning modality by week, the 2020-2021 and 2021-2022
+      files conformed into one series. One row per district x week.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [district_nces_id, week]
+    columns:
+      - name: school_year
+        description: School year the row came from ("2020-2021" or "2021-2022").
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["2020-2021", "2021-2022"]
+      - name: district_nces_id
+        description: NCES local education agency identifier; the district key.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: district_name
+        description: Name of the school district.
+        data_type: varchar
+      - name: city
+        description: City the district is headquartered in.
+        data_type: varchar
+      - name: state
+        description: US state postal code, upper-cased.
+        data_type: varchar
+      - name: zip_code
+        description: Postal code of the district.
+        data_type: varchar
+      - name: week
+        description: Monday starting the reported week.
+        data_type: date
+        data_tests: [not_null]
+      - name: learning_modality
+        description: >-
+          Reported instruction mode for the week -- In Person, Hybrid or Remote.
+          Normalised to initial caps; the two source files disagree on casing.
+        data_type: varchar
+      - name: student_count
+        description: Students enrolled in the district under this modality.
+        data_type: integer
+      - name: operational_schools
+        description: Schools in the district operating that week.
         data_type: integer

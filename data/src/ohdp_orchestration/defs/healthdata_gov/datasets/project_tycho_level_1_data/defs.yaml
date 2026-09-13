@@ -4,11 +4,11 @@ attributes:
   id: g89t-x93h
   name: Project Tycho ® Level 1 Data
   publisher: U.S. Department of Health and Human Services
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: project_tycho_level_1_data
   incremental_cursor: socrata_updated_at
-  row_limit: 500000
+  row_limit: 2000000
   source_url: https://healthdata.gov/d/g89t-x93h
   page_views: 6629
   keywords:
