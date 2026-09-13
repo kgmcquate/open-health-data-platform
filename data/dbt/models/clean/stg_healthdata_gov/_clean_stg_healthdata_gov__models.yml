@@ -144,19 +144,6 @@ models:
         description: Socrata system row id; unique after dedup.
         data_tests: [unique, not_null]
 
-  - name: stg_healthdata_gov__notifiable_disease_tycho
-    description: >
-      Project Tycho Level 1 notifiable-disease surveillance: case counts and
-      incidence per 100,000 by disease, location and CDC epi week. All columns
-      arrive as text from Socrata; `core` does the casting.
-    config:
-      contract:
-        enforced: false
-    columns:
-      - name: socrata_id
-        description: Socrata system row id; unique after dedup.
-        data_tests: [unique, not_null]
-
   - name: stg_healthdata_gov__treatments_locator
     description: >
       ASPR Treatments Locator: one row per provider site dispensing COVID-19 and

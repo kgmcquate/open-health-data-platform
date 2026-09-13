@@ -288,49 +288,6 @@ models:
         description: Child fatalities per 100,000 children in the state population.
         data_type: double
 
-  - name: core__notifiable_disease_weekly
-    description: >
-      Project Tycho Level 1 notifiable-disease surveillance, typed from the
-      all-text source. One row per disease x location x CDC epi week, spanning
-      roughly a century of US NNDSS reporting.
-    config:
-      contract:
-        enforced: false
-    columns:
-      - name: disease
-        description: Notifiable disease or condition reported, as named by Project Tycho.
-        data_type: varchar
-        data_tests: [not_null]
-      - name: state
-        description: US state postal code the location sits in.
-        data_type: varchar
-      - name: location
-        description: Reporting location -- a state or a city, depending on location_type.
-        data_type: varchar
-      - name: location_type
-        description: Granularity of `location` (e.g. STATE, CITY).
-        data_type: varchar
-      - name: epi_week
-        description: CDC epi-week key as published, of the form YYYYWW.
-        data_type: integer
-      - name: epi_year
-        description: Epi year parsed from epi_week. Not always the calendar year of the week's days.
-        data_type: integer
-      - name: epi_week_of_year
-        description: Week number within the epi year, 1-53.
-        data_type: integer
-      - name: epi_week_start_date
-        description: >-
-          Sunday that starts the epi week, resolved from epi_year and
-          epi_week_of_year using the CDC rule that week 1 contains January 4.
-        data_type: date
-      - name: cases
-        description: Reported cases of the disease at this location in this week.
-        data_type: double
-      - name: incidence_per_100000
-        description: Reported cases per 100,000 population at this location in this week.
-        data_type: double
-
   - name: core__treatment_site
     description: >
       ASPR Treatments Locator, one row per provider site dispensing COVID-19 or
