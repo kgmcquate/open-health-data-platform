@@ -46,7 +46,11 @@ service:
   port: 80
 
 ingress:
-  enabled: true
+  # oauth2-proxy owns the Ingress for dagster.ohdp (values/oauth2-proxy.yaml) and
+  # path-routes into this Service internally. A second Ingress for the same
+  # host+path here races Traefik's merge of the two objects and can win,
+  # bypassing the login wall and the /monitoring/ route entirely.
+  enabled: false
   className: traefik
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod

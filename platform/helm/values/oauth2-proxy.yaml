@@ -61,9 +61,10 @@ config:
     skip_provider_button = true
 
 # ---------------------------------------------------------------------------
-# Ingress. This chart now owns dagster.ohdp and the dagster-tls cert; the old
-# graphql-authz-proxy Ingress is pruned on the next `make proxy` (its template
-# never existed in the repo — see ADR-0007).
+# Ingress. This chart owns dagster.ohdp and the dagster-tls cert; the
+# graphql-authz-proxy chart's own Ingress is disabled (ingress.enabled: false
+# in its values.yaml) so it never competes for the same host+path — see
+# ADR-0007.
 # ---------------------------------------------------------------------------
 ingress:
   enabled: true
