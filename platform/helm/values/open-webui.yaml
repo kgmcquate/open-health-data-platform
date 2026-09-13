@@ -78,6 +78,17 @@ extraEnvFrom:
       name: openwebui-db
 
 extraEnvVars:
+  # The image is built with its static assets under /app/backend/open_webui/static,
+  # owned by root (same root-default-build-args issue podSecurityContext below
+  # works around for the container's own UID). Boot logs under runAsUser 1000
+  # otherwise fill up with "Permission denied" while the app tries to copy the
+  # frontend's favicon/logo/loader into that directory — harmless (wrapped in
+  # try/except upstream, so it never stops startup) but noisy. Repointing
+  # STATIC_DIR at the persistence volume, which fsGroup 1000 below already owns,
+  # gives it somewhere it can actually write, at the cost of that volume being
+  # slightly less "uploads and RAG cache only" than the persistence comment says.
+  - name: STATIC_DIR
+    value: "/app/backend/data/static"
   # No password accounts. Google is the only way in, so the login form would be
   # a dead end that still accepts credential stuffing.
   - name: ENABLE_LOGIN_FORM
@@ -200,14 +211,17 @@ persistence:
 
 # ARCHITECTURE.md §4: limits are mandatory on every pod. Open WebUI is a Python
 # service plus a bundled sentence-transformers embedding model for RAG, which is
-# where the memory goes — 1Gi is the ceiling it needs, not the working set.
+# where the memory goes. 1Gi was the original guess and it was wrong: the first
+# real boot OOMKilled repeatedly (exit 137) while pulling/loading
+# sentence-transformers/all-MiniLM-L6-v2 at startup — that load, not steady-state
+# serving, is the actual peak. 2Gi is the observed-safe ceiling.
 resources:
   requests:
     cpu: 100m
     memory: 512Mi
   limits:
     cpu: "1"
-    memory: 1Gi
+    memory: 2Gi
 
 # The chart ships these empty. Open WebUI runs migrations on boot and the first
 # start after an image bump can take a while, so startup gets a long leash while
