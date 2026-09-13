@@ -22,15 +22,18 @@ image:
 nameOverride: ""
 fullnameOverride: "dagster-monitoring"
 
-# Talks to the GraphQL enforcement point (ARCHITECTURE.md §5), not the raw
-# dagster-webserver Service — an unrecognised caller (this app calls pod-to-
-# pod, with none of oauth2-proxy's X-Forwarded-* headers) falls through to
-# graphql-authz-proxy's public-viewer group, same as any anonymous UI visitor.
-# If the allowlist is ever locked down to specific read fields, this app is
-# bound by it too, rather than having a side channel around it.
+# These are consumed by the frontend JS in the browser (baked into
+# config.js at container start, then fetched as a static asset and read from
+# window.__RUNTIME_CONFIG__) — NOT called pod-to-pod by the nginx container
+# itself. A cluster-internal Service DNS name here is unreachable from a
+# browser, so this must be the public host, same-origin with the page itself
+# so the oauth2-proxy session cookie rides along automatically. That also
+# means calls are authenticated as the real signed-in user (admin for
+# kgmcquate@gmail.com), not downgraded to graphql-authz-proxy's
+# public-viewer group the way an anonymous/unrecognised caller would be.
 dagster:
-  graphqlUrl: "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80/graphql"
-  baseUrl: "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80"
+  graphqlUrl: "https://dagster.open-health-data-platform.org/graphql"
+  baseUrl: "https://dagster.open-health-data-platform.org"
 
 # Matches oauth2-proxy's path-based upstream route — see values/oauth2-proxy.yaml.
 basePath: "/monitoring"
