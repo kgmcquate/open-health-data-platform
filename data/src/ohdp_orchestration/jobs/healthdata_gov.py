@@ -25,9 +25,18 @@ def _cadence_job(cadence: Cadence) -> UnresolvedAssetJobDefinition:
         name=f"healthdata_gov_{cadence}_ingest",
         selection=selection,
         description=f"HealthData.gov {cadence} ingestion bucket.",
-        tags={"domain": _DOMAIN, "cadence": cadence},
-        run_tags={
-            "dagster/max_concurrent": "1",
+        config={
+            "execution": {
+                "config": {
+                    "multiprocess": {
+                        "max_concurrent": 1,
+                    }
+                }
+            }
+        },
+        tags={
+            "domain": _DOMAIN,
+            "cadence": cadence,
             "dagster-k8s/config": {
                 "container_config": {
                     "resources": {
@@ -36,7 +45,7 @@ def _cadence_job(cadence: Cadence) -> UnresolvedAssetJobDefinition:
                     }
                 }
             },
-        },
+        }
     )
 
 

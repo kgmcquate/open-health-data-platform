@@ -108,10 +108,15 @@ runLauncher:
           cpu: 500m
           memory: 1Gi
         limits:
-          # §4 budgets 1.5 GB burst for the build pod. An unbounded query
-          # would otherwise take the node down.
+          # Matches the healthdata_gov cadence jobs' own `run_tags` override
+          # (data/src/ohdp_orchestration/jobs/healthdata_gov.py) — that value
+          # only actually reaches the pod for schedule/sensor-launched runs;
+          # UI-launched and ad hoc asset-materialization runs fall back to
+          # this default, so it has to cover the same large-job case. §4's
+          # 1.5 GB pipeline-pod budget is stale against this — needs a
+          # follow-up doc update.
           cpu: "4"
-          memory: 1536Mi
+          memory: 6Gi
       runK8sConfig:
         jobSpecConfig:
           ttlSecondsAfterFinished: 3600
