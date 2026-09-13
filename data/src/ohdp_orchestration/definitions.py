@@ -6,7 +6,7 @@ assembly point only — no asset bodies, no business logic.
 Defs come from two places, merged together:
 
 * ``ohdp_orchestration.defs`` is autoloaded: every Dagster component
-  discovered under it (currently the config-driven HealthData.gov ingestion)
+  discovered under it (the config-driven HealthData.gov and CDC ingestion)
   is merged in automatically.
 * ``ohdp_orchestration.assets``/``.jobs``/``.schedules``/``.sensors`` are
   plain Dagster objects (no per-instance config, so no Component/defs.yaml
@@ -29,6 +29,11 @@ from ohdp_orchestration.assets.openmetadata_sync import (
     openmetadata_snowflake_sync,
 )
 from ohdp_orchestration.assets.snowflake_dbt import DBT_RESOURCE, snowflake_dbt_assets
+from ohdp_orchestration.jobs.cdc import (
+    cdc_daily_ingest_job,
+    cdc_monthly_ingest_job,
+    cdc_weekly_ingest_job,
+)
 from ohdp_orchestration.jobs.cube_metrics_sync import openmetadata_cube_metrics_sync_job
 from ohdp_orchestration.jobs.healthdata_gov import (
     healthdata_gov_daily_ingest_job,
@@ -39,6 +44,11 @@ from ohdp_orchestration.jobs.openmetadata_sync import (
     openmetadata_dagster_sync_job,
     openmetadata_dbt_sync_job,
     openmetadata_snowflake_sync_job,
+)
+from ohdp_orchestration.schedules.cdc import (
+    cdc_daily_schedule,
+    cdc_monthly_schedule,
+    cdc_weekly_schedule,
 )
 from ohdp_orchestration.schedules.cube_metrics_sync import (
     openmetadata_cube_metrics_sync_schedule,
@@ -75,6 +85,9 @@ defs = Definitions.merge(
         ],
         resources={"dbt": DBT_RESOURCE},
         jobs=[
+            cdc_daily_ingest_job,
+            cdc_weekly_ingest_job,
+            cdc_monthly_ingest_job,
             healthdata_gov_daily_ingest_job,
             healthdata_gov_weekly_ingest_job,
             healthdata_gov_monthly_ingest_job,
@@ -84,6 +97,9 @@ defs = Definitions.merge(
             openmetadata_snowflake_sync_job,
         ],
         schedules=[
+            cdc_daily_schedule,
+            cdc_weekly_schedule,
+            cdc_monthly_schedule,
             healthdata_gov_daily_schedule,
             healthdata_gov_weekly_schedule,
             healthdata_gov_monthly_schedule,

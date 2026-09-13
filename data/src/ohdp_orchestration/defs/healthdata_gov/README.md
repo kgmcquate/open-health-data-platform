@@ -1,15 +1,19 @@
 # HealthData.gov ingestion
 
 Config-driven ingestion for the [HealthData.gov](https://healthdata.gov/browse)
-Socrata catalog. See [ADR-0008](../../../../../../docs/decisions/0008-config-driven-healthdata-gov-ingestion.md).
+Socrata catalog. See [ADR-0008](../../../../../docs/decisions/0008-config-driven-healthdata-gov-ingestion.md)
+for the shape and [ADR-0018](../../../../../docs/decisions/0018-socrata-ingestion-shared-across-domains.md)
+for the move to a shared core, now also serving [CDC](../cdc/README.md).
 
 ```
-component.py                     HealthDataGovDataset
+component.py                     HealthDataGovDataset — a 3-line bind of SocrataDataset
 datasets/<slug>/defs.yaml        one HealthDataGovDataset instance per dataset (generated)
 ```
 
-The three cadence jobs + schedules aren't a component (no per-instance
-config) — they're plain code in
+The class that does the work is
+[`components/socrata.py`](../../components/socrata.py); `component.py` only
+binds `ohdp_ingestion.healthdata_gov.HEALTHDATA_GOV`. The three cadence jobs +
+schedules aren't a component (no per-instance config) — they're plain code in
 [`jobs/healthdata_gov.py`](../../jobs/healthdata_gov.py) and
 [`schedules/healthdata_gov.py`](../../schedules/healthdata_gov.py).
 
@@ -21,14 +25,13 @@ other datasets' files.
 ## Regenerate the dataset instances
 
 ```bash
-cd data && uv run python scripts/scrape_healthdata_gov.py --top-n 8
+cd data && uv run python scripts/scrape_socrata.py --domain healthdata.gov --top-n 8
 ```
 
 Walks the Socrata catalog API, (re)writes every `datasets/<slug>/defs.yaml`
 (including the column schema), prunes dirs no longer in the catalog, and
 regenerates
-`data/dbt/models/clean/healthdata_gov/_healthdata_gov__sources.yml`. Safe to
-re-run: your edits to `enabled`, `cadence`, `row_limit` and
+`data/dbt/models/raw/_stg_healthdata_gov__sources.yml`. Safe to re-run: your edits to `enabled`, `cadence`, `row_limit` and
 `incremental_cursor` in an instance are preserved.
 
 ## Enable a dataset
@@ -47,26 +50,35 @@ Then `cd data && uv run dagster definitions validate -m ohdp_orchestration.defin
 
 ## What each instance builds
 
-Two assets per dataset, so lineage is explicit:
+Three assets per dataset, so lineage is explicit:
 
 | | key | group | kinds | materialized | built when |
 |---|---|---|---|---|---|
-| **catalog asset** | `sources/healthdata_gov/<raw_table>` | `sources_healthdata_gov` | `socrata` | never | always |
+| **source asset** | `sources/healthdata_gov/<raw_table>` | `sources_healthdata_gov` | `socrata` | never | always |
 | **table asset** | `ingestion/healthdata_gov/<raw_table>` | `ingestion_healthdata_gov` | `dlt`, `snowflake` | yes | `enabled: true` |
+| **raw-layer asset** | `snowflake/raw/healthdata_gov/<raw_table>` | `snowflake_raw` | `snowflake` | runless event | `enabled: true` |
 
-The table asset is `deps=[catalog asset]` → `catalog -> raw table ->
-(dbt clean → core → marts)`. dlt **appends** to `RAW.healthdata_gov.<raw_table>`
+`source -> ingestion -> snowflake/raw -> (dbt clean → core → marts)`. The
+raw-layer asset never runs an op of its own; the ingestion op reports a runless
+materialization against it for every table the load actually touched, including
+the `<raw_table>__<nested>` children dlt splits out of nested JSON.
+dlt **appends** to `RAW.healthdata_gov.<raw_table>`
 (ADR-0013) — full history, schema auto-evolves; `incremental_cursor: null`
 datasets `replace` instead. The catalog asset carries the Socrata column
 schema + publisher / URL / keywords / cadence / page-views metadata for the
 OpenMetadata Dagster ingestion; the table asset gets dlt's load ids and rows
 loaded after a run.
 
+> **Check the row count before keeping `row_limit: 500000`.** The cap truncates
+> an `:id`-ordered scan, and the incremental cursor then advances past the rows
+> that were never fetched — so the missing tail is never backfilled.
+
 ## Schedules
 
 [`jobs/healthdata_gov.py`](../../jobs/healthdata_gov.py) builds **exactly
 three** asset jobs — `healthdata_gov_{daily,weekly,monthly}_ingest` — each
-selecting table assets by their `cadence` tag.
+selecting table assets by their `domain` + `cadence` tags (via the shared
+[`jobs/socrata.py`](../../jobs/socrata.py)).
 [`schedules/healthdata_gov.py`](../../schedules/healthdata_gov.py) wraps each
 in a cron schedule. Neither reads the dataset files, so adding datasets never
 touches them. A cadence with no enabled datasets yet gets an empty job (its
@@ -83,7 +95,7 @@ to turn them on.
   loaded types at materialization.
 - dlt writes to Snowflake directly, set via `OHDP_SNOWFLAKE_ACCOUNT` and
   friends. See
-  [ADR-0012](../../../../../../docs/decisions/0012-native-snowflake-tables.md)
-  and [ADR-0014](../../../../../../docs/decisions/0014-snowflake-only-compilation.md).
+  [ADR-0012](../../../../../docs/decisions/0012-native-snowflake-tables.md)
+  and [ADR-0014](../../../../../docs/decisions/0014-snowflake-only-compilation.md).
 - Optional `OHDP_HEALTHDATA_APP_TOKEN` raises Socrata rate limits.
 - Schedules fire at 07:00 UTC, before the 08:00 dbt build.

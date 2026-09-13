@@ -5,8 +5,8 @@ generic ``sqlalchemy`` destination — a real SQL engine (schema evolution,
 warehouse) with no external service and no DuckDB dependency.
 
 Exercises ``CustomDagsterDltResource`` (the actual production code path —
-``ohdp_orchestration.defs.healthdata_gov.component`` runs every table asset
-through it) rather than a parallel test-only reimplementation.
+``ohdp_orchestration.components.socrata`` runs every table asset through it)
+rather than a parallel test-only reimplementation.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ from dagster import (
 )
 from dagster_dlt import dlt_assets
 
-from ohdp_ingestion.healthdata_gov.config import ColumnSpec
-from ohdp_ingestion.healthdata_gov.source import build_pipeline, socrata_source
+from ohdp_ingestion.healthdata_gov import HEALTHDATA_GOV
+from ohdp_ingestion.socrata import ColumnSpec, build_pipeline, socrata_source
 from ohdp_orchestration.resources.dlt import CustomDagsterDltResource
 
 
@@ -37,7 +37,7 @@ def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # dlt keeps pipeline state (the incremental cursor) here.
     monkeypatch.setenv("DLT_DATA_DIR", str(tmp_path / "dlt"))
 
-    import ohdp_ingestion.healthdata_gov.source as src
+    import ohdp_ingestion.socrata.source as src
 
     monkeypatch.setattr(
         src,
@@ -100,7 +100,11 @@ def _load(
 
     @dlt_assets(
         dlt_source=socrata_source(
-            resource_id, table_name, incremental_cursor=incremental_cursor, columns=columns
+            HEALTHDATA_GOV,
+            resource_id,
+            table_name,
+            incremental_cursor=incremental_cursor,
+            columns=columns,
         ),
         dlt_pipeline=build_pipeline(pipeline_name=f"{source}_{table_name}", source=source),
         name=table_name,
@@ -115,7 +119,7 @@ def _load(
 
 
 def test_write_disposition_follows_the_cursor() -> None:
-    from ohdp_ingestion.healthdata_gov.source import write_disposition
+    from ohdp_ingestion.socrata import write_disposition
 
     # A cursor means we fetched only the delta, so raw keeps history.
     assert write_disposition("socrata_updated_at") == "append"
@@ -231,10 +235,10 @@ def test_nested_json_reports_a_materialization_per_child_table(
     lake: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """dlt normalizes a nested array into its own `<table>__<field>` table.
-    `HealthDataGovDataset._table_asset()` (healthdata_gov/component.py) reports
-    a runless materialization for each one, not just the parent — reading the
-    table names back off dlt's own event metadata, since re-querying the dlt
-    pipeline's schema *after* the run comes back empty (confirmed empirically).
+    `SocrataDataset._table_asset()` (components/socrata.py) reports a runless
+    materialization for each one, not just the parent — reading the table names
+    back off dlt's own event metadata, since re-querying the dlt pipeline's
+    schema *after* the run comes back empty (confirmed empirically).
     """
     from ohdp_orchestration.defs.healthdata_gov.component import HealthDataGovDataset
 

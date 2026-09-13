@@ -1,22 +1,18 @@
-"""HealthData.gov ingestion.
+"""HealthData.gov ingestion — the HealthData.gov binding of the shared Socrata
+machinery in :mod:`ohdp_ingestion.socrata` (ADR-0008, ADR-0018).
 
-HealthData.gov runs on Socrata (Tyler Data & Insights). Two Socrata surfaces do
-all the work here, so nothing scrapes HTML:
-
-* the **catalog API** (``/api/catalog/v1``) enumerates datasets with their
-  column schema, update cadence, and popularity — see :mod:`.catalog`;
-* the **resource API** (``/resource/{id}.json``) serves the rows as paginated
-  SoQL, which :mod:`.source` wraps as a ``dlt`` source.
-
-The catalog is walked once by ``data/scripts/scrape_healthdata_gov.py`` to emit
-one YAML per dataset under
-``ohdp_orchestration/defs/healthdata_gov/datasets/``. The Dagster component in
-that package turns each enabled YAML into a ``dlt``-backed asset at run time.
+Everything that does the work — the catalog walk, the ``DatasetConfig``
+contract, the ``dlt`` source, the Dagster component — is domain-agnostic and
+lives there. All that is HealthData.gov-specific is the constant below.
 """
 
-from ohdp_ingestion.healthdata_gov.catalog import CatalogDataset, iter_catalog
-from ohdp_ingestion.healthdata_gov.source import socrata_source
+from ohdp_ingestion.socrata import SocrataDomain
 
-__all__ = ["CatalogDataset", "iter_catalog", "socrata_source"]
+HEALTHDATA_GOV = SocrataDomain(
+    domain="healthdata.gov",
+    source="healthdata_gov",
+    title="HealthData.gov",
+    app_token_env="OHDP_HEALTHDATA_APP_TOKEN",
+)
 
-DOMAIN = "healthdata.gov"
+__all__ = ["HEALTHDATA_GOV"]
