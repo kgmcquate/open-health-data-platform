@@ -350,19 +350,24 @@ this document.
 
 ### 11.2 Post-install steps that are not in the chart
 
-Two, both because Open WebUI stores the state in its own database and offers no
-declarative alternative:
+The MCP tool server registration and the model restriction to Sonnet are now
+seeded declaratively from `values/open-webui.yaml` (`TOOL_SERVER_CONNECTIONS`
+and `OPENAI_API_CONFIGS`/`DEFAULT_MODELS`) rather than clicked through the
+UI — but both are Open WebUI `PersistentConfig` values: the env var only
+writes the initial row into Open WebUI's own database on first boot. After
+that, whatever an admin sets in Settings is what persists across restarts,
+chart upgrades included. If mcp-cube isn't showing four tools, or a model
+outside Sonnet is reachable, check Settings first before assuming the chart
+value isn't applying — it may simply have already been overridden there. See
+`charts/mcp-cube/templates/NOTES.txt` for the tool count.
 
-1. **Register the MCP tool server.** Settings → Admin → Integrations → External
-   Tool Servers → Add Connection; Type *MCP (Streamable HTTP)*; URL
-   `http://mcp-cube.app.svc.cluster.local:8000/mcp`; Auth *Bearer* with the token
-   from `kubectl -n app get secret mcp-cube-secret -o jsonpath='{.data.OHDP_MCP_AUTH_TOKEN}' | base64 -d`.
-   Four tools should appear, and only four. See `charts/mcp-cube/templates/NOTES.txt`.
-2. **Set the model's system prompt** (Settings → Admin → Models) to carry
-   ARCHITECTURE.md §10.2's disclaimer — population-level, not clinical decision
-   support. hub-api attaches this in code, where a model cannot forget it; here it
-   is configuration, which is weaker. The MCP server also ships it in its
-   `instructions`, so a client that honours those sees it regardless.
+One step remains manual, because Open WebUI has no env var for it at all:
+
+- **Set the model's system prompt** (Settings → Admin → Models) to carry
+  ARCHITECTURE.md §10.2's disclaimer — population-level, not clinical decision
+  support. hub-api attaches this in code, where a model cannot forget it; here it
+  is configuration, which is weaker. The MCP server also ships it in its
+  `instructions`, so a client that honours those sees it regardless.
 
 ### 11.3 Access control
 

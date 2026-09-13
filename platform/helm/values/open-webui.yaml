@@ -94,6 +94,41 @@ extraEnvVars:
     value: "pending"
   - name: WEBUI_NAME
     value: "Open Health Data Platform"
+  # Pre-registers the mcp-cube tool server so it no longer has to be added by
+  # hand through Settings -> Admin -> Integrations after every fresh install
+  # (docs/chatbot.md §11.2 step 1, now obsolete). TOOL_SERVER_CONNECTIONS is a
+  # PersistentConfig: this value only seeds the row in Open WebUI's own
+  # database on first boot. Once it exists there, the UI is authoritative and
+  # this env var is ignored — an admin disabling the connection in Settings
+  # will stay disabled across restarts, not snap back to enabled.
+  #
+  # The bearer token can't live inline here: it's Kubernetes Secret
+  # mcp-cube-secret/OHDP_MCP_AUTH_TOKEN (the same secret mcp-cube itself
+  # reads), and this values file is not a place for cluster secrets.
+  # $(MCP_CUBE_TOKEN) is Kubernetes' own env-var interpolation ("dependent
+  # environment variables"): it substitutes the value of the MCP_CUBE_TOKEN
+  # entry defined just above it in this same list, so the token never appears
+  # in the chart, `helm get values`, or git.
+  - name: MCP_CUBE_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: mcp-cube-secret
+        key: OHDP_MCP_AUTH_TOKEN
+  - name: TOOL_SERVER_CONNECTIONS
+    value: >-
+      [{"url":"http://mcp-cube.app.svc.cluster.local:8000","path":"/mcp","type":"mcp","auth_type":"bearer","key":"$(MCP_CUBE_TOKEN)","config":{"enable":true},"info":{"id":"mcp-cube","name":"Cube Semantic Layer"}}]
+  # Restricted to Sonnet for now, not the full Claude lineup Anthropic's
+  # /v1/models would otherwise list. OPENAI_API_CONFIGS is keyed by the index
+  # of openaiBaseApiUrl above ("0", since there's only the one); model_ids
+  # replaces the fetched model list outright rather than filtering it, so
+  # this is also what stops Opus/Haiku from ever reaching the picker, not
+  # just which one loads first. Same PersistentConfig caveat as
+  # TOOL_SERVER_CONNECTIONS above: this seeds Settings -> Admin -> Models on
+  # first boot, and an admin widening it there afterwards is what sticks.
+  - name: OPENAI_API_CONFIGS
+    value: '{"0":{"enable":true,"model_ids":["claude-sonnet-5"]}}'
+  - name: DEFAULT_MODELS
+    value: "claude-sonnet-5"
   # ENABLE_OLLAMA_API is already rendered by `ollama.enabled: false` above —
   # repeating it here would be a duplicate env entry, not a stronger one.
   #
@@ -200,7 +235,13 @@ readinessProbe:
   failureThreshold: 3
 
 podSecurityContext:
+  # The public ghcr.io/open-webui/open-webui image is built with its UID/GID
+  # build args left at their default of 0 (root) — runAsNonRoot alone leaves
+  # kubelet checking the image's own (root) user and refusing to start it
+  # with CreateContainerConfigError. Pinning runAsUser overrides that.
   runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
   fsGroup: 1000
   seccompProfile:
     type: RuntimeDefault
