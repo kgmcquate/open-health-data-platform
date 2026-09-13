@@ -99,6 +99,14 @@ jobs:
           OPENWEBUI_OIDC_CLIENT_ID: ${{ secrets.OPENWEBUI_OIDC_CLIENT_ID || secrets.DAGSTER_OIDC_CLIENT_ID }}
           OPENWEBUI_OIDC_CLIENT_SECRET: ${{ secrets.OPENWEBUI_OIDC_CLIENT_SECRET || secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # JWT for the dedicated "openwebui-mcp" OpenMetadata Bot (read-only
+          # Data Consumer role) — deliberately not OPENMETADATA_JWT below,
+          # which backs the pipeline's/hub-api's broader-permission bot. Chat
+          # users querying the catalog through Open WebUI's MCP connection
+          # should only ever get read-only access. Created once by hand via
+          # Settings -> Bots in the OM UI (no API for it), then:
+          #   gh secret set OPENWEBUI_OPENMETADATA_MCP_TOKEN
+          OPENWEBUI_OPENMETADATA_MCP_TOKEN: ${{ secrets.OPENWEBUI_OPENMETADATA_MCP_TOKEN }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
@@ -141,6 +149,12 @@ jobs:
           upsert app openwebui-secrets \
             --from-literal=OPENAI_API_KEY="$ANTHROPIC_API_KEY" \
             --from-literal=GOOGLE_CLIENT_SECRET="$OPENWEBUI_OIDC_CLIENT_SECRET"
+
+          # Open WebUI's MCP connection to the OpenMetadata catalog
+          # (values/open-webui.yaml). OM_MCP_BOT_TOKEN is the key name that
+          # file's secretKeyRef expects.
+          upsert app openmetadata-mcp-secret \
+            --from-literal=OM_MCP_BOT_TOKEN="$OPENWEBUI_OPENMETADATA_MCP_TOKEN"
 
           # OHDP_SNOWFLAKE_PRIVATE_KEY is the pipeline's RSA key pair's private
           # half (PKCS#8 PEM) — Snowflake SERVICE users don't accept password
