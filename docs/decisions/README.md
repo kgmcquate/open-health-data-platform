@@ -22,3 +22,4 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0014](0014-snowflake-only-compilation.md) | Snowflake-only: drop the local/CI DuckDB targets | Accepted |
 | [0015](0015-streamlit-over-superset.md) | Streamlit over Superset for dashboards | Accepted |
 | [0016](0016-chat-agent-tool-surface.md) | Chat agent tool surface: own Cube tools, OpenMetadata MCP for context | Accepted |
+| [0017](0017-open-webui-chat-ui.md) | Open WebUI as a chat UI, with our own Cube MCP server | Accepted |

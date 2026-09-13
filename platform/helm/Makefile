@@ -22,10 +22,12 @@ DAGSTER_VERSION         ?= 1.13.21
 TRAEFIK_VERSION         ?= 41.5.0
 CERT_MANAGER_VERSION    ?= v1.21.1
 OAUTH2_PROXY_VERSION    ?= 10.7.0
+OPENWEBUI_VERSION       ?= 16.5.0
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \
-        streamlit oauth2-proxy-streamlit hub-api oauth2-proxy-app cube
+        streamlit oauth2-proxy-streamlit hub-api oauth2-proxy-app cube \
+        mcp-cube open-webui
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -37,6 +39,7 @@ repos: ## Add and update upstream chart repos
 	$(HELM) repo add traefik https://traefik.github.io/charts
 	$(HELM) repo add jetstack https://charts.jetstack.io
 	$(HELM) repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
+	$(HELM) repo add open-webui https://helm.openwebui.com
 	$(HELM) repo update
 
 lint: ## Lint the charts we own
@@ -46,6 +49,7 @@ lint: ## Lint the charts we own
 	$(HELM) lint $(CHARTS)/dagster-monitoring
 	$(HELM) lint $(CHARTS)/streamlit --set image.tag=0.0.0-dev
 	$(HELM) lint $(CHARTS)/cube --set image.tag=0.0.0-dev
+	$(HELM) lint $(CHARTS)/mcp-cube --set image.tag=0.0.0-dev
 
 template: ## Render the charts we own locally (catches template errors without a cluster)
 	$(HELM) template platform-base $(CHARTS)/platform-base >/dev/null && echo "platform-base OK"
@@ -54,6 +58,7 @@ template: ## Render the charts we own locally (catches template errors without a
 	$(HELM) template dagster-monitoring $(CHARTS)/dagster-monitoring >/dev/null && echo "dagster-monitoring OK"
 	$(HELM) template streamlit $(CHARTS)/streamlit --set image.tag=0.0.0-dev >/dev/null && echo "streamlit OK"
 	$(HELM) template cube $(CHARTS)/cube --set image.tag=0.0.0-dev >/dev/null && echo "cube OK"
+	$(HELM) template mcp-cube $(CHARTS)/mcp-cube --set image.tag=0.0.0-dev >/dev/null && echo "mcp-cube OK"
 
 # --------------------------------------------------------------------------
 # Cluster foundation
@@ -140,5 +145,29 @@ hub-api: ## Install the FastAPI backend + chat UI (TAG defaults to the current c
 oauth2-proxy-app: ## Install the Google login wall in front of the hub app (chat UI + /api)
 	$(HELM) upgrade --install oauth2-proxy-app oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
 		-n app --create-namespace -f $(VALUES)/oauth2-proxy-app.yaml --wait --timeout 5m
+
+# --------------------------------------------------------------------------
+# Open WebUI — the chat UI (ADR-0017), and the Cube MCP server it calls.
+#
+# Deploy mcp-cube first: Open WebUI's tool-server connection is registered by
+# hand in its admin UI (there is no declarative env var for it), and doing that
+# against a Service that does not exist yet just means doing it twice.
+# --------------------------------------------------------------------------
+mcp-cube: ## Install the Cube MCP server (runs the hub-api image; TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install mcp-cube $(CHARTS)/mcp-cube \
+		-n app --create-namespace --set image.tag=$(TAG) --wait --timeout 5m
+
+# OPENWEBUI_OIDC_CLIENT_ID is the Google client's ID — not a secret, but it must
+# be the same client whose secret is in the `openwebui-secrets` Secret, so it is
+# passed in rather than written into the values file. deploy-platform.yml
+# supplies it; for a manual deploy, export it first.
+open-webui: ## Install Open WebUI, the chat UI (needs OPENWEBUI_OIDC_CLIENT_ID)
+	@test -n "$(OPENWEBUI_OIDC_CLIENT_ID)" || { \
+		echo "OPENWEBUI_OIDC_CLIENT_ID is empty — Google sign-in is the only way into this app"; exit 1; }
+	$(HELM) upgrade --install open-webui open-webui/open-webui --version $(OPENWEBUI_VERSION) \
+		-n app --create-namespace -f $(VALUES)/open-webui.yaml \
+		--set sso.google.clientId=$(OPENWEBUI_OIDC_CLIENT_ID) \
+		--wait --timeout 10m
 
 install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)

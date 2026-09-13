@@ -10,6 +10,9 @@ charts/
   graphql-authz-proxy/  our chart — wraps kgmcquate/graphql-authz-proxy
   dagster-monitoring/   our chart — wraps kgmcquate/dagster-monitoring
   streamlit/            our chart — a plain Deployment, dashboards (ADR-0015)
+  cube/                 our chart — Cube Core, the semantic layer (ADR-0003)
+  mcp-cube/             our chart — Cube's tool surface over MCP, for Open WebUI
+                        (ADR-0017). Runs the hub-api image with a different command.
 values/
   traefik.yaml                for traefik/traefik
   cert-manager.yaml           for jetstack/cert-manager
@@ -18,6 +21,8 @@ values/
   opensearch.yaml             for opensearch/opensearch
   oauth2-proxy.yaml           for oauth2-proxy/oauth2-proxy  (Google wall → Dagster + dagster-monitoring, ADR-0007)
   oauth2-proxy-streamlit.yaml for oauth2-proxy/oauth2-proxy  (Google wall → Streamlit, kgmcquate@gmail.com only)
+  oauth2-proxy-app.yaml       for oauth2-proxy/oauth2-proxy  (Google wall → hub-api's chat UI + /api)
+  open-webui.yaml             for open-webui/open-webui      (the chat UI, ADR-0017 — Google SSO is its own, not a wall)
 ```
 
 There is no data warehouse here. It is Snowflake, created by
@@ -62,12 +67,14 @@ keeps it stable across upgrades:
 
 | Secret | Namespace | Holds |
 |---|---|---|
-| `postgres-secret` | `infra` | postgres + the 4 database passwords |
+| `postgres-secret` | `infra` | postgres + the 4 database passwords (`dagster`, `openmetadata`, `app`, `openwebui`) |
 | `dagster-postgresql-secret` | `data` | mirror of the dagster password |
 | `openmetadata-db-auth` | `meta` | mirror of the openmetadata password |
 | `openmetadata-fernet-secret` | `meta` | OpenMetadata fernet key |
 | `cube-secret` | `data` | Cube API shared secret (`CUBEJS_API_SECRET`) — read by Cube itself, Dagster's run-launcher + `ohdp-pipeline` user-deployment (`openmetadata_cube_metrics_sync`), and mirrored into `hub-api-db` for hub-api |
 | `hub-api-db` | `app` | `OHDP_APP_DATABASE_URL`, `OHDP_CUBE_API_SECRET` |
+| `openwebui-db` | `app` | Open WebUI's `DATABASE_URL` + `WEBUI_SECRET_KEY` (ADR-0017) |
+| `mcp-cube-secret` | `app` | `OHDP_CUBE_API_SECRET` + the `OHDP_MCP_AUTH_TOKEN` bearer token Open WebUI presents to mcp-cube |
 | `oauth2-proxy-secret` | `data` | oauth2-proxy `cookie-secret` for Dagster + dagster-monitoring (Google `client-id`/`client-secret` merged in externally) |
 | `oauth2-proxy-streamlit-secret` | `bi` | oauth2-proxy `cookie-secret` for Streamlit (Google `client-id`/`client-secret` merged in externally) |
 | `ohdp-pipeline-config` (ConfigMap) | `data` | non-secret pipeline env |
@@ -105,6 +112,16 @@ kubectl -n app create secret generic hub-api-secrets \
   --from-literal=STRIPE_SECRET_KEY= \
   --from-literal=OIDC_CLIENT_SECRET=
 
+# Open WebUI (ADR-0017). OPENAI_API_KEY is the *Anthropic* key: Open WebUI has
+# no native Anthropic client and reaches https://api.anthropic.com/v1 through
+# its OpenAI-compatible surface. GOOGLE_CLIENT_SECRET belongs to Open WebUI's
+# own OAuth client — redirect URI
+# https://chat.open-health-data-platform.org/oauth/google/callback — not to any
+# of the oauth2-proxy walls.
+kubectl -n app create secret generic openwebui-secrets \
+  --from-literal=OPENAI_API_KEY="$ANTHROPIC_API_KEY" \
+  --from-literal=GOOGLE_CLIENT_SECRET="$OPENWEBUI_OIDC_CLIENT_SECRET"
+
 # oauth2-proxy (ADR-0007) — merge the Google client creds into the Secret
 # platform-base created (it already holds the generated `cookie-secret`).
 # `make base` must have run first. Google Cloud console: a "Web application"
@@ -139,7 +156,24 @@ make oauth2-proxy           # Google wall: Dagster + dagster-monitoring
 make streamlit               # the Streamlit Deployment (TAG defaults to git rev-parse HEAD)
 make oauth2-proxy-streamlit  # Google wall: Streamlit (kgmcquate@gmail.com only)
 make hub-api                # deployed on its own for now
+make oauth2-proxy-app        # Google wall: hub-api's chat UI + /api
+make mcp-cube                # Cube's tool surface over MCP (before open-webui)
+OPENWEBUI_OIDC_CLIENT_ID=... make open-webui   # the chat UI (ADR-0017)
 ```
+
+`make open-webui` needs `OPENWEBUI_OIDC_CLIENT_ID` — the Google client ID, whose
+matching secret is in `openwebui-secrets`. It is not a secret, but it is passed
+in rather than written into `values/open-webui.yaml` so that both halves
+obviously come from the same client.
+
+**Open WebUI needs one manual step after install.** MCP tool servers are stored
+in its own database with no declarative env var, so register `mcp-cube` by hand:
+Settings → Admin → Integrations → External Tool Servers → Add Connection, type
+*MCP (Streamable HTTP)*, URL `http://mcp-cube.app.svc.cluster.local:8000/mcp`,
+auth *Bearer* with `kubectl -n app get secret mcp-cube-secret -o
+jsonpath='{.data.OHDP_MCP_AUTH_TOKEN}' | base64 -d`. See
+`charts/mcp-cube/templates/NOTES.txt` and
+[ADR-0017](../../docs/decisions/0017-open-webui-chat-ui.md).
 
 Order matters — OpenSearch must be green before OpenMetadata starts or its
 migration job fails (`make install` sequences this for you).
@@ -148,6 +182,11 @@ The warehouse is not installed here: `terraform apply` in `platform/terraform`
 creates the Snowflake database, schemas, role, service user and token, and the
 pipeline connects directly over SQL. Inspection is Snowsight — there is no
 in-cluster admin UI (ADR-0012).
+
+`mcp-cube` runs the **hub-api image** with its command overridden, so both
+releases must be deployed at the same `TAG` — the MCP tool surface and the chat
+agent's tool surface are the same code, and building them from different commits
+is the drift ADR-0016 warns about.
 
 `dagster`, `hub-api` and `streamlit` run `ghcr.io/kgmcquate/ohdp-{pipeline,hub-api,streamlit}`
 at the `sha-<12>` tag of the current commit — `TAG` defaults to `git rev-parse

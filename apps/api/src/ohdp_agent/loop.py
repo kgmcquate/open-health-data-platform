@@ -44,6 +44,7 @@ from ohdp_agent.catalog import CatalogClient, CatalogError
 from ohdp_agent.cube import CubeClient, CubeError
 from ohdp_agent.literature import LiteratureClient, LiteratureError, unverified_citations
 from ohdp_agent.models import CubeQuery
+from ohdp_agent.render import catalog_json, cube_json
 from ohdp_shared import get_logger
 
 log = get_logger(__name__)
@@ -390,53 +391,10 @@ class ChatAgent:
         try:
             if name == "list_metrics":
                 cubes = await self._cube.list_metrics()
-                content = json.dumps(
-                    [
-                        {
-                            "cube": c.name,
-                            "description": c.description,
-                            "measures": [
-                                {"name": f"{c.name}.{m.name}", "description": m.description}
-                                for m in c.measures
-                            ],
-                            "dimensions": [
-                                {
-                                    "name": f"{c.name}.{d.name}",
-                                    "type": d.type,
-                                    "description": d.description,
-                                }
-                                for d in c.dimensions
-                            ],
-                        }
-                        for c in cubes
-                    ],
-                    separators=(",", ":"),
-                )
+                content = json.dumps(catalog_json(cubes), separators=(",", ":"))
             elif name == "describe_metric":
                 cube = await self._cube.describe_metric(str(arguments.get("cube_name", "")))
-                content = json.dumps(
-                    {
-                        "cube": cube.name,
-                        "description": cube.description,
-                        "measures": [
-                            {
-                                "name": f"{cube.name}.{m.name}",
-                                "agg": m.agg_type,
-                                "description": m.description,
-                            }
-                            for m in cube.measures
-                        ],
-                        "dimensions": [
-                            {
-                                "name": f"{cube.name}.{d.name}",
-                                "type": d.type,
-                                "description": d.description,
-                            }
-                            for d in cube.dimensions
-                        ],
-                    },
-                    separators=(",", ":"),
-                )
+                content = json.dumps(cube_json(cube, with_agg=True), separators=(",", ":"))
             elif name == "run_metric_query":
                 query = CubeQuery(**arguments)
                 result = await self._cube.run_metric_query(query)

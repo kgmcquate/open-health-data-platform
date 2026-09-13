@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
       image_tag:
-        description: Override the dagster + hub-api + streamlit + cube image tag (blank = the sha-<12> of the deployed commit).
+        description: Override the dagster + hub-api + mcp-cube + streamlit + cube image tag (blank = the sha-<12> of the deployed commit).
         type: string
         default: ""
 
@@ -52,7 +52,7 @@ jobs:
         with:
           kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
 
-      # dagster + hub-api + streamlit + cube run this tag. Defaults to the sha-<12> of
+      # dagster + hub-api + mcp-cube + streamlit + cube run this tag. Defaults to the sha-<12> of
       # the checked-out commit — the tag build-images.yml pushed for it. Never
       # `latest`, so `helm rollback` and pod restarts stay pinned to a known build.
       - name: Resolve image tag
@@ -88,6 +88,16 @@ jobs:
           # authorized redirect URIs.
           APP_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           APP_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
+          # Open WebUI's Google client (ADR-0017). A *separate* repo secret from
+          # the three walls above, not a reuse: this one is Open WebUI's own
+          # OAuth integration rather than an oauth2-proxy wall, its redirect URI
+          # is https://chat.open-health-data-platform.org/oauth/google/callback,
+          # and it is the only credential standing in front of a metered
+          # Anthropic key. Set OPENWEBUI_OIDC_CLIENT_ID / _SECRET in the repo;
+          # they fall back to Dagster's client, which works only if that client
+          # also lists the chat redirect URI.
+          OPENWEBUI_OIDC_CLIENT_ID: ${{ secrets.OPENWEBUI_OIDC_CLIENT_ID || secrets.DAGSTER_OIDC_CLIENT_ID }}
+          OPENWEBUI_OIDC_CLIENT_SECRET: ${{ secrets.OPENWEBUI_OIDC_CLIENT_SECRET || secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
@@ -123,6 +133,14 @@ jobs:
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET" \
             --from-literal=OHDP_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+          # Open WebUI's externally-issued half. OPENAI_API_KEY is the Anthropic
+          # key: Open WebUI has no native Anthropic client and talks to
+          # https://api.anthropic.com/v1 through its OpenAI-compatible surface
+          # (values/open-webui.yaml). The generated half — DATABASE_URL and
+          # WEBUI_SECRET_KEY — is the `openwebui-db` Secret from platform-base.
+          upsert app openwebui-secrets \
+            --from-literal=OPENAI_API_KEY="$ANTHROPIC_API_KEY" \
+            --from-literal=GOOGLE_CLIENT_SECRET="$OPENWEBUI_OIDC_CLIENT_SECRET"
 
           # OHDP_SNOWFLAKE_PRIVATE_KEY is the pipeline's RSA key pair's private
           # half (PKCS#8 PEM) — Snowflake SERVICE users don't accept password
@@ -186,6 +204,16 @@ jobs:
 
       - name: oauth2-proxy (Google login wall — hub app)
         run: make -C platform/helm oauth2-proxy-app
+
+      # mcp-cube before open-webui: the tool-server connection is registered by
+      # hand in Open WebUI's admin UI, so the Service should already exist.
+      - name: Cube MCP server
+        run: make -C platform/helm mcp-cube TAG="$TAG"
+
+      - name: Open WebUI (chat UI — Google SSO is its own, not an oauth2-proxy wall)
+        env:
+          OPENWEBUI_OIDC_CLIENT_ID: ${{ secrets.OPENWEBUI_OIDC_CLIENT_ID || secrets.DAGSTER_OIDC_CLIENT_ID }}
+        run: make -C platform/helm open-webui
 
       - name: Pods
         if: always()

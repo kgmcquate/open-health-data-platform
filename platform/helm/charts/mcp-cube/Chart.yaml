@@ -1,0 +1,12 @@
+apiVersion: v2
+name: mcp-cube
+description: The semantic layer's tool surface, served over MCP for Open WebUI
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - ohdp
+  - cube
+  - mcp
+maintainers:
+  - name: kgmcquate

@@ -2,7 +2,9 @@
 
 **Status:** M3.0-M3.2 and a first M3.4 are built and deployable. §3.3's personas
 and §3.5's CI-tested FQN round-trip are not; §5's Vega-Lite charts and §8's
-ticket flow are not. See §9 for what each step's state actually is.
+ticket flow are not. See §9 for what each step's state actually is. A second chat
+surface — Open WebUI over an MCP server for Cube — now runs alongside this one
+([ADR-0017](decisions/0017-open-webui-chat-ui.md)); see §11.
 
 **Audience:** the implementing agent. Read [ARCHITECTURE.md](ARCHITECTURE.md) §1, §5, §6 and
 [ADR-0016](decisions/0016-chat-agent-tool-surface.md) first.
@@ -82,6 +84,12 @@ an edit to the catalog.
 Cube's official MCP server is **Cube Cloud Premium/Enterprise only**. Cube Core ships no MCP
 server, so we author this layer ourselves (ADR-0016). That is a net positive: the tool surface
 *is* the safety control, and it should be ours.
+
+These four tools have **two transports**. In this loop they are Anthropic tool
+definitions called in-process. For any MCP client — Open WebUI today — the same
+four are served over MCP streamable HTTP by `ohdp_mcp` (§11, ADR-0017), which
+delegates to the same `CubeClient` and validates the same `CubeQuery`. The safety
+property is in the model, not the transport, so it holds either way.
 
 | Tool | Backed by | Notes |
 |---|---|---|
@@ -309,3 +317,59 @@ M3.0 and M3.1 carry the real risk and involve no model at all. Do them first.
    by side and let the human draw the line. Leaning toward side-by-side.
 4. **Persona selection.** Explicit picker, or inferred from the question? Explicit is honest
    and testable; inferred is nicer. Start explicit.
+
+---
+
+## 11. Open WebUI — the second chat surface (ADR-0017)
+
+Everything above describes `hub-api`'s own UI at `app.open-health-data-platform.org`.
+A second surface now runs at `chat.open-health-data-platform.org`: **Open WebUI**,
+deployed from its official Helm chart, calling the semantic layer through
+**`mcp-cube`** — our FastMCP server over the §2.2 tool layer.
+
+```
+chat.ohdp.org -> Traefik -> open-webui (Google SSO, its own)
+                              |-> mcp-cube (ClusterIP) -> cube -> Snowflake
+                              \-> api.anthropic.com/v1  (OpenAI-compatible)
+
+app.ohdp.org  -> Traefik -> oauth2-proxy-app -> hub-api   (§1-§10, unchanged)
+```
+
+### 11.1 What Open WebUI does and does not get
+
+It gets a real chat product for none of our code, and the full §2.2 Cube tool
+surface with its safety properties intact — `CubeQuery` is validated in
+`ohdp_mcp`, on our side of the wire.
+
+It does **not** get: the quota gate (§6), the `chat_turns` log that is also the
+eval set (§7), the Europe PMC tools and their citation check (§2.3), or
+OpenMetadata context (§3). Nor does Anthropic's OpenAI-compatible endpoint expose
+extended thinking. **Those are the reasons hub-api is still deployed**, and why
+"which surface should exist in six months" is a question for evidence rather than
+this document.
+
+### 11.2 Post-install steps that are not in the chart
+
+Two, both because Open WebUI stores the state in its own database and offers no
+declarative alternative:
+
+1. **Register the MCP tool server.** Settings → Admin → Integrations → External
+   Tool Servers → Add Connection; Type *MCP (Streamable HTTP)*; URL
+   `http://mcp-cube.app.svc.cluster.local:8000/mcp`; Auth *Bearer* with the token
+   from `kubectl -n app get secret mcp-cube-secret -o jsonpath='{.data.OHDP_MCP_AUTH_TOKEN}' | base64 -d`.
+   Four tools should appear, and only four. See `charts/mcp-cube/templates/NOTES.txt`.
+2. **Set the model's system prompt** (Settings → Admin → Models) to carry
+   ARCHITECTURE.md §10.2's disclaimer — population-level, not clinical decision
+   support. hub-api attaches this in code, where a model cannot forget it; here it
+   is configuration, which is weaker. The MCP server also ships it in its
+   `instructions`, so a client that honours those sees it regardless.
+
+### 11.3 Access control
+
+Open WebUI's own Google OAuth, not an oauth2-proxy wall — ADR-0017 explains why
+this one surface departs from ADR-0007's pattern. Password sign-in is off; OAuth
+sign-up is on; every new account lands in `DEFAULT_USER_ROLE=pending` and sees
+nothing until an admin promotes it. **That pending role is the whole access
+policy**, standing in for the email allowlist the other three walls use, and it is
+what separates a public hostname from a metered Anthropic key. There is no quota
+gate behind it.
