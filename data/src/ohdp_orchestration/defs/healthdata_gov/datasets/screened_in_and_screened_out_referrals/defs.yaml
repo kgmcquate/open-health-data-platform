@@ -4,8 +4,8 @@ attributes:
   id: k5kg-jgj9
   name: Screened-in and Screened-out Referrals
   publisher: U.S. Department of Health and Human Services
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: screened_in_and_screened_out_referrals
   incremental_cursor: socrata_updated_at
   row_limit: 500000

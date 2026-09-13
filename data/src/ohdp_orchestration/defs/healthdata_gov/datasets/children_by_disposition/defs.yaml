@@ -4,8 +4,8 @@ attributes:
   id: usvm-fdmd
   name: Children by Disposition
   publisher: U.S. Department of Health and Human Services
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: children_by_disposition
   incremental_cursor: socrata_updated_at
   row_limit: 500000

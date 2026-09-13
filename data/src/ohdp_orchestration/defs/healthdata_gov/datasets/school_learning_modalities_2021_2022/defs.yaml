@@ -4,8 +4,8 @@ attributes:
   id: aitj-yx37
   name: School Learning Modalities, 2021-2022
   publisher: Centers for Disease Control and Prevention
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: school_learning_modalities_2021_2022
   incremental_cursor: socrata_updated_at
   row_limit: 500000

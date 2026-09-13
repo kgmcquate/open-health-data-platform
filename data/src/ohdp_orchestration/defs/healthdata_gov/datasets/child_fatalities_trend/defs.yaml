@@ -4,8 +4,8 @@ attributes:
   id: u7xm-yva2
   name: Child Fatalities Trend
   publisher: U.S. Department of Health and Human Services
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: child_fatalities_trend
   incremental_cursor: socrata_updated_at
   row_limit: 500000

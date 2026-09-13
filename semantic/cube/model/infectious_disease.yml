@@ -1,0 +1,42 @@
+# US notifiable-disease surveillance (Project Tycho Level 1). Dimensions and
+# their descriptions come from dbt's column docs via cube-dbt — edit them in
+# data/dbt/models/curated/infectious_disease/_curated_infectious_disease__models.yml.
+{% set model = dbt_model('infectious_disease__notifiable_weekly') %}
+
+cubes:
+  - {{ model.as_cube() }}
+
+    dimensions:
+      {{ model.as_dimensions(skip=['cases', 'incidence_per_100000']) }}
+
+    measures:
+      - name: total_cases
+        sql: cases
+        type: sum
+        description: {{ model.column('cases').description }}
+
+      - name: peak_weekly_cases
+        sql: cases
+        type: max
+        description: >-
+          Highest weekly case count in the current filter. At the default grain
+          that is one state's worst week, not a national peak — group by week to
+          compare states, not by disease alone.
+
+      # Incidence is already per-population, so summing it is meaningless and
+      # averaging it is an unweighted mean across whichever states are in the
+      # filter. Use total_cases for magnitude; this is for comparing burden
+      # between states of different sizes.
+      - name: avg_incidence_per_100000
+        sql: incidence_per_100000
+        type: avg
+        description: {{ model.column('incidence_per_100000').description }}
+
+      - name: reporting_weeks
+        type: count
+        description: "Week-location rows in the current filter — a coverage check, not a KPI."
+
+      - name: diseases_reported
+        sql: disease
+        type: count_distinct
+        description: "Distinct diseases reported in the current filter."

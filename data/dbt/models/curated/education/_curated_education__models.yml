@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: education__learning_modality_weekly
+    description: >
+      K-12 district learning modality by week across the 2020-2021 and
+      2021-2022 school years. One row per district x week, with the district's
+      students split across three modality columns so each can be summed
+      directly.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [district_nces_id, week]
+    columns:
+      - name: school_year
+        description: School year the row belongs to ("2020-2021" or "2021-2022").
+        data_type: varchar
+      - name: district_nces_id
+        description: NCES local education agency identifier; the district key.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: district_name
+        description: Name of the school district.
+        data_type: varchar
+      - name: city
+        description: City the district is headquartered in.
+        data_type: varchar
+      - name: state
+        description: US state postal code.
+        data_type: varchar
+      - name: week
+        description: Monday starting the reported week. The time dimension for this mart.
+        data_type: date
+        data_tests: [not_null]
+      - name: learning_modality
+        description: Reported instruction mode for the week -- In Person, Hybrid or Remote.
+        data_type: varchar
+      - name: student_count
+        description: >-
+          Students enrolled in the district that week. Equals the sum of the
+          three modality columns below.
+        data_type: integer
+      - name: operational_schools
+        description: Schools in the district operating that week.
+        data_type: integer
+      - name: students_in_person
+        description: student_count when the week's modality was In Person, else 0.
+        data_type: integer
+      - name: students_hybrid
+        description: student_count when the week's modality was Hybrid, else 0.
+        data_type: integer
+      - name: students_remote
+        description: student_count when the week's modality was Remote, else 0.
+        data_type: integer

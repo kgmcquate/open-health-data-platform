@@ -4,8 +4,8 @@ attributes:
   id: 7viv-bzwe
   name: Children Who Received an Investigation or Alternative Response
   publisher: U.S. Department of Health and Human Services
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: children_who_received_an_investigation_or_alternative_response
   incremental_cursor: socrata_updated_at
   row_limit: 500000

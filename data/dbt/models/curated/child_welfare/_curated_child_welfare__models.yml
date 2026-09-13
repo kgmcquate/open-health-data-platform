@@ -1,0 +1,181 @@
+version: 2
+
+# Cube's child_welfare_* cubes (semantic/cube/model/) read their dimensions and
+# measure descriptions from the column docs below via cube-dbt. This file is
+# the source of truth for that wording, not the Cube models.
+
+models:
+  - name: child_welfare__state_year_trend
+    description: >
+      Child maltreatment by state and federal fiscal year, 2015-2019, from
+      NCANDS. States only -- NCANDS's own National row is excluded so measures
+      can be summed safely.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state, fiscal_year]
+    columns:
+      - name: state
+        description: US state, DC or Puerto Rico, as NCANDS reports it.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: fiscal_year
+        description: Federal fiscal year the counts were reported for.
+        data_type: integer
+        data_tests: [not_null]
+      - name: victims
+        description: Children determined to be victims of maltreatment (unique count).
+        data_type: integer
+      - name: victim_rate_per_1000
+        description: >-
+          Victims per 1,000 children younger than 18 in the state population.
+          Rate, not a count -- average it across states, never sum it.
+        data_type: double
+      - name: fatalities
+        description: >-
+          Child fatalities where abuse or neglect caused or contributed to the
+          death (unique count).
+        data_type: integer
+      - name: perpetrators
+        description: >-
+          People determined to have caused or knowingly allowed the
+          maltreatment (unique count).
+        data_type: integer
+      - name: children_investigated
+        description: Children who received a CPS investigation or alternative response.
+        data_type: integer
+      - name: children_investigated_rate_per_1000
+        description: >-
+          Children investigated per 1,000 children younger than 18 in the state
+          population. Rate, not a count.
+        data_type: double
+      - name: victim_substantiation_ratio
+        description: >-
+          Victims divided by children investigated -- the share of CPS
+          responses that concluded in a maltreatment finding. Ratio of two
+          counts, so average it or recompute it from summed counts; summing it
+          across states is meaningless.
+        data_type: double
+
+  - name: child_welfare__maltreatment_profile
+    description: >
+      Maltreatment mix by state for the most recent NCANDS federal fiscal year,
+      one row per state x maltreatment type. States only. State-level totals
+      live in child_welfare__cps_funnel, not here -- see the model's header.
+    config:
+      contract:
+        enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state, maltreatment_type]
+    columns:
+      - name: state
+        description: US state, DC or Puerto Rico, as NCANDS reports it.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: maltreatment_type
+        description: Maltreatment category code, stable across publications.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: maltreatment_type_label
+        description: Human-readable maltreatment category, for display.
+        data_type: varchar
+      - name: victims
+        description: >-
+          Victims with this maltreatment type. A DUPLICATE count -- a victim is
+          counted once per category substantiated for them, so summing across
+          every type exceeds the state's unique victim count.
+        data_type: integer
+      - name: pct_of_victims
+        description: >-
+          NCANDS's own percentage of the state's victims with this type,
+          computed against the unique victim count. A percentage, not a count.
+        data_type: double
+
+  - name: child_welfare__cps_funnel
+    description: >
+      The child protective services front door by state for the most recent
+      NCANDS federal fiscal year -- referrals in, screening decisions,
+      investigation outcomes, victims and fatalities. One row per state, so
+      every count sums correctly across states.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: state
+        description: US state, DC or Puerto Rico, as NCANDS reports it.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: fiscal_year
+        description: Federal fiscal year the counts were reported for.
+        data_type: integer
+      - name: total_referrals
+        description: >-
+          Notifications to CPS of suspected maltreatment. A referral may cover
+          more than one child.
+        data_type: integer
+      - name: referral_rate_per_100k
+        description: >-
+          Referrals per 100,000 children in the state population. A rate --
+          average it across states, never sum it.
+        data_type: double
+      - name: screened_in_referrals
+        description: Referrals accepted for an investigation or alternative response.
+        data_type: integer
+      - name: screened_out_referrals
+        description: Referrals not accepted for a CPS response.
+        data_type: integer
+      - name: screened_in_pct
+        description: >-
+          NCANDS's own published screen-in percentage. Kept for traceability to
+          the source; prefer screen_in_rate, which is recomputed from counts.
+        data_type: double
+      - name: children_with_disposition
+        description: >-
+          Children reaching a disposition. A duplicate count -- once per
+          disposition reached.
+        data_type: integer
+      - name: substantiated
+        description: Children whose allegation was supported under state law or policy.
+        data_type: integer
+      - name: indicated
+        description: >-
+          Children whose allegation could not be substantiated but where
+          maltreatment was suspected.
+        data_type: integer
+      - name: alternative_response
+        description: Children served through a non-investigative alternative response track.
+        data_type: integer
+      - name: unsubstantiated
+        description: Children whose allegation was not supported by the evidence.
+        data_type: integer
+      - name: total_victims
+        description: >-
+          Children determined to be victims of maltreatment in the state
+          (unique count).
+        data_type: integer
+      - name: total_child_fatalities
+        description: >-
+          Child fatalities where abuse or neglect caused or contributed to the
+          death (unique count).
+        data_type: integer
+      - name: fatality_rate_per_100k
+        description: >-
+          Child fatalities per 100,000 children in the state population. A rate,
+          not a count.
+        data_type: double
+      - name: screen_in_rate
+        description: >-
+          Screened-in referrals divided by total referrals, recomputed from this
+          state's counts. A ratio -- recompute it from summed counts rather than
+          summing it across states.
+        data_type: double
+      - name: substantiation_rate
+        description: >-
+          Substantiated children divided by children reaching a disposition,
+          recomputed from this state's counts. A ratio, not a count.
+        data_type: double

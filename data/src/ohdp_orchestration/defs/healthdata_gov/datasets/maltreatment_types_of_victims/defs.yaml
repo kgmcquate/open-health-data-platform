@@ -4,8 +4,8 @@ attributes:
   id: 8bce-qw8w
   name: Maltreatment Types of Victims
   publisher: U.S. Department of Health and Human Services
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: maltreatment_types_of_victims
   incremental_cursor: socrata_updated_at
   row_limit: 500000

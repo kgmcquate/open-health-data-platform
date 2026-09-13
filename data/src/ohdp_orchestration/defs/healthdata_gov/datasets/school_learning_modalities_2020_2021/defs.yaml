@@ -4,8 +4,8 @@ attributes:
   id: a8v3-a3m3
   name: School Learning Modalities, 2020-2021
   publisher: Centers for Disease Control and Prevention
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: school_learning_modalities_2020_2021
   incremental_cursor: socrata_updated_at
   row_limit: 500000
