@@ -86,15 +86,18 @@ spec:
                 # Passwords are passed as psql variables, never interpolated
                 # into the SQL text: a generated password is alphanumeric today,
                 # but a quoting bug here would be a silent auth failure.
+                # NOTE: :'var' interpolation is only performed on SQL that psql
+                # reads from a script/stdin, not on a -c argument — piping the
+                # statement in via a here-string is required for it to work.
                 if ! psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = '$user'" | grep -q 1; then
                   echo "creating role $user"
                   psql -v ON_ERROR_STOP=1 -v pass="$pass" \
-                    -c "CREATE ROLE \"$user\" WITH LOGIN PASSWORD :'pass'"
+                    <<< "CREATE ROLE \"$user\" WITH LOGIN PASSWORD :'pass'"
                 else
                   # Re-assert the password so the role matches the Secret even
                   # if one of them was changed by hand.
                   psql -v ON_ERROR_STOP=1 -v pass="$pass" \
-                    -c "ALTER ROLE \"$user\" WITH LOGIN PASSWORD :'pass'"
+                    <<< "ALTER ROLE \"$user\" WITH LOGIN PASSWORD :'pass'"
                 fi
 
                 if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname = '$db'" | grep -q 1; then
