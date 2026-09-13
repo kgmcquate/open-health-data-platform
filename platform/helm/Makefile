@@ -25,7 +25,7 @@ OAUTH2_PROXY_VERSION    ?= 10.7.0
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \
-        streamlit oauth2-proxy-streamlit hub-api cube
+        streamlit oauth2-proxy-streamlit hub-api oauth2-proxy-app cube
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -132,9 +132,13 @@ oauth2-proxy-streamlit: ## Install the Google login wall in front of Streamlit (
 	$(HELM) upgrade --install oauth2-proxy-streamlit oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
 		-n bi --create-namespace -f $(VALUES)/oauth2-proxy-streamlit.yaml --wait --timeout 5m
 
-hub-api: ## Install the FastAPI backend (TAG defaults to the current commit's sha-<12>)
+hub-api: ## Install the FastAPI backend + chat UI (TAG defaults to the current commit's sha-<12>)
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
 	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
 		-n app --create-namespace --set image.tag=$(TAG) --wait
+
+oauth2-proxy-app: ## Install the Google login wall in front of the hub app (chat UI + /api)
+	$(HELM) upgrade --install oauth2-proxy-app oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
+		-n app --create-namespace -f $(VALUES)/oauth2-proxy-app.yaml --wait --timeout 5m
 
 install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)

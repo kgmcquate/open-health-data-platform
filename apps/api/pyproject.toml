@@ -5,6 +5,7 @@ description = "Hub API — chat orchestration, entitlements, Stripe webhooks"
 requires-python = ">=3.12"
 dependencies = [
     "ohdp-shared",
+    "anthropic>=1.5",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "httpx>=0.27",

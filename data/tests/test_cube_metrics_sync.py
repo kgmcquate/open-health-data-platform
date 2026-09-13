@@ -82,7 +82,7 @@ def test_metric_request_from_cube_measure() -> None:
 
     cube = _air_quality_cube()
     dimensions = [_metric_dimension(d) for d in cube["dimensions"]]
-    request = _metric_request(cube["measures"][0], dimensions, None)
+    request = _metric_request(cube["measures"][0], dimensions, None, None)
 
     assert str(request.name.root) == "air_quality__avg_value"
     assert request.displayName == "Air Quality Avg Value"
@@ -95,7 +95,7 @@ def test_metric_request_from_cube_measure() -> None:
 def test_metric_request_maps_sum_agg_type() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
-    request = _metric_request(_air_quality_cube()["measures"][1], [], None)
+    request = _metric_request(_air_quality_cube()["measures"][1], [], None, None)
 
     assert str(request.name.root) == "air_quality__measurement_count"
     assert request.metricType.value == "SUM"
@@ -106,7 +106,7 @@ def test_metric_request_falls_back_to_other_for_unknown_agg_type() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
     request = _metric_request(
-        {"name": "air_quality.some_custom_measure", "aggType": "runningTotal"}, [], None
+        {"name": "air_quality.some_custom_measure", "aggType": "runningTotal"}, [], None, None
     )
 
     assert request.metricType.value == "OTHER"
@@ -118,9 +118,34 @@ def test_metric_request_carries_through_assets() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
     assets = EntityReferenceList([])
-    request = _metric_request(_air_quality_cube()["measures"][0], [], assets)
+    request = _metric_request(_air_quality_cube()["measures"][0], [], assets, None)
 
     assert request.assets is assets
+
+
+def test_metric_request_carries_through_related_metrics() -> None:
+    from metadata.generated.schema.type.basic import FullyQualifiedEntityName
+
+    from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
+
+    related = [FullyQualifiedEntityName("air_quality__measurement_count")]
+    request = _metric_request(_air_quality_cube()["measures"][0], [], None, related)
+
+    assert request.relatedMetrics == related
+
+
+def test_metric_request_leaves_related_metrics_unset_when_empty() -> None:
+    from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
+
+    request = _metric_request(_air_quality_cube()["measures"][0], [], None, [])
+
+    assert request.relatedMetrics is None
+
+
+def test_metric_entity_name_swaps_dot_for_double_underscore() -> None:
+    from ohdp_orchestration.assets.cube_metrics_sync import _metric_entity_name
+
+    assert _metric_entity_name({"name": "air_quality.avg_value"}) == "air_quality__avg_value"
 
 
 def test_dbt_model_table_index_upper_cases_and_uses_alias(tmp_path, monkeypatch) -> None:
@@ -174,7 +199,7 @@ def test_dbt_model_table_index_falls_back_to_name_without_alias(tmp_path, monkey
     assert index == {"widgets": ("CURATED", "CORE", "WIDGETS")}
 
 
-def test_table_assets_returns_none_when_cube_has_no_matching_dbt_model() -> None:
-    from ohdp_orchestration.assets.cube_metrics_sync import _table_assets
+def test_resolve_table_returns_none_when_cube_has_no_matching_dbt_model() -> None:
+    from ohdp_orchestration.assets.cube_metrics_sync import _resolve_table
 
-    assert _table_assets("air_quality", {}, metadata=None) is None
+    assert _resolve_table("air_quality", {}, metadata=None) is None

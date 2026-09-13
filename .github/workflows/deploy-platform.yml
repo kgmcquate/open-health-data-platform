@@ -83,6 +83,12 @@ jobs:
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           STREAMLIT_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           STREAMLIT_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
+          # The hub app's wall reuses the same Google client, which must list
+          # https://app.open-health-data-platform.org/oauth2/callback among its
+          # authorized redirect URIs.
+          APP_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
+          APP_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
@@ -109,10 +115,14 @@ jobs:
           # same temporary trade-off as streamlit-snowflake above.
           upsert data cube-snowflake \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
+          # OHDP_ANTHROPIC_API_KEY is what the chat agent bills against
+          # (docs/chatbot.md §4). Without it /api/chat answers 503 and the rest
+          # of the app still works, which is the intended degradation.
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
-            --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET"
+            --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET" \
+            --from-literal=OHDP_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
 
           # OHDP_SNOWFLAKE_PRIVATE_KEY is the pipeline's RSA key pair's private
           # half (PKCS#8 PEM) — Snowflake SERVICE users don't accept password
@@ -137,6 +147,12 @@ jobs:
             "$(printf %s "$STREAMLIT_OIDC_CLIENT_ID" | base64 -w0)" \
             "$(printf %s "$STREAMLIT_OIDC_CLIENT_SECRET" | base64 -w0)")
           kubectl -n bi patch secret oauth2-proxy-streamlit-secret --type merge -p "$patch"
+
+          # Third release: the hub app's wall. Same trick again.
+          patch=$(printf '{"data":{"client-id":"%s","client-secret":"%s"}}' \
+            "$(printf %s "$APP_OIDC_CLIENT_ID" | base64 -w0)" \
+            "$(printf %s "$APP_OIDC_CLIENT_SECRET" | base64 -w0)")
+          kubectl -n app patch secret oauth2-proxy-app-secret --type merge -p "$patch"
 
       - name: OpenSearch
         run: make -C platform/helm opensearch
@@ -167,6 +183,9 @@ jobs:
 
       - name: hub-api
         run: make -C platform/helm hub-api TAG="$TAG"
+
+      - name: oauth2-proxy (Google login wall — hub app)
+        run: make -C platform/helm oauth2-proxy-app
 
       - name: Pods
         if: always()

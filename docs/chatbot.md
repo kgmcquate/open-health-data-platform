@@ -1,6 +1,9 @@
 # Chatbot — design (M3)
 
-**Status:** Planning. Nothing in this document is built yet.
+**Status:** M3.0-M3.2 and a first M3.4 are built and deployable. §3.3's personas
+and §3.5's CI-tested FQN round-trip are not; §5's Vega-Lite charts and §8's
+ticket flow are not. See §9 for what each step's state actually is.
+
 **Audience:** the implementing agent. Read [ARCHITECTURE.md](ARCHITECTURE.md) §1, §5, §6 and
 [ADR-0016](decisions/0016-chat-agent-tool-surface.md) first.
 
@@ -48,9 +51,31 @@ We consume it; we do not build a retrieval layer of our own.
 | `get_entity_lineage` | Provenance: "where did this number come from" |
 | `create_context_memory` | Write-back loop (§3.4) — gated, M4 |
 
-**Verify the tool inventory against the deployment before building.** The docs describe a
-Context Center surface that reads partly Collate-flavoured; confirm which of these 2.0.1
-actually advertises over MCP, and design around the subset that does. This is task M3.0.
+**Verified against the live deployment (M3.0, done).** OM 2.0.1 advertises
+`openmetadata-mcp-stateless/1.1.0` with 24 tools, and every tool in the table above is
+present in OSS — nothing is Collate-gated, so §10.1 resolves in favour of §3.1 as written.
+The server is *stateless*: a bare `tools/call` POST works with no `initialize` and no
+session id, which is why `ohdp_agent/catalog.py` is plain JSON-RPC over httpx rather than
+the `mcp` SDK.
+
+Two of the tools are nonetheless inert on this deployment, for configuration reasons
+rather than licensing ones:
+
+- **`find_context` and `semantic_search` both fail** with "Semantic search is not enabled.
+  Configure vector embeddings in the OpenMetadata server settings." §3.2's "call
+  `find_context` before it plans" is therefore unavailable; the agent discovers assets via
+  `search_metadata` (keyword, working — 67 assets indexed) until embeddings are configured.
+- **`get_persona_context` 404s** with "No active persona is configured for this user" —
+  M3.3 has not happened and the `managementbot` user has no persona bound.
+
+Neither is worked around. Both tools stay advertised to the model, their errors come back
+as tool results, and the agent routes around them — so the day somebody enables embeddings
+or seeds a persona, they start working with no deploy on our side.
+
+**11 of the 24 tools write to the catalog** (`patch_entity`, every `create_*`,
+`create_context_memory`). `ohdp_agent/catalog.py` enforces a read-only **allowlist**, not
+mere omission from the prompt: a model that names `patch_entity` gets an error from us, not
+an edit to the catalog.
 
 ### 2.2 Execution — our own tools over Cube Core REST
 
@@ -250,13 +275,18 @@ Each step should be demoable and independently reviewable.
 
 | Step | Deliverable |
 |---|---|
-| **M3.0** | Verify OM 2.0.1's live MCP tool inventory. Make the OM-Metric ↔ Cube-measure mapping explicit and CI-tested (§3.5). No LLM yet. |
-| **M3.1** | `ohdp_agent` package: Cube tools over REST, OM MCP client, Europe PMC tools. Unit-tested without a model in the loop. |
-| **M3.2** | The loop in hub-api — plan/execute, SSE, quota gate, Postgres logging. |
-| **M3.3** | Personas and Context Center seed content in `catalog/openmetadata/seed/`. |
-| **M3.4** | Chat UI in hub-web; Vega-Lite spec validation and rendering. |
-| **M3.5** | Eval harness and the seed question set. |
+| **M3.0** | **Partly done.** Tool inventory verified against the live server (§2.1). The OM-Metric ↔ Cube-measure round-trip test (§3.5) is **not written** — still the most likely quiet failure. |
+| **M3.1** | **Done.** `ohdp_agent`: Cube tools over REST, OM MCP client, Europe PMC tools. Unit-tested with no model in the loop. |
+| **M3.2** | **Done, with two deviations** recorded at the top of `ohdp_agent/loop.py`: a manual loop rather than the SDK tool runner, and one phase rather than two (no user gate between plan and execute). SSE, quota gate and Postgres logging are in. |
+| **M3.3** | **Not done.** Personas and Context Center seed content in `catalog/openmetadata/seed/`. Until this lands, `get_persona_context` 404s and the agent uses its built-in system prompt. |
+| **M3.4** | **Partly done.** A chat UI exists — one static page served by hub-api, not hub-web (see `hub_api/main.py` for why). Vega-Lite specs are **not** implemented; results render as a table plus the compiled SQL. |
+| **M3.5** | **Not done.** Every turn is logged to `chat_turns` in the shape §7 wants, so the eval set is accumulating; there is no harness and no seed question set. |
 | **M4** | Streamlit dashboard generation via PR; ticket flow with dedup; news retrieval. |
+
+**Deployed as:** `app.open-health-data-platform.org`, behind an `oauth2-proxy` Google wall
+(`platform/helm/values/oauth2-proxy-app.yaml`) that owns the hostname; `charts/hub-api` has
+its own Ingress disabled so nothing reaches the agent without passing the wall. Everyone
+past it is tier `free` — ARCHITECTURE.md §5's real IdP with a `tier` claim is still unbuilt.
 
 M3.0 and M3.1 carry the real risk and involve no model at all. Do them first.
 
@@ -264,9 +294,11 @@ M3.0 and M3.1 carry the real risk and involve no model at all. Do them first.
 
 ## 10. Open questions
 
-1. **Which Context Center tools are actually OSS in 2.0.1.** Settled empirically by M3.0. If
-   personas turn out to be Collate-gated, §3.1 falls back to versioned system prompts in
-   `catalog/openmetadata/seed/` — the same content, worse editability.
+1. ~~**Which Context Center tools are actually OSS in 2.0.1.**~~ **Settled (M3.0): all of
+   them.** Nothing in §2.1 is Collate-gated, so §3.1 stands as written and no fallback to
+   versioned system prompts is needed. The live gaps are configuration, not licensing —
+   vector embeddings are off (killing `find_context` and `semantic_search`) and no persona
+   is bound to the bot user. See §2.1.
 2. **Cost per question.** Opus 5 at $5/$25 per MTok, with a plan phase that may load several
    `get_asset_context` documents. Measure before setting the free-tier quota (§10.3 of
    ARCHITECTURE.md proposes 20/month). Prompt caching on the persona preamble and the

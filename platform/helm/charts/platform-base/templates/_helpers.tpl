@@ -23,14 +23,17 @@ value is freshly random — fine for validation, never written anywhere.
 {{- $cube := (lookup "v1" "Secret" "data" "cube-secret").data | default dict -}}
 {{- $oauth2 := (lookup "v1" "Secret" "data" "oauth2-proxy-secret").data | default dict -}}
 {{- $oauth2Streamlit := (lookup "v1" "Secret" "bi" "oauth2-proxy-streamlit-secret").data | default dict -}}
+{{- $oauth2App := (lookup "v1" "Secret" "app" "oauth2-proxy-app-secret").data | default dict -}}
 postgres: {{ (index $pg "postgres-password") | default (randAlphaNum $len | b64enc) }}
 dagster: {{ (index $pg "dagster-password") | default (randAlphaNum $len | b64enc) }}
 openmetadata: {{ (index $pg "openmetadata-password") | default (randAlphaNum $len | b64enc) }}
 app: {{ (index $pg "app-password") | default (randAlphaNum $len | b64enc) }}
 fernet: {{ (index $fernet "fernetKey") | default ((randAlphaNum 32 | b64enc | replace "+" "-" | replace "/" "_") | b64enc) }}
 cube: {{ (index $cube "OHDP_CUBE_API_SECRET") | default (randAlphaNum $len | b64enc) }}
-{{/* oauth2-proxy cookie secrets — must decode to exactly 32 bytes. Two
-     independent releases (Dagster's wall, Streamlit's wall) get their own. */}}
+{{/* oauth2-proxy cookie secrets — must decode to exactly 32 bytes. Three
+     independent releases (Dagster's wall, Streamlit's wall, the hub app's) get
+     their own, so a rotation on one does not sign everyone else out. */}}
 oauth2Cookie: {{ (index $oauth2 "cookie-secret") | default (randAlphaNum 32 | b64enc) }}
 oauth2CookieStreamlit: {{ (index $oauth2Streamlit "cookie-secret") | default (randAlphaNum 32 | b64enc) }}
+oauth2CookieApp: {{ (index $oauth2App "cookie-secret") | default (randAlphaNum 32 | b64enc) }}
 {{- end -}}

@@ -6,7 +6,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api`, `ohdp-streamlit`, and `ohdp-pipeline`, pushes to GHCR | no |
 | [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket, Cloudflare DNS records | no |
-| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Streamlit, oauth2-proxy-streamlit, hub-api | when `deploy` ticked |
+| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Cube, Streamlit, oauth2-proxy-streamlit, hub-api, oauth2-proxy-app | when `deploy` ticked |
 
 ## Setup
 
@@ -141,6 +141,22 @@ act -l
   own Google login wall (`oauth2-proxy-streamlit`, `kgmcquate@gmail.com` only)
   rather than the self-service public exposure M1 originally sketched — see
   ARCHITECTURE.md §5.
-- **Cube** and **hub-web** are not deployed — M2.
+- **hub-web** is not deployed and not scaffolded. hub-api serves the chat page
+  itself at `/` on `app.open-health-data-platform.org` (`hub_api/main.py`) — a
+  deliberate shortcut while the UI is one static page, to be replaced by
+  `apps/web` when the hub grows a landing page, billing, and dashboards.
+- **The chat agent needs two things set by hand** before it works, neither of
+  which a deploy can do for you:
+  1. An `ANTHROPIC_API_KEY` repo secret. Without it the app deploys fine and
+     `/api/chat` answers 503.
+  2. `https://app.open-health-data-platform.org/oauth2/callback` added to the
+     authorized redirect URIs of the Google OAuth client that
+     `DAGSTER_OIDC_CLIENT_ID` names — the hub app's wall reuses it, the same way
+     Streamlit's does. Without it, login fails with `redirect_uri_mismatch`.
+- **No real OIDC provider.** `app.open-health-data-platform.org` sits behind an
+  `oauth2-proxy` Google wall restricted to `kgmcquate@gmail.com`, the same
+  posture as Dagster and Streamlit, and every user past it is tier `free`.
+  ARCHITECTURE.md §5's hosted IdP with a `tier` claim is what billing needs and
+  is still unbuilt.
 - **No rollback step.** `helm rollback <release>` by hand; snapshot rollback is a
   pointer change, see the [runbook](runbook.md).
