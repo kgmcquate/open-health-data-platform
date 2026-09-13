@@ -151,6 +151,18 @@ resources:
 extraEnvs:
   - name: OPENMETADATA_HEAP_OPTS
     value: "-Xmx1400m -Xms1400m"
+  # Semantic (natural-language) search. Not yet exposed as first-class chart
+  # values on 2.0.1 (no `openmetadata.config.elasticsearch.naturalLanguageSearch`
+  # / `.llmConfiguration` keys in the chart's templates), so set the app's own
+  # env vars directly — see conf/openmetadata.yaml in the OM server image.
+  # DJL runs the embedding model locally inside the server JVM (no external API
+  # key/account), unlike the other providers (openai/google/bedrock). It's
+  # independent of `llmConfiguration.enabled`/LLM_ENABLED, which only gates
+  # chat-completion features we're not using here.
+  - name: SEMANTIC_SEARCH_ENABLED
+    value: "true"
+  - name: EMBEDDING_PROVIDER
+    value: "djl"
 
 # The image's USER is the name `openmetadata`, not a UID, so `runAsNonRoot`
 # alone fails admission ("cannot verify user is non-root"). Pin the UID/GID —

@@ -226,8 +226,33 @@ extraEnvVars:
   # receives; setting it again as the model's system prompt in Settings ->
   # Admin -> Models is a post-install step (docs/chatbot.md §11).
 
+  # Code Interpreter: lets the model write Python (matplotlib/plotly) and have
+  # the result — including a rendered image — come back inline in the chat
+  # turn. This is the actual mechanism for "graphics in chat"; it is unrelated
+  # to Streamlit, which needs its own running server and can't render inside a
+  # chat bubble (see values/streamlit*.yaml / ADR-0015 for that surface).
+  #
+  # Engine is pyodide (WASM, runs in the visitor's browser) rather than
+  # jupyter (a real Python kernel we'd have to run as a pod). Jupyter is more
+  # capable — arbitrary pip installs, network access — but this node is
+  # already at its memory ceiling (ARCHITECTURE.md §4, see ollama/pipelines/
+  # tika/terminals all disabled above for the same reason), and it's arbitrary
+  # code execution facing chat users. Pyodide costs this deployment nothing
+  # and covers numpy/pandas/matplotlib, which is what chart generation needs.
+  #
+  # Still requires a one-time post-install step: Admin -> Settings -> Models ->
+  # claude-sonnet-5 -> enable the "Code Interpreter" capability checkbox. That
+  # flag lives on the model row in Postgres, not behind ENABLE_PERSISTENT_CONFIG,
+  # so it's a normal persistent UI setting and won't reset on pod restart.
+  - name: ENABLE_CODE_INTERPRETER
+    value: "true"
+  - name: CODE_INTERPRETER_ENGINE
+    value: "pyodide"
+
   - name: ENABLE_WEB_SEARCH
     value: "true"
+  - name: WEB_SEARCH_ENGINE
+    value: "duckduckgo"
   - name: WEB_SEARCH_DOMAIN_FILTER_LIST
     value: >-
       wikipedia.org,
