@@ -18,7 +18,8 @@ DNS lives in Cloudflare (`open-health-data-platform.org` is a Cloudflare zone). 
 |---|---|
 | `digitalocean_kubernetes_cluster` | Managed cluster in the chosen region |
 | `digitalocean_kubernetes_node_pool` | Default worker pool (`size`, `node_count`) |
-| `digitalocean_spaces_bucket` | `ohdp-warehouse` for backups + the mirrored Snowflake key |
+| `digitalocean_spaces_bucket` | `ohdp-warehouse` for backups + the mirrored Snowflake credentials |
+| `digitalocean_spaces_bucket_object` | `snowflake-pipeline-private-key.pem` and `snowflake-pipeline-horizon-pat.txt` — the two Snowflake credentials, private objects, readable without Terraform |
 | `cloudflare_dns_record` | One A record per `dns_hostnames` entry under `dns_base`, once `loadbalancer_ip` is set |
 | `aws_s3_bucket` | `ohdp-lakehouse` — the external volume's storage. No Glue, no catalog |
 | `aws_iam_user` + `aws_iam_access_key` | The pipeline's AWS identity, for dlt's Parquet writes only |
@@ -105,6 +106,21 @@ terraform output -raw aws_pipeline_secret_access_key | gh secret set AWS_PIPELIN
 The AWS pair is needed for one job: dlt writes each raw table's Parquet into
 the volume's bucket itself and cannot use the short-lived credentials Horizon
 vends. DuckDB does use those, and holds no AWS key.
+
+The two Snowflake credentials are *also* written into the `ohdp-warehouse`
+Spaces bucket on every apply, as private objects (`r2.tf`):
+
+```bash
+s3cmd --host=nyc3.digitaloceanspaces.com --host-bucket='%(bucket)s.nyc3.digitaloceanspaces.com' \
+  get s3://ohdp-warehouse/snowflake-pipeline-horizon-pat.txt -
+```
+
+That mirror is a convenience for anything holding Spaces credentials but not
+Terraform state — it is **not** what the cluster reads. `deploy-platform.yml`
+still builds `ohdp-pipeline-secrets` from the repo secrets above, so an apply
+alone does not rotate the cluster's copy; the `gh secret set` lines are still
+required. Both objects are plaintext at rest: read access to the bucket is read
+access to the credentials.
 
 The non-secret half (`aws_region`, `lakehouse_bucket`) lives in
 `pipelineConfig` in `platform/helm/charts/platform-base/values.yaml` — keep it

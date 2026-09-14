@@ -39,7 +39,7 @@ output "service_hostnames" {
 }
 
 output "warehouse_bucket" {
-  description = "Spaces bucket holding Postgres backups and the mirrored Snowflake private key."
+  description = "Spaces bucket holding Postgres backups and the mirrored Snowflake credentials (private key + Horizon PAT)."
   value       = digitalocean_spaces_bucket.warehouse.name
 }
 

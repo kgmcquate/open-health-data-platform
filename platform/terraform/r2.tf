@@ -1,5 +1,5 @@
 # Nightly pg_dump output (ARCHITECTURE.md §11) and the mirrored Snowflake
-# private key below. The publish-and-replicate DuckDB snapshot mechanism this
+# credentials below — the private key and the Horizon catalog token. The publish-and-replicate DuckDB snapshot mechanism this
 # bucket originally also held (ADR-0002) was retired in ADR-0012. The lakehouse
 # itself lives on AWS S3 (aws.tf, ADR-0019) because Snowflake cannot keep
 # Iceberg files on Spaces — but nothing else moved: compute logs are still
@@ -21,7 +21,7 @@ resource "digitalocean_spaces_bucket" "warehouse" {
 # separate from the `warehouse` bucket above on purpose: compute logs are the
 # one thing here meant to be publicly browsable (docs/ARCHITECTURE.md's
 # world-readable-run-logs policy), while `warehouse` holds private Postgres
-# backups and the mirrored Snowflake private key — mixing those sensitivity
+# backups and the mirrored Snowflake credentials — mixing those sensitivity
 # levels in one bucket would undo the point of the ACL. Private ACL is still
 # correct even so: the webserver proxies objects server-side rather than
 # handing out public URLs (S3ComputeLogManager's `show_url_only` stays unset).
@@ -53,6 +53,31 @@ resource "digitalocean_spaces_bucket_object" "snowflake_pipeline_private_key" {
   bucket       = digitalocean_spaces_bucket.warehouse.name
   key          = "snowflake-pipeline-private-key.pem"
   content      = local.snowflake_private_key
+  acl          = "private"
+  content_type = "text/plain"
+}
+
+# The pipeline's Horizon catalog token (snowflake.tf), mirrored the same way and
+# for the same reason as the key above. It earns the mirror more than the key
+# does: `days_to_expiry` caps the PAT at a year, so this is the credential that
+# actually gets rotated, and rotation depends on a hand-run `gh secret set`.
+# Skipping that is silent — an unset repo secret expands to "" in
+# deploy-platform.yml, `kubectl create secret --from-literal` accepts the empty
+# string, and every dbt run then dies at Horizon's token endpoint with
+# `invalid_client` rather than with anything naming the missing token.
+#
+# `sensitive()` is load-bearing, not decoration: deploy-infra.yml pipes the
+# whole plan into the job summary, which anyone with Actions read access can
+# see. Marked, the token renders there as "(sensitive value)". Do not drop it on
+# the assumption that the provider marks the attribute itself.
+#
+# No trailing newline, unlike the PEM above — whatever pipes this object into a
+# header or a Secret should not have to strip one.
+resource "digitalocean_spaces_bucket_object" "snowflake_pipeline_horizon_pat" {
+  region       = var.location
+  bucket       = digitalocean_spaces_bucket.warehouse.name
+  key          = "snowflake-pipeline-horizon-pat.txt"
+  content      = sensitive(snowflake_user_programmatic_access_token.pipeline.token)
   acl          = "private"
   content_type = "text/plain"
 }
