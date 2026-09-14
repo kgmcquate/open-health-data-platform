@@ -10,8 +10,9 @@ adds nothing else — see
 ``ohdp_orchestration.defs.healthdata_gov.component.HealthDataGovDataset`` and
 ``ohdp_orchestration.defs.cdc.component.CDCDataset``.
 
-Each instance (one ``datasets/<slug>/defs.yaml``, whose ``attributes`` block is
-the ``DatasetConfig`` contract) emits up to three assets:
+Each instance (one ``---`` document in ``datasets/defs.yaml``, whose
+``attributes`` block is the ``DatasetConfig`` contract) emits up to three
+assets:
 
 * a **source asset** ``sources/<source>/<raw_table>`` — an unexecutable
   ``AssetSpec`` (kind ``socrata``) standing for the dataset as published

@@ -36,16 +36,30 @@ def socrata(request: pytest.FixtureRequest) -> SocrataDomain:
     return request.param  # type: ignore[no-any-return]
 
 
-def _instance_paths(socrata: SocrataDomain) -> list[Path]:
-    return sorted((_DEFS / socrata.source / "datasets").glob("*/defs.yaml"))
+def _defs_file(socrata: SocrataDomain) -> Path:
+    return _DEFS / socrata.source / "datasets" / "defs.yaml"
 
 
-def _configs(socrata: SocrataDomain) -> list[tuple[Path, DatasetConfig]]:
-    out = []
-    for path in _instance_paths(socrata):
-        doc = yaml.safe_load(path.read_text())
-        out.append((path, DatasetConfig.model_validate(doc["attributes"])))
-    return out
+def _documents(socrata: SocrataDomain) -> list[tuple[str, dict]]:
+    """(where, document) for every component instance in the domain's defs file.
+
+    One multi-document `defs.yaml` per domain, `---` between instances — the
+    layout Dagster's component loader reads natively. `where` is a
+    `defs.yaml#<n>` label standing in for the old per-dataset path, so a failing
+    assertion still says which instance it was.
+    """
+    path = _defs_file(socrata)
+    if not path.exists():
+        return []
+    documents = [d for d in yaml.safe_load_all(path.read_text()) if d]
+    return [(f"{path}#{i}", doc) for i, doc in enumerate(documents)]
+
+
+def _configs(socrata: SocrataDomain) -> list[tuple[str, DatasetConfig]]:
+    return [
+        (where, DatasetConfig.model_validate(doc["attributes"]))
+        for where, doc in _documents(socrata)
+    ]
 
 
 def _catalog_key(socrata: SocrataDomain, cfg: DatasetConfig) -> str:
@@ -63,21 +77,18 @@ def _raw_key(socrata: SocrataDomain, cfg: DatasetConfig) -> str:
 
 
 def test_scraper_has_run(socrata: SocrataDomain) -> None:
-    assert _instance_paths(socrata), (
-        f"run scripts/scrape_socrata.py --domain {socrata.domain} first"
-    )
+    assert _documents(socrata), f"run scripts/scrape_socrata.py --domain {socrata.domain} first"
 
 
 def test_every_instance_is_a_valid_dataset_component(socrata: SocrataDomain) -> None:
     want_class = _COMPONENT_CLASS[socrata.source]
-    for path in _instance_paths(socrata):
-        doc = yaml.safe_load(path.read_text())
-        assert doc["type"].endswith(want_class), path
+    for where, doc in _documents(socrata):
+        assert doc["type"].endswith(want_class), where
         cfg = DatasetConfig.model_validate(doc["attributes"])
         # A leading underscore is legal and expected: `table_name()` adds one
         # wherever the dataset name starts with a digit, matching dlt.
-        assert re.fullmatch(r"[a-z_][a-z0-9_]*", cfg.raw_table), path
-        assert cfg.cadence in CADENCES, path
+        assert re.fullmatch(r"[a-z_][a-z0-9_]*", cfg.raw_table), where
+        assert cfg.cadence in CADENCES, where
 
 
 def test_raw_table_names_are_unique(socrata: SocrataDomain) -> None:
