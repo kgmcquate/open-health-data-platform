@@ -13,6 +13,9 @@ snapshot-paths: ["snapshots"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
+flags:
+  use_catalogs_v2: true
+
 # Medallion layers (ADR-0013, kept intact by ADR-0019). One database per layer,
 # each of which is an Iceberg catalog in its own right now that Snowflake is
 # the catalog — so the names are unchanged from when these were plain Snowflake
