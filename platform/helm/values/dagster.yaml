@@ -138,7 +138,7 @@ runLauncher:
 concurrency:
   enabled: true
   runs:
-    maxConcurrentRuns: 1
+    maxConcurrentRuns: 6
 
 # Bound Postgres growth; run history is backed up nightly but need not be eternal.
 retention:

@@ -20,7 +20,7 @@ lakehouse_dbt_automation_sensor = AutomationConditionSensorDefinition(
         f"{KEY_PREFIX}_core",
         f"{KEY_PREFIX}_marts",
     ),
-    minimum_interval_seconds=60,
+    minimum_interval_seconds=600,
     default_status=DefaultSensorStatus.RUNNING,
     description="Evaluate Dagster AutomationConditions for the lakehouse dbt assets.",
 )
