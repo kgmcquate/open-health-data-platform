@@ -1,6 +1,14 @@
-# Terraform — DigitalOcean Kubernetes + Snowflake
+# Terraform — DigitalOcean Kubernetes + the AWS lakehouse + Snowflake
 
-Provisions the managed cluster, the Spaces bucket and the Snowflake data warehouse (ADR-0012, ADR-0013), then leaves the application stack to Helm. The old self-hosted k3s-on-droplet bootstrap has been removed.
+Provisions the managed cluster, the Spaces bucket, the AWS Iceberg lakehouse
+(S3 + Glue catalog) and Snowflake's read-only access to it
+([ADR-0019](../../docs/decisions/0019-iceberg-on-s3-duckdb-dbt.md)), then leaves
+the application stack to Helm. The old self-hosted k3s-on-droplet bootstrap has
+been removed.
+
+Three providers, three accounts: DigitalOcean (cluster, Spaces), AWS (the
+lakehouse) and Snowflake (the query engine over it). Cloudflare makes four, for
+DNS.
 
 DNS lives in Cloudflare (`open-health-data-platform.org` is a Cloudflare zone). This stack manages the `*.open-health-data-platform.org` A records through the `cloudflare` provider, DNS-only (not proxied), pointing each host at the Traefik load balancer IP configured in `loadbalancer_ip`. There is no reserved DigitalOcean IP fallback here; the value must be set explicitly in `terraform.tfvars` or via `TF_VAR_loadbalancer_ip`.
 
@@ -12,11 +20,15 @@ DNS lives in Cloudflare (`open-health-data-platform.org` is a Cloudflare zone). 
 | `digitalocean_kubernetes_node_pool` | Default worker pool (`size`, `node_count`) |
 | `digitalocean_spaces_bucket` | `ohdp-warehouse` for backups + the mirrored Snowflake key |
 | `cloudflare_dns_record` | One A record per `dns_hostnames` entry under `dns_base`, once `loadbalancer_ip` is set |
-| `snowflake_database` + `snowflake_schema` | The warehouse: one database per medallion layer (RAW/CLEAN/CURATED), one schema per source or mart ([ADR-0013](../../docs/decisions/0013-per-layer-snowflake-databases.md)) |
-| `snowflake_account_role` + grants | `OHDP_PIPELINE` — read/write on the warehouse |
-| `snowflake_service_user` + `snowflake_network_policy` | The pipeline identity |
-| `tls_private_key` | Generates the pipeline's RSA key pair — SERVICE users don't accept password auth |
-| `snowflake_warehouse` | XSMALL — compute for the pipeline's dlt loads and dbt-snowflake builds |
+| `aws_s3_bucket` | `ohdp-lakehouse` (every Iceberg table's files) and `ohdp-compute-logs` (Dagster) |
+| `aws_glue_catalog_database` | One per namespace: `raw_<source>`, `clean_<source>`, `core`, `mart_<name>` |
+| `aws_iam_user` + `aws_iam_access_key` | The pipeline's AWS identity — dlt, pyiceberg and DuckDB all use this key |
+| `aws_iam_role` ×2 | Assumed by Snowflake: one reads the bucket, one signs Glue REST calls |
+| `snowflake_execute` ×5 | External volume, catalog integration, the `LAKEHOUSE` catalog-linked database, and its grants |
+| `snowflake_account_role` + grants | `OHDP_PIPELINE` — **read-only** on `LAKEHOUSE` |
+| `snowflake_service_user` + `snowflake_network_policy` | Cube's and Streamlit's identity |
+| `tls_private_key` | Generates its RSA key pair — SERVICE users don't accept password auth |
+| `snowflake_warehouse` | XSMALL — compute for Cube's and Streamlit's queries |
 
 This setup intentionally uses a managed DigitalOcean Kubernetes cluster instead of a single self-hosted k3s node. The cluster endpoint and kubeconfig are surfaced via Terraform outputs.
 
@@ -49,6 +61,63 @@ State is local until the Spaces bucket exists. After the first apply, uncomment 
 - **The DNS records point to the configured Traefik public IP.** Set `loadbalancer_ip` explicitly in `terraform.tfvars` or `TF_VAR_loadbalancer_ip`; if the ingress IP changes, update the variable and re-apply this stack.
 - **`CLOUDFLARE_API_TOKEN` must be exported and have `DNS:Edit` on the zone.** The provider reads it from the environment, not a tfvar. A token scoped to the wrong zone or missing the permission fails at apply, not plan.
 
+## The lakehouse (AWS)
+
+Terraform authenticates to AWS with **admin** credentials you supply — separate
+from the pipeline IAM user it creates:
+
+```bash
+export TF_VAR_aws_access_key_id=... TF_VAR_aws_secret_access_key=...
+```
+
+Deliberately `TF_VAR_`-prefixed, not `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`:
+those two belong to the **Spaces** state backend (`backend.tf`), which is also
+"S3". Setting both to the same thing breaks one of them.
+
+After an apply, publish the pipeline's key to the repo secrets the deploy reads:
+
+```bash
+terraform output -raw aws_pipeline_access_key_id     | gh secret set AWS_PIPELINE_ACCESS_KEY_ID
+terraform output -raw aws_pipeline_secret_access_key | gh secret set AWS_PIPELINE_SECRET_ACCESS_KEY
+```
+
+The non-secret half (`aws_region`, `lakehouse_bucket`, `glue_catalog_id`) lives
+in `pipelineConfig` in `platform/helm/charts/platform-base/values.yaml` — keep
+it in sync with those outputs.
+
+### The second apply
+
+Snowflake's external volume and catalog integration each generate an IAM user
+ARN and an external ID **when Snowflake creates them**, and the AWS roles they
+assume can only trust those values afterwards. So the first apply leaves both
+roles deliberately un-assumable, and Snowflake cannot read anything yet. Finish
+it:
+
+```bash
+terraform apply                       # creates everything; Snowflake can't read yet
+
+# In Snowsight (names come from `terraform output snowflake_trust_policy_inputs`):
+DESC EXTERNAL VOLUME OHDP_LAKEHOUSE_VOL;      -- STORAGE_AWS_IAM_USER_ARN, STORAGE_AWS_EXTERNAL_ID
+DESC CATALOG INTEGRATION OHDP_GLUE_REST;      -- API_AWS_IAM_USER_ARN, API_AWS_EXTERNAL_ID
+
+export TF_VAR_snowflake_storage_aws_iam_user_arn=arn:aws:iam::...:user/...
+export TF_VAR_snowflake_storage_aws_external_id=...
+export TF_VAR_snowflake_glue_aws_iam_user_arn=arn:aws:iam::...:user/...
+export TF_VAR_snowflake_glue_aws_external_id=...
+
+terraform apply                       # rewrites the two trust policies
+```
+
+Then check it from Snowflake:
+
+```sql
+SELECT SYSTEM$VERIFY_EXTERNAL_VOLUME('OHDP_LAKEHOUSE_VOL');
+SHOW SCHEMAS IN DATABASE LAKEHOUSE;
+```
+
+This only has to be done once per account; the values are stable unless the
+external volume or catalog integration is re-created.
+
 ## Snowflake
 
 Terraform does not create the Snowflake *account* — bring an existing one, and
@@ -65,19 +134,18 @@ export SNOWFLAKE_USER=... SNOWFLAKE_ROLE=ACCOUNTADMIN
 export SNOWFLAKE_PRIVATE_KEY="$(cat ~/.snowflake/tf_key.p8)"   # or SNOWFLAKE_PASSWORD
 ```
 
-After an apply, hand the pipeline's private key to the deploy:
+After an apply, hand the query role's private key to the deploy:
 
 ```bash
 terraform output -raw snowflake_private_key | gh secret set SNOWFLAKE_PIPELINE_PRIVATE_KEY
 ```
 
 The other settings (`snowflake_account`, `snowflake_user`, `snowflake_role`,
-`snowflake_warehouse`) are non-secret and live in `pipelineConfig` in
-`platform/helm/charts/platform-base/values.yaml` — keep them in sync with
-those outputs. There's no `snowflake_database` output/setting: the medallion
-layer databases (RAW/CLEAN/CURATED) are fixed names shared by
-`ohdp_ingestion.naming` and `dbt_project.yml`, not passed through the
-environment (ADR-0013).
+`snowflake_warehouse`) are non-secret and live in the Cube and Streamlit chart
+values — keep them in sync with those outputs. There's no `snowflake_database`
+setting: the catalog-linked database is named after
+`ohdp_ingestion.naming.CATALOG`, so its name is fixed rather than passed
+through the environment (ADR-0019).
 
 ### Things that will bite you here too
 
@@ -92,5 +160,15 @@ environment (ADR-0013).
   place. Narrow it only once the DOKS egress is stable — node recycles change
   those IPs and a stale entry locks out the whole account, not just the
   pipeline.
-- **`terraform destroy` drops the database** — the warehouse's data files, not
-  just metadata.
+- **`terraform destroy` drops the catalog-linked database** — but that one only
+  holds *references*; the tables themselves are the S3 bucket and the Glue
+  databases, which the same destroy also removes. Nothing here is backed up
+  (ARCHITECTURE.md §11): the lakehouse rebuilds from public sources plus git.
+- **Snowflake writes nothing.** The role has no CREATE TABLE and no DML on
+  `LAKEHOUSE` — dbt-duckdb owns those tables, and a second writer against the
+  same catalog is a real conflict, not just an unused privilege (ADR-0019).
+- **Glue namespace names are lowercase.** Glue enforces it, and Snowflake's
+  catalog-linked databases over a case-insensitive catalog resolve unquoted
+  identifiers against them. If a query comes back "object does not exist" with
+  the name upper-cased in the error, that resolution mode is the thing to
+  check.

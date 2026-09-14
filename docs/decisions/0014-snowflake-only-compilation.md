@@ -1,6 +1,8 @@
 # 0014 — Snowflake-only: drop the local/CI DuckDB targets
 
-**Status:** Accepted
+**Status:** **Superseded by [ADR-0019](0019-iceberg-on-s3-duckdb-dbt.md)** — dbt compiles for DuckDB only
+now. The single-dialect principle this ADR argued for survives; the dialect
+changed.
 **Relates to:** supersedes the local/prod DuckDB-vs-Snowflake split
 [ADR-0012](0012-native-snowflake-tables.md) declared "the permanent
 architecture," and drops the DuckDB-conditional branches ADR-0013 introduced

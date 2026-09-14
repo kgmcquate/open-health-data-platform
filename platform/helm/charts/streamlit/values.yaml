@@ -93,8 +93,9 @@ env:
 
 envFrom:
   # streamlit-snowflake — mirrored by the `secrets` step of deploy-platform.yml
-  # from the same SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret the pipeline
-  # pod uses: OHDP_SNOWFLAKE_PRIVATE_KEY.
+  # from the SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret Cube also uses:
+  # OHDP_SNOWFLAKE_PRIVATE_KEY. Read-only over the LAKEHOUSE catalog-linked
+  # database since ADR-0019.
   secrets:
     - streamlit-snowflake
   configMaps: []

@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from ohdp_ingestion import naming
 from ohdp_ingestion.cdc import CDC
 from ohdp_ingestion.healthdata_gov import HEALTHDATA_GOV
 from ohdp_ingestion.socrata import CADENCES, DatasetConfig, SocrataDomain
@@ -56,7 +57,7 @@ def _table_key(socrata: SocrataDomain, cfg: DatasetConfig) -> str:
 
 
 def _raw_key(socrata: SocrataDomain, cfg: DatasetConfig) -> str:
-    return f"snowflake/raw/{socrata.source}/{cfg.raw_table}"
+    return f"lakehouse/{naming.catalog()}/{naming.schema('raw', socrata.source)}/{cfg.raw_table}"
 
 
 def test_scraper_has_run(socrata: SocrataDomain) -> None:
@@ -118,9 +119,9 @@ def test_only_enabled_datasets_get_the_downstream_assets(socrata: SocrataDomain)
             assert table_str not in by_str
             assert catalog.child_keys == set()
             # Deliberately *not* asserting `raw_str not in by_str`: the
-            # `snowflake/raw/` keyspace is shared with dbt's own source nodes
-            # (assets/snowflake_dbt.py derives the same [prefix, db, schema,
-            # table] key), so a disabled dataset still left behind in a
+            # `lakehouse/` raw keyspace is shared with dbt's own source nodes
+            # (assets/lakehouse_dbt.py derives the same [prefix, catalog,
+            # namespace, table] key), so a disabled dataset left behind in a
             # generated `_stg_<source>__sources.yml` legitimately has a key
             # there. What matters is that nothing ingests it.
 

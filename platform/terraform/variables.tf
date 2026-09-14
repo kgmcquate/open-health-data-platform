@@ -31,13 +31,18 @@ variable "node_count" {
 }
 
 variable "snapshot_bucket" {
-  description = "DigitalOcean Spaces bucket for versioned DuckDB snapshots and Postgres backups."
+  description = "DigitalOcean Spaces bucket for Postgres backups (ARCHITECTURE.md §11)."
   type        = string
   default     = "ohdp-warehouse"
 }
 
 variable "compute_logs_bucket" {
-  description = "DigitalOcean Spaces bucket for Dagster's S3ComputeLogManager (raw stdout/stderr compute logs)."
+  description = <<-EOT
+    AWS S3 bucket for Dagster's S3ComputeLogManager (raw stdout/stderr compute
+    logs). On AWS rather than Spaces because that log manager reads its
+    credentials off the process environment, which the pipeline pod now needs
+    for the lakehouse (ADR-0019).
+  EOT
   type        = string
   default     = "ohdp-compute-logs"
 }
@@ -56,8 +61,8 @@ variable "dns_base" {
 variable "dns_hostnames" {
   description = "Service hostnames (left-most label) fronted by the Traefik ingress."
   type        = list(string)
-  # "catalog" is OpenMetadata, not Snowflake — the warehouse (ADR-0012) is a
-  # Snowflake-hosted endpoint, nothing of ours is served for it.
+  # "catalog" is OpenMetadata, not the Iceberg catalog — that is AWS Glue
+  # (ADR-0019), an AWS-hosted endpoint; nothing of ours is served for it.
   # "chat" is Open WebUI (ADR-0017), a second chat surface alongside "app"
   # (hub-api's own UI); "app" is not being retired by it.
   default = ["app", "chat", "dagster", "catalog", "cube", "streamlit"]
@@ -79,13 +84,120 @@ variable "loadbalancer_ip" {
 }
 
 # ---------------------------------------------------------------------------
-# Snowflake data warehouse (ADR-0012)
+# The Iceberg lakehouse: AWS S3 + the Glue catalog (ADR-0019)
+# ---------------------------------------------------------------------------
+
+variable "aws_region" {
+  description = <<-EOT
+    AWS region for the lakehouse bucket and the Glue catalog. Unrelated to
+    `location` (DigitalOcean) — the cluster stays where it is; only the tables
+    live here, because Snowflake cannot read Iceberg from Spaces.
+  EOT
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "aws_access_key_id" {
+  description = <<-EOT
+    Admin AWS access key Terraform itself uses. Supplied as
+    TF_VAR_aws_access_key_id — deliberately not AWS_ACCESS_KEY_ID, which the
+    Spaces state backend reads (see versions.tf).
+  EOT
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_access_key" {
+  description = "Admin AWS secret key Terraform itself uses. TF_VAR_aws_secret_access_key."
+  type        = string
+  sensitive   = true
+}
+
+variable "lakehouse_bucket" {
+  description = "S3 bucket holding every Iceberg table's data and metadata files."
+  type        = string
+  default     = "ohdp-lakehouse"
+}
+
+variable "lakehouse_catalog" {
+  description = <<-EOT
+    Name both engines know the catalog by: DuckDB's `ATTACH ... AS <name>`
+    alias (data/dbt/profiles.yml) and the Snowflake catalog-linked database.
+    Must equal ohdp_ingestion.naming.CATALOG — that module is what the pipeline
+    reads at runtime.
+  EOT
+  type        = string
+  default     = "lakehouse"
+}
+
+variable "lakehouse_sources" {
+  description = <<-EOT
+    Ingestion sources. Each gets a `raw_<source>` and a `clean_<source>`
+    namespace in the Glue catalog (ADR-0019), matching
+    ohdp_ingestion.naming.schema() and dbt's generate_schema_name.sql.
+  EOT
+  type        = list(string)
+  default     = ["healthdata_gov", "cdc"]
+}
+
+variable "lakehouse_marts" {
+  description = <<-EOT
+    Presentation-layer marts. Each gets a `mart_<name>` namespace alongside the
+    always-present `core` one. dlt and dbt-duckdb can also open a namespace on
+    their own; list one here to bring it under Terraform.
+  EOT
+  type        = list(string)
+  default = [
+    "access",
+    "behavioral_health",
+    "child_welfare",
+    "chronic_disease",
+    "education",
+    "immunization",
+    "infectious_disease",
+    "respiratory",
+  ]
+}
+
+variable "snowflake_storage_aws_iam_user_arn" {
+  description = <<-EOT
+    STORAGE_AWS_IAM_USER_ARN from `DESC EXTERNAL VOLUME` — the IAM user
+    Snowflake assumes the storage role as. Empty on a first apply (the volume
+    doesn't exist yet); set it and apply again. See README.md.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "snowflake_storage_aws_external_id" {
+  description = "STORAGE_AWS_EXTERNAL_ID from `DESC EXTERNAL VOLUME`. Second apply; see README.md."
+  type        = string
+  default     = ""
+}
+
+variable "snowflake_glue_aws_iam_user_arn" {
+  description = <<-EOT
+    API_AWS_IAM_USER_ARN from `DESC CATALOG INTEGRATION` — the IAM user
+    Snowflake assumes the Glue role as. Second apply; see README.md.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "snowflake_glue_aws_external_id" {
+  description = "API_AWS_EXTERNAL_ID from `DESC CATALOG INTEGRATION`. Second apply; see README.md."
+  type        = string
+  default     = ""
+}
+
+# ---------------------------------------------------------------------------
+# Snowflake — the read side of the lakehouse (ADR-0019)
 # ---------------------------------------------------------------------------
 
 variable "snowflake_organization_name" {
   description = <<-EOT
     Snowflake organization name. With `snowflake_account_name` it forms the
-    account identifier `<org>-<account>` dlt and dbt-snowflake connect to.
+    account identifier `<org>-<account>` Cube and Streamlit connect to.
     Find both with `SELECT CURRENT_ORGANIZATION_NAME(), CURRENT_ACCOUNT_NAME()`.
   EOT
   type        = string
@@ -97,53 +209,31 @@ variable "snowflake_account_name" {
 }
 
 variable "snowflake_warehouse" {
-  description = "Virtual warehouse (compute) for the pipeline's dlt loads and dbt-snowflake builds."
+  description = "Virtual warehouse (compute) for Cube's and Streamlit's queries over the lakehouse."
   type        = string
   default     = "OHDP_WH"
 }
 
-variable "snowflake_sources" {
-  description = <<-EOT
-    Ingestion sources. Each gets a same-named schema in both the RAW and CLEAN
-    databases (ADR-0013), matching ohdp_ingestion.naming.schema() and
-    dbt_project.yml's per-folder `+schema`.
-  EOT
-  type        = list(string)
-  default     = ["healthdata_gov"]
-}
-
-variable "snowflake_marts" {
-  description = <<-EOT
-    Presentation-layer marts. Each gets a same-named schema in the CURATED
-    database, alongside the always-present "core" schema (ADR-0013). A mart
-    can also appear on its own via dbt-snowflake's `CREATE SCHEMA IF NOT
-    EXISTS`; list one here to bring it under Terraform.
-  EOT
-  type        = list(string)
-  default     = ["respiratory"]
-}
-
-variable "snowflake_data_retention_days" {
-  description = "Time Travel window on the database."
-  type        = number
-  default     = 1
-}
-
 variable "snowflake_pipeline_role" {
-  description = "Account role the pipeline authenticates as."
+  description = <<-EOT
+    Account role Cube and Streamlit authenticate as. Read-only over the
+    catalog-linked database (ADR-0019). Name kept from when it was the
+    pipeline's write role so the existing repo/Kubernetes secrets and Helm
+    values don't all have to rotate at once.
+  EOT
   type        = string
   default     = "OHDP_PIPELINE"
 }
 
 variable "snowflake_pipeline_user" {
-  description = "SERVICE user the pipeline authenticates as, via its RSA key pair."
+  description = "SERVICE user Cube and Streamlit authenticate as, via its RSA key pair."
   type        = string
   default     = "OHDP_PIPELINE"
 }
 
 variable "snowflake_allowed_ips" {
   description = <<-EOT
-    CIDRs allowed to authenticate as the pipeline user. Account-wide network
+    CIDRs allowed to authenticate as the query user. Account-wide network
     policy — see snowflake.tf for why it stays even though key-pair auth
     doesn't strictly require one.
 

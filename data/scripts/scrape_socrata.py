@@ -34,7 +34,7 @@ import yaml
 
 from ohdp_ingestion.cdc import CDC
 from ohdp_ingestion.healthdata_gov import HEALTHDATA_GOV
-from ohdp_ingestion.naming import database as ns_database
+from ohdp_ingestion.naming import catalog as ns_catalog
 from ohdp_ingestion.naming import schema as ns_schema
 from ohdp_ingestion.socrata import DatasetConfig, SocrataDomain, iter_catalog, slugify
 
@@ -124,9 +124,9 @@ def _dump_dataset(cfg: DatasetConfig, target: _Target) -> str:
 
 
 def _write_dbt_sources(configs: list[DatasetConfig], target: _Target) -> None:
-    """Raw tables, one schema per domain (ADR-0013)."""
+    """Raw tables, one Iceberg namespace per domain (ADR-0019)."""
     source = target.socrata.source
-    raw_database = ns_database("raw")
+    raw_database = ns_catalog()
     raw_schema = ns_schema("raw", source)
     enabled = [c for c in configs if c.enabled]
     doc = {

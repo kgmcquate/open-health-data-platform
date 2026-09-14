@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt types test dbt-parse dagster-dev api-dev cube-dev \
+.PHONY: help setup lint fmt types test dbt-parse dbt-build dagster-dev api-dev cube-dev \
         act-list act-preflight act-build act-plan images
 
 help: ## List targets
@@ -20,8 +20,11 @@ types: ## mypy
 test: ## pytest
 	uv run pytest
 
-dbt-parse: ## Parse dbt models (no warehouse required)
+dbt-parse: ## Parse dbt models (no catalog connection required)
 	cd data/dbt && uv run dbt deps && uv run dbt parse
+
+dbt-build: ## Build the lakehouse (needs OHDP_AWS_* + AWS_* — see .env.example)
+	cd data/dbt && uv run dbt build
 
 dagster-dev: ## Run the Dagster webserver against the local code location
 	cd data && uv run dagster dev -m ohdp_orchestration.definitions

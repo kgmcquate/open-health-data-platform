@@ -15,12 +15,13 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0006](0006-upstream-charts-and-external-authz-proxy.md) | Upstream Helm charts, external authz proxy | Accepted |
 | [0007](0007-oauth2-proxy-google-sso.md) | Google login wall in front of Dagster (oauth2-proxy) | Accepted |
 | [0008](0008-config-driven-healthdata-gov-ingestion.md) | Config-driven HealthData.gov ingestion (Dagster component + dlt) | Accepted |
-| [0010](0010-iceberg-medallion-lakehouse.md) | Iceberg medallion lakehouse, Polaris catalog | Superseded by [0012](0012-native-snowflake-tables.md) |
+| [0010](0010-iceberg-medallion-lakehouse.md) | Iceberg medallion lakehouse, Polaris catalog | Superseded by [0012](0012-native-snowflake-tables.md); shape revived by [0019](0019-iceberg-on-s3-duckdb-dbt.md) |
 | [0011](0011-snowflake-horizon-catalog.md) | Snowflake Horizon Catalog replaces Polaris; Terraform-managed | Superseded by [0012](0012-native-snowflake-tables.md) |
-| [0012](0012-native-snowflake-tables.md) | Native Snowflake tables replace the Iceberg lake | Accepted |
-| [0013](0013-per-layer-snowflake-databases.md) | One Snowflake database per medallion layer (RAW/CLEAN/CURATED) | Accepted |
-| [0014](0014-snowflake-only-compilation.md) | Snowflake-only: drop the local/CI DuckDB targets | Accepted |
+| [0012](0012-native-snowflake-tables.md) | Native Snowflake tables replace the Iceberg lake | Superseded by [0019](0019-iceberg-on-s3-duckdb-dbt.md) |
+| [0013](0013-per-layer-snowflake-databases.md) | One Snowflake database per medallion layer (RAW/CLEAN/CURATED) | Superseded by [0019](0019-iceberg-on-s3-duckdb-dbt.md) |
+| [0014](0014-snowflake-only-compilation.md) | Snowflake-only: drop the local/CI DuckDB targets | Superseded by [0019](0019-iceberg-on-s3-duckdb-dbt.md) |
 | [0015](0015-streamlit-over-superset.md) | Streamlit over Superset for dashboards | Accepted |
 | [0016](0016-chat-agent-tool-surface.md) | Chat agent tool surface: own Cube tools, OpenMetadata MCP for context | Accepted |
 | [0017](0017-open-webui-chat-ui.md) | Open WebUI as a chat UI, with our own Cube MCP server | Accepted |
 | [0018](0018-socrata-ingestion-shared-across-domains.md) | One Socrata ingestion core, bound per domain (CDC) | Accepted |
+| [0019](0019-iceberg-on-s3-duckdb-dbt.md) | Iceberg on S3 + Glue REST; DuckDB builds, Snowflake reads | Accepted |

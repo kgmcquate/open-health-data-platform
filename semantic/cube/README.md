@@ -44,7 +44,7 @@ loudly instead of quietly reading the wrong table.
 
 ## Local
 
-Cube queries Snowflake directly (ADR-0012/0014 — there is no local/offline
+Cube queries Snowflake directly (ADR-0019 — there is no local/offline
 warehouse target to point it at instead). `make cube-dev` runs `dbt parse`
 first (no warehouse needed — it just compiles the manifest cube-dbt reads)
 and mounts `data/dbt/target/` read-only into the container at `dbt/`:

@@ -23,13 +23,13 @@ select
     sample_location,
     sample_location_specify,
     try_cast(population_served as bigint)       as population_served,
-    try_to_date(date_start)                     as period_start,
-    try_to_date(date_end)                       as period_end,
+    {{ try_to_date('date_start') }}                     as period_start,
+    {{ try_to_date('date_end') }}                       as period_end,
     try_cast(ptc_15d as double)                 as pct_change_15d,
     try_cast(detect_prop_15d as double)         as detection_proportion_15d,
     try_cast(percentile as double)              as concentration_percentile,
     sampling_prior,
-    try_to_date(first_sample_date)              as first_sample_date,
+    {{ try_to_date('first_sample_date') }}              as first_sample_date,
     ingest_ts
 from {{ ref('stg_cdc__wastewater_sars_cov_2_metrics') }}
-where try_to_date(date_end) is not null
+where {{ try_to_date('date_end') }} is not null

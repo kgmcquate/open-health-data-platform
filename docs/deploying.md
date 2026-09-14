@@ -5,7 +5,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 | Workflow | Does | Needs a cluster? |
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api`, `ohdp-streamlit`, and `ohdp-pipeline`, pushes to GHCR | no |
-| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket, Cloudflare DNS records | no |
+| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket, Cloudflare DNS records, the AWS lakehouse (S3 + Glue + IAM) and Snowflake's read access to it | no |
 | [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Cube, Streamlit, oauth2-proxy-streamlit, hub-api, oauth2-proxy-app | when `deploy` ticked |
 
 ## Setup
@@ -37,6 +37,24 @@ Order matters, and two steps are deliberately manual.
    act workflow_dispatch -W .github/workflows/deploy-infra.yml --input action=apply
    ```
    `plan` is the default; `apply` creates billed resources.
+
+   This also creates the Iceberg lakehouse (ADR-0019) and needs AWS admin
+   credentials in `.env` as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` —
+   which the workflow passes as `TF_VAR_aws_*`, *not* under those names, since
+   the Spaces state backend already claims them.
+
+   Two follow-ups the apply prints and does not do for you:
+
+   - publish the pipeline's IAM key into `AWS_PIPELINE_ACCESS_KEY_ID` /
+     `AWS_PIPELINE_SECRET_ACCESS_KEY` (repo secrets, read by
+     `deploy-platform.yml`) and set `OHDP_GLUE_CATALOG_ID` in
+     `platform/helm/charts/platform-base/values.yaml` to the printed
+     `glue_catalog_id`;
+   - finish Snowflake's two AWS trust policies — a **second apply** with four
+     values only Snowflake can generate. See
+     [`platform/terraform/README.md`](../platform/terraform/README.md),
+     "The second apply". Until it is done, Cube and Streamlit see an empty
+     `LAKEHOUSE` database; the pipeline itself is unaffected.
 
 3. **Capture the kubeconfig** into `KUBECONFIG_B64` in `.env`:
    ```bash

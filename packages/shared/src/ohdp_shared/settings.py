@@ -19,34 +19,59 @@ class Settings(BaseSettings):
     log_json: bool = True
     log_level: str = "INFO"
 
-    # Object storage (DigitalOcean Spaces, S3-compatible)
+    # Object storage (DigitalOcean Spaces, S3-compatible). Postgres backups
+    # only — the lakehouse and Dagster's compute logs are on AWS S3 (ADR-0019).
     spaces_endpoint_url: str = ""
     spaces_access_key_id: str = ""
     spaces_secret_access_key: str = ""
     spaces_region: str = "nyc3"
     spaces_bucket: str = "ohdp-warehouse"
 
-    # Snowflake data warehouse (ADR-0012/0014). Plain tables, no REST catalog.
-    snowflake_account: str = Field(
+    # --- The Iceberg lakehouse: AWS S3 + the Glue Iceberg REST catalog
+    # (ADR-0019). dlt writes raw tables through pyiceberg and dbt-duckdb writes
+    # clean/core/marts through DuckDB's ATTACH; both authenticate with the same
+    # IAM user, and both sign Glue's REST endpoint with SigV4.
+    aws_region: str = "us-east-1"
+    aws_access_key_id: str = Field(
         default="",
         description=(
-            "<organization>-<account> identifier dlt/dbt-snowflake connect to as host/account."
+            "Pipeline IAM user's access key. Terraform's aws_pipeline_access_key_id "
+            "output; also exported as AWS_ACCESS_KEY_ID for boto3/pyiceberg's own "
+            "SigV4 signing (see ohdp_ingestion.socrata.source)."
         ),
+    )
+    aws_secret_access_key: str = ""
+    lakehouse_bucket: str = Field(
+        default="ohdp-lakehouse",
+        description="S3 bucket holding every Iceberg table's data and metadata files.",
+    )
+    glue_catalog_id: str = Field(
+        default="",
+        description=(
+            "AWS account ID — what the Glue Iceberg REST endpoint calls the catalog "
+            "name. Terraform's aws_account_id output."
+        ),
+    )
+    # Namespace names are derived per medallion layer (ohdp_ingestion.naming,
+    # ADR-0019), not configured here.
+
+    # Snowflake (ADR-0019). No longer the pipeline's compute: it reads the same
+    # Iceberg tables through a catalog-linked database, for Cube's metric
+    # queries and Streamlit's ad-hoc ones.
+    snowflake_account: str = Field(
+        default="",
+        description="<organization>-<account> identifier Cube/Streamlit connect to.",
     )
     snowflake_user: str = "OHDP_PIPELINE"
     snowflake_private_key: str = Field(
         default="",
         description=(
-            "The pipeline's RSA private key (PKCS#8 PEM) — Snowflake SERVICE users "
-            "don't accept password auth, so this is what both dlt's Snowflake "
-            "destination and dbt-snowflake authenticate with. Terraform's "
-            "snowflake_private_key output."
+            "The query role's RSA private key (PKCS#8 PEM) — Snowflake SERVICE users "
+            "don't accept password auth. Terraform's snowflake_private_key output."
         ),
     )
     snowflake_role: str = "OHDP_PIPELINE"
     snowflake_warehouse: str = "OHDP_WH"
-    # Database names are fixed per medallion layer (ohdp_ingestion.naming,
-    # ADR-0013), not configured here — RAW is what dlt's raw loader connects to.
 
     # Postgres (single instance, 4 logical databases)
     postgres_host: str = "localhost"
@@ -79,6 +104,18 @@ class Settings(BaseSettings):
     # Chat quotas (ARCHITECTURE.md §10 open decision 3 — provisional)
     free_monthly_questions: int = 20
     paid_monthly_questions: int = 500
+
+    @property
+    def glue_rest_uri(self) -> str:
+        """Glue's Iceberg REST endpoint for `aws_region`. The one URI dlt
+        (pyiceberg), DuckDB's `ATTACH` and Snowflake's catalog integration all
+        point at."""
+        return f"https://glue.{self.aws_region}.amazonaws.com/iceberg"
+
+    @property
+    def lakehouse_url(self) -> str:
+        """`s3://` root every Iceberg table's files live under."""
+        return f"s3://{self.lakehouse_bucket}"
 
 
 @lru_cache

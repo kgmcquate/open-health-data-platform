@@ -14,12 +14,12 @@
 
 select
     condition,
-    try_to_date(month_end || '-01')             as month_start,
-    last_day(try_to_date(month_end || '-01'))   as month_end,
+    {{ try_to_date("cast(month_end as varchar) || '-01'") }}             as month_start,
+    last_day({{ try_to_date("cast(month_end as varchar) || '-01'") }})   as month_end,
     demographics_type                           as stratification_category,
     demographics_values                         as stratification,
     demographics_type = 'Total'                 as is_total,
     try_cast(rate_per_100000_visits as double)  as rate_per_100k_visits,
     ingest_ts
 from {{ ref('stg_cdc__ed_visits_mental_health') }}
-where try_to_date(month_end || '-01') is not null
+where {{ try_to_date("cast(month_end as varchar) || '-01'") }} is not null

@@ -1,28 +1,59 @@
-# dbt-snowflake is the only compute engine (ADR-0014, which supersedes
-# ADR-0012's local/CI DuckDB targets — see that ADR's superseding note for
-# why; ADR-0013's per-layer-database split still applies via `+database`/
-# `+schema`, generate_database_name.sql / generate_schema_name.sql).
+# dbt-duckdb is the only compute engine for the transformation layers
+# (ADR-0019, which supersedes ADR-0014's "Snowflake-only" and ADR-0012's
+# native-Snowflake-tables decisions). DuckDB is not a warehouse here: it holds
+# nothing. Every relation lives in the attached Iceberg catalog, so the DuckDB
+# database itself is `:memory:` and the process is disposable.
 #
 # `dbt parse` (CI, the image, `data/tests/conftest.py`) only needs the profile
 # to render, not a live connection, so every env var below defaults to empty
 # when unset rather than erroring — `dbt build`/`dbt run` still fail loudly if
-# it's actually missing when Snowflake is queried.
+# one is actually missing when the catalog is attached.
 #
 # Requires the project venv: `cd data && uv run dbt ...`
 ohdp:
   target: prod
   outputs:
     prod:
-      type: snowflake
-      account: "{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}"
-      user: "{{ env_var('OHDP_SNOWFLAKE_USER', '') }}"
-      # Snowflake SERVICE users don't accept password auth — key-pair is the
-      # supported mechanism. PKCS#8 PEM, read straight from the env var.
-      private_key: "{{ env_var('OHDP_SNOWFLAKE_PRIVATE_KEY', '') }}"
-      role: "{{ env_var('OHDP_SNOWFLAKE_ROLE', '') }}"
-      # Required fallback; every model overrides both via `+database`/`+schema`
-      # (generate_database_name.sql / generate_schema_name.sql, ADR-0013).
-      database: "CLEAN"
-      warehouse: "{{ env_var('OHDP_SNOWFLAKE_WAREHOUSE', '') }}"
-      schema: "core"
+      type: duckdb
+      # Nothing is persisted locally: models are committed to Iceberg through
+      # the attached catalog, and intermediate state is scratch.
+      path: ":memory:"
+      # Must equal the `attach.alias` below (dbt-duckdb validates this), and
+      # equal ohdp_ingestion.naming.CATALOG — the same name Snowflake's
+      # catalog-linked database carries, so one compiled manifest describes
+      # relations both engines resolve (ADR-0019).
+      database: lakehouse
+      # Fallback only; generate_schema_name.sql derives the real namespace from
+      # each model's name.
+      schema: core
       threads: 4
+
+      # `iceberg` brings ATTACH ... (TYPE iceberg); `httpfs` + `aws` are what
+      # let it and the data files reach S3. Pre-installed in the image
+      # (data/Dockerfile) so a run pod doesn't fetch them on every start.
+      extensions:
+        - httpfs
+        - aws
+        - iceberg
+
+      # Credentials for the S3 data files AND for SigV4-signing the Glue REST
+      # calls — the ATTACH below references this secret by name. Same IAM user
+      # the dlt raw loader uses (Terraform's aws_pipeline_* outputs).
+      secrets:
+        - type: s3
+          name: ohdp_aws
+          region: "{{ env_var('OHDP_AWS_REGION', 'us-east-1') }}"
+          key_id: "{{ env_var('OHDP_AWS_ACCESS_KEY_ID', '') }}"
+          secret: "{{ env_var('OHDP_AWS_SECRET_ACCESS_KEY', '') }}"
+
+      # The Glue Data Catalog over its Iceberg REST endpoint. The path is
+      # Glue's catalog name, which for the account-level catalog is the AWS
+      # account ID — the same value Snowflake's catalog integration passes as
+      # REST_CONFIG.CATALOG_NAME (platform/terraform/snowflake.tf).
+      attach:
+        - path: "{{ env_var('OHDP_GLUE_CATALOG_ID', '') }}"
+          type: iceberg
+          alias: lakehouse
+          secret: ohdp_aws
+          options:
+            endpoint_type: glue

@@ -1,5 +1,5 @@
-"""Evaluates Dagster AutomationConditions for the Snowflake dbt assets
-(``ohdp_orchestration.assets.snowflake_dbt``) — each model opts in (or not)
+"""Evaluates Dagster AutomationConditions for the lakehouse dbt assets
+(``ohdp_orchestration.assets.lakehouse_dbt``) — each model opts in (or not)
 via its own ``+meta.dagster``/``automaterialize`` config; see
 ``_Translator.get_automation_condition`` there."""
 
@@ -11,9 +11,9 @@ from dagster import (
     DefaultSensorStatus,
 )
 
-from ohdp_orchestration.assets.snowflake_dbt import KEY_PREFIX
+from ohdp_orchestration.assets.lakehouse_dbt import KEY_PREFIX
 
-snowflake_dbt_automation_sensor = AutomationConditionSensorDefinition(
+lakehouse_dbt_automation_sensor = AutomationConditionSensorDefinition(
     name=f"{KEY_PREFIX}_automation",
     target=AssetSelection.groups(
         f"{KEY_PREFIX}_clean",
@@ -22,5 +22,5 @@ snowflake_dbt_automation_sensor = AutomationConditionSensorDefinition(
     ),
     minimum_interval_seconds=60,
     default_status=DefaultSensorStatus.RUNNING,
-    description="Evaluate Dagster AutomationConditions for the Snowflake dbt assets.",
+    description="Evaluate Dagster AutomationConditions for the lakehouse dbt assets.",
 )

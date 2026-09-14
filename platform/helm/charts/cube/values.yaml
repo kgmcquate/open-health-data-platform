@@ -107,6 +107,12 @@ env:
   # platform-base's pipelineConfig. Update all three together if the account/
   # warehouse ever changes.
   #
+  # Since ADR-0019 the tables Cube queries are Iceberg tables in S3, surfaced
+  # through the LAKEHOUSE catalog-linked database; the connection is unchanged
+  # because the cube models name their relations from the dbt manifest
+  # (`lakehouse.<namespace>.<table>`), and the catalog-linked database carries
+  # that same name. No CUBEJS_DB_NAME: every sql_table is fully qualified.
+  #
   # Username is CUBEJS_DB_USER, not CUBEJS_DB_SNOWFLAKE_USER — the Snowflake
   # driver only reads username/password through the generic CUBEJS_DB_USER /
   # CUBEJS_DB_PASS vars (shared across every driver); everything
@@ -137,9 +143,9 @@ secretEnv:
     secretName: cube-secret
     secretKey: OHDP_CUBE_API_SECRET
   # Mirrored by deploy-platform.yml's `secrets` step from the same
-  # SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret streamlit-snowflake uses
-  # (ADR-0015's same temporary privilege trade-off: shared pipeline role,
-  # not a dedicated read-only one, until that's built).
+  # SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret streamlit-snowflake uses. The
+  # role is read-only over the lakehouse since ADR-0019, so the sharing is
+  # between two readers rather than with a writer.
   - name: CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY
     secretName: cube-snowflake
     secretKey: OHDP_SNOWFLAKE_PRIVATE_KEY

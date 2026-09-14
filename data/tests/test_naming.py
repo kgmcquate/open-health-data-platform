@@ -1,26 +1,33 @@
-"""Medallion-layer naming (ADR-0013) — shared by the raw loader and dbt's
-schema/database config, so names stay in sync across the write and read sides."""
+"""Medallion-layer naming (ADR-0019) — shared by the raw loader, dbt's schema
+config and the Snowflake read side, so names stay in sync everywhere."""
 
 from __future__ import annotations
 
-from ohdp_ingestion.naming import database, namespace, schema
+import pytest
+
+from ohdp_ingestion.naming import catalog, namespace, schema
 
 
-def test_database() -> None:
-    assert database("raw") == "raw"
-    assert database("clean") == "clean"
-    assert database("curated") == "curated"
+def test_catalog() -> None:
+    # Equal to dbt's `attach.alias`/`database` (data/dbt/profiles.yml) and to
+    # the Snowflake catalog-linked database (platform/terraform/snowflake.tf).
+    assert catalog() == "lakehouse"
 
 
 def test_schema() -> None:
-    assert schema("raw", "healthdata_gov") == "healthdata_gov"
-    assert schema("clean", "cdc") == "cdc"
+    assert schema("raw", "healthdata_gov") == "raw_healthdata_gov"
+    assert schema("clean", "cdc") == "clean_cdc"
     assert schema("curated") == "core"
-    assert schema("curated", "respiratory") == "respiratory"
+    assert schema("curated", "respiratory") == "mart_respiratory"
+
+
+def test_schema_requires_a_source_outside_curated() -> None:
+    with pytest.raises(ValueError):
+        schema("raw")
 
 
 def test_namespace() -> None:
-    assert namespace("raw", "healthdata_gov") == "raw.healthdata_gov"
-    assert namespace("clean", "cdc") == "clean.cdc"
-    assert namespace("curated") == "curated.core"
-    assert namespace("curated", "respiratory") == "curated.respiratory"
+    assert namespace("raw", "healthdata_gov") == "lakehouse.raw_healthdata_gov"
+    assert namespace("clean", "cdc") == "lakehouse.clean_cdc"
+    assert namespace("curated") == "lakehouse.core"
+    assert namespace("curated", "respiratory") == "lakehouse.mart_respiratory"

@@ -61,10 +61,10 @@ def table_name(text: str) -> str:
 
     A leading digit is not a legal unquoted SQL identifier, and dlt's snake_case
     naming convention silently prefixes one with ``_`` on the way to the
-    warehouse. Plenty of CDC dataset names start with a year ("500 Cities...",
+    catalog. Plenty of CDC dataset names start with a year ("500 Cities...",
     "1998-2024 Serotype Data...", ~30 of them), so applying the same rule here
     is what keeps ``raw_table`` equal to the table dlt actually creates — and
-    with it the generated dbt source and the ``snowflake/raw/`` asset key that
+    with it the generated dbt source and the ``lakehouse/`` raw asset key that
     the load reports its materialization against.
     """
     slug = slugify(text)
@@ -97,7 +97,7 @@ class DatasetConfig(BaseModel):
     cadence: Cadence = "weekly"
     enabled: bool = False
 
-    raw_table: str = Field(description="Table name written in the source's RAW schema")
+    raw_table: str = Field(description="Table name written in the source's raw_<source> namespace")
     incremental_cursor: str | None = Field(
         default="socrata_updated_at",
         description="Cursor column for merge loads; null forces a full replace",

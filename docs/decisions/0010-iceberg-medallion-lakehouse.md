@@ -1,6 +1,13 @@
 # 0010 — Iceberg medallion lakehouse on Spaces, Polaris catalog
 
-**Status:** Accepted, but the catalog and storage decisions are **superseded by
+**Status:** Superseded (twice over). [ADR-0011](0011-snowflake-horizon-catalog.md)
+then [ADR-0012](0012-native-snowflake-tables.md) retired it; [ADR-0019](0019-iceberg-on-s3-duckdb-dbt.md)
+revives the *shape* below — Iceberg medallion layers, layer-prefixed namespaces,
+dbt on DuckDB — on AWS S3 with a Glue REST catalog, and without the custom write
+plugin, which DuckDB's own Iceberg writer has since made unnecessary. The
+original superseding note follows.
+
+Originally: **superseded by
 [ADR-0011](0011-snowflake-horizon-catalog.md)** — the catalog is Snowflake's
 Horizon Catalog and the table files live in Snowflake-managed storage, not
 Spaces. The medallion layers, the namespace scheme, the dbt-duckdb writer plugin

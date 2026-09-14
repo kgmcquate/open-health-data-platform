@@ -21,8 +21,8 @@ the ``DatasetConfig`` contract) emits up to three assets:
   actually is that run. Only when ``enabled: true``. The run goes through
   ``ohdp_orchestration.resources.dlt.DLT_RESOURCE`` — see that module for why a
   plain ``dlt.run()`` isn't safe here.
-* a **raw-layer asset** ``snowflake/raw/<source>/<raw_table>`` — an
-  unexecutable ``AssetSpec`` labelling the physical Snowflake table, which
+* a **raw-layer asset** ``lakehouse/<catalog>/raw_<source>/<raw_table>`` — an
+  unexecutable ``AssetSpec`` labelling the Iceberg table in the catalog, which
   receives a *runless* materialization event from the table asset's op for
   every table the load actually touched. Only when ``enabled: true``.
 
@@ -62,17 +62,17 @@ log = get_logger(__name__)
 
 # Asset-key prefixes: unexecutable source-catalog specs live under `sources/`,
 # the dlt-ingested table assets under `ingestion/` — kept distinct from
-# `SNOWFLAKE_PREFIX` below and from each other so the graph reads
-# source -> ingestion -> snowflake left to right.
+# `LAKEHOUSE_PREFIX` below and from each other so the graph reads
+# source -> ingestion -> lakehouse left to right.
 SOURCES_PREFIX = "sources"
 INGESTION_PREFIX = "ingestion"
 
-# Must match ohdp_orchestration.assets.snowflake_dbt's `KEY_PREFIX` — there's
+# Must match ohdp_orchestration.assets.lakehouse_dbt's `KEY_PREFIX` — there's
 # no shared constant since the two modules are independent, but the dbt
-# translator's `get_asset_key` (assets/snowflake_dbt.py) computes
-# [prefix, database, schema, name] for each source's dbt source nodes too,
-# and that key needs to line up with `_snowflake_raw_spec()` below.
-SNOWFLAKE_PREFIX = "snowflake"
+# translator's `get_asset_key` (assets/lakehouse_dbt.py) computes
+# [prefix, catalog, namespace, name] for each source's dbt source nodes too,
+# and that key needs to line up with `_lakehouse_raw_spec()` below.
+LAKEHOUSE_PREFIX = "lakehouse"
 
 
 @dataclass
@@ -83,7 +83,7 @@ class _TableTranslator(DagsterDltTranslator):
     spec already carries the socrata-catalog dep, the cadence tag the
     schedules select on, and the advertised column schema. Left alone (from
     the base translator): ``automation_condition``, ``owners``, and
-    ``kinds`` — kinds default to ``{"dlt", "snowflake"}``.
+    ``kinds`` — kinds default to ``{"dlt", "filesystem"}``.
     """
 
     spec: AssetSpec
@@ -128,7 +128,7 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
 
     @property
     def _raw_namespace(self) -> str:
-        """e.g. ``"raw.healthdata_gov"`` (ADR-0013)."""
+        """e.g. ``"lakehouse.raw_healthdata_gov"`` (ADR-0019)."""
         return naming.namespace("raw", self._source)
 
     # --- keys ---------------------------------------------------------------
@@ -140,13 +140,12 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
     def table_key(self) -> AssetKey:
         return AssetKey([INGESTION_PREFIX, self._source, self.raw_table])
 
-    def _snowflake_raw_key(self, table: str) -> AssetKey:
-        """Label for where a physical table lives in Snowflake's RAW
-        layer — `[prefix, "RAW", schema, table]`, via the same
+    def _lakehouse_raw_key(self, table: str) -> AssetKey:
+        """Label for where a table lives in the catalog's raw layer —
+        `[prefix, catalog, "raw_<source>", table]`, via the same
         `ohdp_ingestion.naming` module the raw loader itself uses, and
-        matching dbt's actual compiled source-node asset key now that
-        `dbt/target/manifest.json` is always parsed against the one Snowflake
-        target (ADR-0014). Takes an explicit table name (not always
+        matching dbt's actual compiled source-node asset key (ADR-0019).
+        Takes an explicit table name (not always
         `self.raw_table`) because one dlt run can normalize nested JSON into
         several physical tables — `<raw_table>__<nested_field>`, one per
         array/object dlt flattens — and each gets its own key here; see
@@ -154,16 +153,16 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
         """
         return AssetKey(
             [
-                SNOWFLAKE_PREFIX,
-                naming.database("raw"),
+                LAKEHOUSE_PREFIX,
+                naming.catalog(),
                 naming.schema("raw", self._source),
                 table,
             ]
         )
 
     @property
-    def snowflake_raw_key(self) -> AssetKey:
-        return self._snowflake_raw_key(self.raw_table)
+    def lakehouse_raw_key(self) -> AssetKey:
+        return self._lakehouse_raw_key(self.raw_table)
 
     # --- specs -------------------------------------------------------------
     def _advertised_schema(self) -> TableSchema | None:
@@ -237,20 +236,19 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
             tags={"domain": self._source, "cadence": self.cadence},
         )
 
-    def _snowflake_raw_spec(self) -> AssetSpec:
-        """Unexecutable RAW-layer label for this table (``snowflake_raw_key``),
-        downstream of the dlt table. NOT currently the same asset dbt's
-        source resolves to in the live graph — see the docstring on
-        `snowflake_raw_key`. `_table_asset()`'s op reports its materialization
-        directly (see below); this spec never runs its own op.
+    def _lakehouse_raw_spec(self) -> AssetSpec:
+        """Unexecutable raw-layer label for this table (``lakehouse_raw_key``),
+        downstream of the dlt table — the same key dbt's source node resolves
+        to. `_table_asset()`'s op reports its materialization directly (see
+        below); this spec never runs its own op.
         """
         return AssetSpec(
-            key=self.snowflake_raw_key,
+            key=self.lakehouse_raw_key,
             deps=[self.table_key],
-            group_name=f"{SNOWFLAKE_PREFIX}_raw",
+            group_name=f"{LAKEHOUSE_PREFIX}_raw",
             description=f"{self.name} — as dbt's `{self._source}` source sees it.",
-            tags={"domain": SNOWFLAKE_PREFIX, "layer": "raw"},
-            kinds={"snowflake"},
+            tags={"domain": LAKEHOUSE_PREFIX, "layer": "raw"},
+            kinds={"iceberg"},
         )
 
     # --- defs ---------------------------------------------------------------
@@ -295,7 +293,7 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
                 for table_name in table_names:
                     context.instance.report_runless_asset_event(
                         AssetMaterialization(
-                            asset_key=cfg._snowflake_raw_key(table_name),
+                            asset_key=cfg._lakehouse_raw_key(table_name),
                             description="Represents data copied into the raw layer.",
                         )
                     )
@@ -307,6 +305,6 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
         resources: dict = {}
         if self.enabled:
             assets.append(self._table_asset())
-            assets.append(self._snowflake_raw_spec())
+            assets.append(self._lakehouse_raw_spec())
             resources["dlt"] = DLT_RESOURCE
         return Definitions(assets=assets, resources=resources)

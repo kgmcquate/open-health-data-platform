@@ -4,11 +4,11 @@
 # Relax only this module.
 # mypy: disable-error-code="no-untyped-def,untyped-decorator,call-overload,no-any-return,arg-type"
 """A ``dlt`` source over one Socrata dataset — any domain (ADR-0018) — landing
-a native table in the ``RAW`` database (ADR-0013, building on ADR-0014). dlt writes straight to
-Snowflake and handles schema evolution and the incremental cursor itself;
-there is no separate staging step or catalog-commit call. dlt keeps its own
-pipeline state in the destination dataset, which is what makes the cursor
-survive a pod restart.
+an Iceberg table in the ``raw_<source>`` namespace of the Glue catalog
+(ADR-0019). dlt's own filesystem/Iceberg support handles schema evolution and
+the incremental cursor; there is no bespoke stage-then-commit step the way
+ADR-0010 needed. dlt keeps its pipeline state in the destination dataset, which
+is what makes the cursor survive a pod restart.
 
 Every row carries two system columns we alias in explicitly:
 
@@ -163,6 +163,9 @@ def socrata_source(
             primary_key="socrata_id",
             write_disposition=write_disposition(incremental_cursor),
             columns=_column_hints(columns),
+            # What makes the filesystem destination commit an Iceberg table
+            # (registered in the Glue catalog) rather than bare Parquet files.
+            table_format="iceberg",
         )
         # dlt's documented pattern is to default the arg to the incremental object;
         # B008 flags the call in the default but that is exactly how the hint is wired.
@@ -222,29 +225,78 @@ def write_disposition(incremental_cursor: str | None) -> WriteDisposition:
 
 
 def _destination() -> Any:
-    """dlt destination for the raw table (ADR-0014). dlt writes straight to
-    Snowflake — schema evolution and the incremental cursor's pipeline state
-    are both handled natively."""
-    return dlt.destinations.snowflake(
+    """dlt destination for the raw table (ADR-0019): the ``filesystem``
+    destination on S3, writing Iceberg tables registered in the Glue catalog.
+
+    dlt's own Iceberg support does the two things the bespoke ADR-0010 commit
+    path used to: it evolves the table schema (``union_by_name``) on every
+    append, and it keeps the pipeline state — the incremental cursor — in the
+    destination, so the cursor survives a pod restart.
+
+    The catalog is configured through dlt's ``iceberg_catalog`` config section
+    (``dlt.common.libs.pyiceberg.get_catalog``) rather than a ``.pyiceberg.yaml``
+    file, so there is nothing to mount into the run pod. ``sigv4`` is what makes
+    pyiceberg sign its REST calls as an AWS request; the signing credentials
+    come from the environment (``AWS_ACCESS_KEY_ID`` / ``AWS_SECRET_ACCESS_KEY``,
+    set alongside the ``OHDP_AWS_*`` settings by the deploy), which is the only
+    place boto3's signer reads them from.
+    """
+    return dlt.destinations.filesystem(
+        bucket_url=settings.lakehouse_url,
+        destination_name="lakehouse",
         credentials={
-            "database": naming.database("raw"),
-            "host": settings.snowflake_account,
-            "username": settings.snowflake_user,
-            "private_key": settings.snowflake_private_key,
-            "warehouse": settings.snowflake_warehouse,
-            "role": settings.snowflake_role,
-        }
+            "aws_access_key_id": settings.aws_access_key_id,
+            "aws_secret_access_key": settings.aws_secret_access_key,
+            "region_name": settings.aws_region,
+        },
     )
 
 
+def iceberg_catalog_config() -> dict[str, Any]:
+    """pyiceberg ``load_catalog`` kwargs for the Glue Iceberg REST endpoint.
+
+    ``name`` is Glue's own catalog name, which for the account-level catalog is
+    the AWS account ID (Snowflake's ``REST_CONFIG.CATALOG_NAME`` is the same
+    value — see platform/terraform/snowflake.tf).
+    """
+    return {
+        "type": "rest",
+        "uri": settings.glue_rest_uri,
+        "warehouse": settings.glue_catalog_id,
+        "rest.sigv4-enabled": "true",
+        "rest.signing-name": "glue",
+        "rest.signing-region": settings.aws_region,
+        "s3.region": settings.aws_region,
+        "s3.access-key-id": settings.aws_access_key_id,
+        "s3.secret-access-key": settings.aws_secret_access_key,
+    }
+
+
+def configure_iceberg_catalog() -> None:
+    """Publish the catalog config into dlt's config providers.
+
+    The filesystem destination resolves its catalog lazily, deep inside the
+    load (``FilesystemClient.get_open_table_catalog`` -> ``get_catalog``), with
+    no argument we can thread through from here — so the configuration has to
+    arrive the way every other dlt setting does. Writing to ``dlt.config``
+    rather than a ``secrets.toml``/``.pyiceberg.yaml`` file keeps it derived
+    from ``ohdp_shared.settings`` (§5: secrets come from the environment) and
+    leaves nothing to mount into the run pod.
+    """
+    dlt.config["iceberg_catalog.iceberg_catalog_name"] = naming.catalog()
+    dlt.config["iceberg_catalog.iceberg_catalog_type"] = "rest"
+    dlt.config["iceberg_catalog.iceberg_catalog_config"] = iceberg_catalog_config()
+
+
 def build_pipeline(*, pipeline_name: str, source: str) -> dlt.Pipeline:
-    """A dlt pipeline that stages one source's deltas as Parquet.
+    """A dlt pipeline that lands one source's deltas as an Iceberg table.
 
     Used to build a ``@dlt_assets``-decorated asset (see
     ``ohdp_orchestration.components.socrata``), which runs it and commits the
-    result to ``RAW.<source>`` (ADR-0013); dbt reads the tables as dbt sources
-    (the generated ``_stg_<source>__sources.yml``).
+    result to the ``raw_<source>`` namespace (ADR-0019); dbt reads the tables as
+    dbt sources (the generated ``_stg_<source>__sources.yml``).
     """
+    configure_iceberg_catalog()
     return dlt.pipeline(
         pipeline_name=pipeline_name,
         destination=_destination(),

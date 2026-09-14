@@ -1,6 +1,9 @@
 # 0012 — Native Snowflake tables replace the Iceberg lake
 
-**Status:** Accepted
+**Status:** **Superseded by [ADR-0019](0019-iceberg-on-s3-duckdb-dbt.md)** — the lakehouse is back, on
+AWS S3 with a Glue REST catalog, with dbt-duckdb writing it and Snowflake
+reading it. Read this one for why the *first* Iceberg attempt failed; ADR-0019
+names what changed since.
 **Relates to:** supersedes [ADR-0010](0010-iceberg-medallion-lakehouse.md) and
 [ADR-0011](0011-snowflake-horizon-catalog.md) in full, and retires the
 publish-and-replicate mechanism from [ADR-0002](0002-publish-and-replicate-duckdb.md)

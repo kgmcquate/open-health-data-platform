@@ -25,14 +25,25 @@ WORKDIR /app/data
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-editable
 
-# dbt deps hits the network (dbt Hub); dbt parse is offline — no catalog or
-# Spaces creds needed. Copy just the dbt project first so ordinary source
-# changes elsewhere in data/ don't force a re-fetch of dbt packages: this
-# manifest.json build for the `snowflake` dbt assets (ADR-0010) only reruns
-# when the dbt project itself changes.
+# dbt deps hits the network (dbt Hub); dbt parse is offline — no AWS creds
+# needed, the catalog is only attached on a real run. Copy just the dbt project
+# first so ordinary source changes elsewhere in data/ don't force a re-fetch of
+# dbt packages: this manifest.json build for the `lakehouse` dbt assets
+# (ADR-0019) only reruns when the dbt project itself changes.
 COPY data/dbt/ dbt/
 RUN /app/.venv/bin/dbt deps --project-dir dbt \
  && /app/.venv/bin/dbt parse --project-dir dbt --profiles-dir dbt
+
+# Bake DuckDB's extensions in. The profile lists them (data/dbt/profiles.yml)
+# and DuckDB would fetch them on first connect, but a run pod that has to reach
+# extensions.duckdb.org before it can build anything is a needless dependency —
+# and the failure mode is an opaque "could not install extension" mid-run.
+# Installed into the venv's DuckDB home, which the runtime stage copies.
+ENV DUCKDB_HOME=/app/.duckdb
+RUN mkdir -p "$DUCKDB_HOME" \
+ && /app/.venv/bin/python -c "\
+import duckdb; con = duckdb.connect(); \
+[con.execute(f'INSTALL {e}') for e in ('httpfs', 'aws', 'iceberg')]"
 
 COPY data/ /app/data/
 
@@ -52,6 +63,8 @@ COPY --from=builder --chown=10001:10001 /app/.venv /app/.venv
 # The dbt project (with the built manifest) is data files, not an importable
 # package — copy it whole.
 COPY --from=builder --chown=10001:10001 /app/data/dbt /app/dbt
+# DuckDB's pre-installed extensions (see the builder stage).
+COPY --from=builder --chown=10001:10001 /app/.duckdb /app/.duckdb
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -59,10 +72,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
     DAGSTER_HOME=/opt/dagster/dagster_home \
     DBT_PROJECT_DIR=/app/dbt \
     DBT_PROFILES_DIR=/app/dbt \
-    OHDP_DBT_STAGE_DIR=/tmp/ohdp_dbt_stage
+    DUCKDB_HOME=/app/.duckdb
 
-RUN mkdir -p /opt/dagster/dagster_home /tmp/ohdp_dbt_stage \
- && chown -R 10001:10001 /opt/dagster /tmp/ohdp_dbt_stage
+RUN mkdir -p /opt/dagster/dagster_home \
+ && chown -R 10001:10001 /opt/dagster
 
 USER 10001
 

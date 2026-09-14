@@ -16,14 +16,14 @@ as a product.
 |---|---|
 | `apps/web` | Next.js hub — landing, chat UI, links out to every tool |
 | `apps/api` | FastAPI — chat orchestration, entitlements, Stripe webhooks |
-| `apps/streamlit` | Streamlit dashboards — direct Snowflake queries, AI-authored |
+| `apps/streamlit` | Streamlit dashboards — direct Snowflake queries over the lakehouse, AI-authored |
 | `data/src/ohdp_ingestion` | One typed client per public source |
-| `data/src/ohdp_orchestration` | Dagster: ingestion, dbt build, snapshot publish, alerts |
-| `data/dbt` | SQL transformation + tests against Snowflake (source of truth for models) |
+| `data/src/ohdp_orchestration` | Dagster: ingestion, dbt build, catalog sync, alerts |
+| `data/dbt` | SQL transformation + tests, dbt-duckdb writing Iceberg (source of truth for models) |
 | `data/src/ohdp_ml` | Anomaly detection and forecasting, classical baselines first |
 | `semantic/cube` | Cube Core semantic layer — one definition per metric |
 | `catalog/openmetadata` | Catalog sync (Cube → metrics, dbt → lineage) and seed data |
-| `platform/terraform` | DigitalOcean VM, DNS + Spaces, k3s bootstrap |
+| `platform/terraform` | DigitalOcean cluster, DNS + Spaces, the AWS lakehouse (S3 + Glue), Snowflake |
 | `platform/helm` | Charts for hub-api, streamlit, and the authz proxy; values for upstream charts |
 | `platform/k3s` | Base manifests — namespaces, ingress, cert-manager |
 | `packages/shared` | Shared Python config, types, redacting logger |

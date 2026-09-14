@@ -1,10 +1,13 @@
 """Cached Snowflake connection shared by every dashboard page.
 
-Reuses the pipeline's `OHDP_PIPELINE` Snowflake role/key (`ohdp_shared.settings`
-— the same credential dlt/dbt-snowflake authenticate with) rather than a
-dedicated read-only role. That is a deliberate, temporary privilege trade-off
-made when Streamlit replaced Superset; see
-docs/decisions/0015-streamlit-over-superset.md.
+Queries the Iceberg lakehouse through Snowflake's catalog-linked database
+`LAKEHOUSE` (ADR-0019) — the same tables dbt-duckdb builds, the same relation
+names the dbt manifest carries.
+
+Uses the shared `OHDP_PIPELINE` role/key (`ohdp_shared.settings`) rather than a
+dedicated one. Since ADR-0019 that role is read-only over the lakehouse, so
+this is now sharing a read credential with Cube rather than the privilege
+trade-off docs/decisions/0015-streamlit-over-superset.md described.
 """
 
 from __future__ import annotations

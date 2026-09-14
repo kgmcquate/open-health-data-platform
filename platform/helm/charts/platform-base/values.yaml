@@ -30,16 +30,27 @@ generatedSecrets:
 pipelineConfig:
   OHDP_ENVIRONMENT: "prod"
   OHDP_LOG_JSON: "true"
+  # Spaces holds Postgres backups only; the lakehouse and Dagster's compute
+  # logs are on AWS S3 (ADR-0019).
   OHDP_SPACES_BUCKET: "ohdp-warehouse"
   OHDP_SPACES_ENDPOINT_URL: "https://nyc3.digitaloceanspaces.com"
   OHDP_SPACES_REGION: "nyc3"
-  # Snowflake data warehouse (ADR-0012). These come from `terraform output` in
-  # platform/terraform; the matching private key (OHDP_SNOWFLAKE_PRIVATE_KEY —
-  # SERVICE users don't accept password auth) is the one secret half and
-  # arrives in `ohdp-pipeline-secrets` from deploy-platform.yml. No
-  # OHDP_SNOWFLAKE_DATABASE: the medallion layer databases (RAW/CLEAN/CURATED,
-  # ADR-0013) are fixed names read directly from ohdp_ingestion.naming and
-  # dbt_project.yml, not passed through the environment.
+  # The Iceberg lakehouse (ADR-0019). These come from `terraform output` in
+  # platform/terraform; the matching IAM key (OHDP_AWS_ACCESS_KEY_ID /
+  # OHDP_AWS_SECRET_ACCESS_KEY, plus the unprefixed AWS_* pair boto3 and
+  # pyiceberg's SigV4 signer read) is the secret half and arrives in
+  # `ohdp-pipeline-secrets` from deploy-platform.yml.
+  #
+  # No catalog/namespace names here: those are fixed, derived per medallion
+  # layer by ohdp_ingestion.naming and dbt's generate_schema_name.sql.
+  OHDP_AWS_REGION: "us-east-1"
+  OHDP_LAKEHOUSE_BUCKET: "ohdp-lakehouse"
+  # The AWS account ID — Glue's name for the account-level catalog. Read it
+  # from `terraform output -raw glue_catalog_id`.
+  OHDP_GLUE_CATALOG_ID: ""
+  # Snowflake reads the same tables through a catalog-linked database, for
+  # Cube and Streamlit (ADR-0019). Nothing in the pipeline pod queries it; this
+  # stays here because the OpenMetadata Snowflake ingestion asset does.
   OHDP_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
   OHDP_SNOWFLAKE_USER: "OHDP_PIPELINE"
   OHDP_SNOWFLAKE_ROLE: "OHDP_PIPELINE"

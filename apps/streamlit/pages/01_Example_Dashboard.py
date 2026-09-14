@@ -10,7 +10,7 @@ from lib.snowflake_client import get_connection
 st.title("Example dashboard")
 
 query = st.text_area(
-    "SQL against a Snowflake mart (CURATED database — see ADR-0013)",
+    "SQL against a lakehouse mart (LAKEHOUSE.mart_* — see ADR-0019)",
     "SELECT CURRENT_DATABASE(), CURRENT_TIMESTAMP()",
 )
 

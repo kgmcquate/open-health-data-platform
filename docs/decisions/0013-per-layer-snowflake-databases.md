@@ -1,6 +1,8 @@
 # 0013 — One Snowflake database per medallion layer
 
-**Status:** Accepted
+**Status:** **Superseded by [ADR-0019](0019-iceberg-on-s3-duckdb-dbt.md)** — one Iceberg catalog holds every
+layer, so the layer is a namespace prefix (`raw_<source>`, `clean_<source>`,
+`core`, `mart_<name>`) again rather than a separate database.
 **Relates to:** amends the naming scheme [ADR-0012](0012-native-snowflake-tables.md)
 carried forward from [ADR-0010](0010-iceberg-medallion-lakehouse.md) —
 ADR-0012 explicitly kept `raw_<source>` / `clean_<source>` / `core` /

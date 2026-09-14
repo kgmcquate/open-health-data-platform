@@ -34,8 +34,8 @@ select
     city::varchar as city,
     upper(trim(state))::varchar as state,
     zip_code::varchar as zip_code,
-    to_date(week) as week,
-    initcap(trim(learning_modality))::varchar as learning_modality,
+    cast(week as date) as week,
+    {{ initcap('trim(learning_modality)') }}::varchar as learning_modality,
     student_count::int as student_count,
     operational_schools::int as operational_schools
 from unioned

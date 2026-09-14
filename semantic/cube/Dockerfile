@@ -2,12 +2,17 @@
 # (matches every other image in .github/workflows/build-images.yml)
 
 # --- Stage 1: compile the dbt manifest ---------------------------------------
-# `dbt parse` needs no warehouse connection — it only reads the project's SQL
-# and schema.yml files — so this stage never touches Snowflake. cube-dbt
+# `dbt parse` attaches no catalog — it only reads the project's SQL and
+# schema.yml files — so this stage needs no AWS credentials. cube-dbt
 # (semantic/cube/model/globals.py) reads the resulting manifest.json for
 # dimensions and column descriptions.
+#
+# dbt-duckdb because that is the project's adapter (ADR-0019); the manifest's
+# relation names (`lakehouse.<namespace>.<table>`) resolve in Snowflake too,
+# which is what Cube actually connects to — see the catalog-linked database in
+# platform/terraform/snowflake.tf.
 FROM python:3.12-slim AS dbt-manifest
-RUN pip install --no-cache-dir "dbt-snowflake>=1.8"
+RUN pip install --no-cache-dir "dbt-duckdb>=1.9"
 WORKDIR /dbt
 COPY data/dbt /dbt
 RUN dbt deps && dbt parse
