@@ -272,6 +272,7 @@ def _destination(source: str) -> Any:
         batch_size=0,
         skip_dlt_columns_and_tables=False,
         naming_convention="direct",
+        max_table_nesting=100
     )
     def iceberg_rest_sink(file_path: str, table: dict) -> None:
         # Load the catalog using the same config we publish to dlt.config
@@ -293,11 +294,19 @@ def _destination(source: str) -> Any:
         identifier = f"{namespace}.{table_name}"
 
         # Read the parquet file into an Arrow table and create/load the
-        # Iceberg table with a compatible schema, then append
+        # Iceberg table with a compatible schema, then write.
         arrow = pq.read_table(file_path)
-        
+
         tbl = catalog.create_table_if_not_exists(identifier, arrow.schema)
-        write_iceberg_table(table=tbl, data=arrow, write_disposition="append")
+        # `create_table_if_not_exists` only sets the schema on first creation —
+        # an existing table's schema is left as-is, so a later batch with a
+        # new column (Socrata datasets grow columns without warning, see the
+        # module docstring) fails `table.append()`'s strict schema check
+        # unless the table's schema is evolved to match first.
+        tbl.update_schema().union_by_name(arrow.schema).commit()
+        write_iceberg_table(
+            table=tbl, data=arrow, write_disposition=table.get("write_disposition", "append")
+        )
 
     return iceberg_rest_sink
 

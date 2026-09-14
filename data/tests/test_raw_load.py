@@ -36,10 +36,16 @@ from ohdp_orchestration.resources.dlt import CustomDagsterDltResource
 def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the lakehouse at a temp directory and a SQLite pyiceberg catalog.
 
-    Both substitutions are configuration, not code paths: ``get_catalog``
-    builds a real ``pyiceberg`` catalog either way (dlt supports ``sql`` and
-    ``rest``), and the filesystem destination writes the same Parquet + Iceberg
-    metadata to a local path as it does to ``s3://``.
+    Only the catalog *backend* is swapped (rest -> sql); ``_destination`` and
+    its ``iceberg_rest_sink`` — including the namespace/identifier
+    construction — stay the real production code, patched only at
+    ``get_catalog`` so it hands back the local SQL catalog regardless of the
+    (real, REST-shaped) config it's called with. Earlier this fixture
+    replaced ``_destination`` wholesale with dlt's built-in filesystem
+    destination, which meant no test here ever exercised the identifier
+    logic that decides what namespace a table lands in — a real bug in that
+    logic (see naming.namespace vs. naming.schema) shipped to prod undetected
+    as a result.
     """
     root = tmp_path / "lake"
     root.mkdir()
@@ -48,19 +54,19 @@ def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # two of them racing to bootstrap the same SQLite file fails with "table
     # iceberg_tables already exists". Purely an artifact of the test catalog —
     # Horizon has nothing to bootstrap.
-    _load_test_catalog(root)
+    catalog = _load_test_catalog(root)
+    # Terraform creates the raw namespace ahead of time in prod (ADR-0021) —
+    # `_destination` deliberately never does. Stand in for Terraform here,
+    # not for the loader.
+    catalog.create_namespace_if_not_exists(naming.schema("raw", "healthdata_gov"))
     # dlt keeps pipeline state (the incremental cursor) here.
     monkeypatch.setenv("DLT_DATA_DIR", str(tmp_path / "dlt"))
 
     import ohdp_ingestion.socrata.source as src
 
-    monkeypatch.setattr(src, "_destination", lambda: _local_destination(root))
+    monkeypatch.setattr(src, "get_catalog", lambda **_: catalog)
     monkeypatch.setattr(src, "configure_catalog", lambda: _local_catalog(root))
     return root
-
-
-def _local_destination(root: Path) -> Any:
-    return dlt.destinations.filesystem(bucket_url=root.as_uri())
 
 
 def _catalog_config(root: Path) -> dict[str, Any]:
