@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -39,7 +40,7 @@ def _defs_file(socrata: SocrataDomain) -> Path:
     return _DEFS / socrata.source / "datasets" / "defs.yaml"
 
 
-def _documents(socrata: SocrataDomain) -> list[tuple[str, dict]]:
+def _documents(socrata: SocrataDomain) -> list[tuple[str, dict[str, Any]]]:
     """(where, document) for every component instance in the domain's defs file.
 
     One multi-document `defs.yaml` per domain, `---` between instances — the
