@@ -32,9 +32,13 @@ loadbalancer_ip = ""
 # aws_region        = "us-east-1"
 # lakehouse_bucket  = "ohdp-lakehouse"
 #
-# There is no source or mart list here: the pipeline creates its own namespaces
-# as it writes them (ADR-0020), so adding a source or a mart is a change to dbt
-# and ohdp_ingestion.naming only — never to Terraform.
+# lakehouse_sources / lakehouse_marts drive the namespaces Terraform creates —
+# RAW.<SOURCE>, CLEAN.STG_<SOURCE>, CURATED.<MART> — because Horizon's Iceberg
+# REST catalog has no namespace-creation call for external engines (ADR-0021).
+# Adding a source or a mart is a dbt/ohdp_ingestion change AND a
+# terraform.tfvars entry, in that order.
+# lakehouse_sources = ["healthdata_gov", "cdc"]
+# lakehouse_marts   = ["access", "behavioral_health", "child_welfare", "chronic_disease", "education", "immunization", "infectious_disease", "respiratory"]
 #
 # Filled in on the SECOND apply, from DESC EXTERNAL VOLUME — see README.md.
 # Empty on the first one.

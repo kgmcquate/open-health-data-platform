@@ -24,8 +24,9 @@ DNS lives in Cloudflare (`open-health-data-platform.org` is a Cloudflare zone). 
 | `aws_s3_bucket` | `ohdp-lakehouse` — the external volume's storage. No Glue, no catalog |
 | `aws_iam_user` + `aws_iam_access_key` | The pipeline's AWS identity, for dlt's Parquet writes only |
 | `aws_iam_role` | Assumed by Snowflake's external volume to manage the files |
-| `snowflake_external_volume` / `snowflake_database` | The lakehouse: S3-backed external volume and the RAW/CLEAN/CURATED catalog databases. **Not their namespaces** — dbt and dlt create those as they write (ADR-0020) |
-| `snowflake_grant_privileges_to_account_role` | The pipeline role's grants on those databases, on FUTURE schemas and Iceberg tables in them, and on the external volume. `CREATE SCHEMA` here is what lets the pipeline open its own namespaces; it owns what it creates, so there are no ALL grants (ADR-0020) |
+| `snowflake_external_volume` / `snowflake_database` | The lakehouse: S3-backed external volume and the RAW/CLEAN/CURATED catalog databases |
+| `snowflake_schema` | Every namespace in it — `RAW.<SOURCE>`, `CLEAN.STG_<SOURCE>`, `CURATED.CORE`, `CURATED.<MART>` from `lakehouse_sources` / `lakehouse_marts`. Horizon's Iceberg REST catalog doesn't implement namespace creation for external engines, so dbt and dlt can't open these themselves (ADR-0021) |
+| `snowflake_grant_privileges_to_account_role` | The pipeline role's grants on those databases and namespaces: ALL on the schemas/tables Terraform creates, FUTURE on whatever the pipeline creates inside them afterwards, and on the external volume |
 | `snowflake_user_programmatic_access_token` | The pipeline's credential for the Iceberg REST endpoint |
 | `snowflake_account_role` + grants | `OHDP_PIPELINE` — read/write on all three catalogs |
 | `snowflake_service_user` + `snowflake_network_policy` | The one identity; the policy is required for PATs |

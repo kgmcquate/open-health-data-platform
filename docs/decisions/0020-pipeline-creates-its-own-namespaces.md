@@ -1,6 +1,10 @@
 # 0020 — dbt and dlt create the catalog namespaces, not Terraform
 
-**Status:** Accepted
+**Status:** **Superseded by [ADR-0021](0021-terraform-creates-the-namespaces-again.md)**
+— Horizon's Iceberg REST catalog turns out not to implement namespace creation
+for external engines at all, so the premise below (the pipeline opens its own
+namespaces the same way it opens tables) doesn't hold. Terraform creates them
+again.
 **Relates to:** narrows [ADR-0011](0011-snowflake-horizon-catalog.md)'s
 "Terraform-managed" scope and amends the Terraform surface of
 [ADR-0013](0013-per-layer-snowflake-databases.md) and

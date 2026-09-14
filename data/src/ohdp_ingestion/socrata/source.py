@@ -271,8 +271,11 @@ def _destination(source: str) -> Any:
     def iceberg_rest_sink(file_path: str, table: dict) -> None:
         # Load the catalog using the same config we publish to dlt.config
         catalog = get_catalog(iceberg_catalog_type="rest", iceberg_catalog_config=iceberg_catalog_config())
-        # Ensure the namespace (DATABASE.SCHEMA) exists
-        catalog.create_namespace_if_not_exists(namespace)
+        # The namespace (DATABASE.SCHEMA) is Terraform-managed (ADR-0021):
+        # Horizon's Iceberg REST catalog doesn't implement namespace creation
+        # for external engines — `create_namespace` 404s on `POST
+        # .../namespaces` — so it has to exist before this runs, rather than
+        # being opened here.
 
         table_name = table.get("name")
         if not table_name:

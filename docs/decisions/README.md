@@ -25,4 +25,5 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0017](0017-open-webui-chat-ui.md) | Open WebUI as a chat UI, with our own Cube MCP server | Accepted |
 | [0018](0018-socrata-ingestion-shared-across-domains.md) | One Socrata ingestion core, bound per domain (CDC) | Accepted |
 | [0019](0019-iceberg-on-s3-duckdb-dbt.md) | Snowflake as the Iceberg catalog; DuckDB builds, Snowflake serves | Accepted |
-| [0020](0020-pipeline-creates-its-own-namespaces.md) | dbt and dlt create the catalog namespaces, not Terraform | Accepted |
+| [0020](0020-pipeline-creates-its-own-namespaces.md) | dbt and dlt create the catalog namespaces, not Terraform | Superseded by [0021](0021-terraform-creates-the-namespaces-again.md) |
+| [0021](0021-terraform-creates-the-namespaces-again.md) | Terraform creates the catalog namespaces again | Accepted |
