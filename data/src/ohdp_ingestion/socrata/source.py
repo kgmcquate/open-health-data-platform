@@ -302,11 +302,14 @@ def iceberg_catalog_config() -> dict[str, Any]:
     (``ohdp_ingestion.naming.database``). The clean and curated layers are
     separate catalogs, attached separately by dbt.
 
-    Auth is OAuth2 client-credentials with a programmatic access token: the
-    Snowflake user is the client id and the PAT the client secret, exchanged at
-    Horizon's token endpoint. ``scope`` is not optional — Snowflake's token
-    endpoint rejects the exchange without ``session:role:<ROLE>``, which is the
-    ``invalid_scope`` ADR-0012 hit.
+    Auth is OAuth2 client-credentials with a programmatic access token,
+    exchanged at Horizon's token endpoint. ``credential`` must be the *bare*
+    PAT, not ``"<user>:<pat>"`` — a colon-bearing credential makes pyiceberg's
+    legacy OAuth2 manager split it into a ``client_id``/``client_secret`` pair
+    and send both, and Snowflake's token endpoint 400s with ``invalid_scope:
+    The scope is invalid`` the moment a ``client_id`` rides along (ADR-0011).
+    ``scope`` is not optional either — the same ``invalid_scope`` error is what
+    ADR-0012 hit omitting ``session:role:<ROLE>``.
 
     The access-delegation header asks Horizon to vend short-lived storage
     credentials for reads. ADR-0010 had to *suppress* this header, because
@@ -317,7 +320,7 @@ def iceberg_catalog_config() -> dict[str, Any]:
         "type": "rest",
         "uri": settings.horizon_catalog_uri,
         "warehouse": naming.database("raw"),
-        "credential": f"{settings.snowflake_user}:{settings.snowflake_pat}",
+        "credential": settings.snowflake_pat,
         "oauth2-server-uri": settings.horizon_oauth_uri,
         "scope": settings.horizon_scope,
         "header.X-Iceberg-Access-Delegation": "vended-credentials",
