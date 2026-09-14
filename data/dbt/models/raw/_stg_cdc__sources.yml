@@ -828,8 +828,8 @@ sources:
     description: VSRR Provisional Drug Overdose Death Counts (National Center for Health Statistics).
       https://data.cdc.gov/d/xkb8-kh2a
     columns: []
-  - name: weekly_united_states_hospitalization_metrics_by_jurisdiction_during_mandatory_reporting_period_from_august_1_2020_to_april_30_2024_and_for_data_reported_voluntarily_beginning_may_1_2024_national_healthcare_safety_network_nhsn_archived
-    identifier: WEEKLY_UNITED_STATES_HOSPITALIZATION_METRICS_BY_JURISDICTION_DURING_MANDATORY_REPORTING_PERIOD_FROM_AUGUST_1_2020_TO_APRIL_30_2024_AND_FOR_DATA_REPORTED_VOLUNTARILY_BEGINNING_MAY_1_2024_NATIONAL_HEALTHCARE_SAFETY_NETWORK_NHSN_ARCHIVED
+  - name: weekly_united_states_hospitalization_metrics_by_jurisdiction_during_mandatory_reporting_period_from_august_1_aemt_mg7g
+    identifier: WEEKLY_UNITED_STATES_HOSPITALIZATION_METRICS_BY_JURISDICTION_DURING_MANDATORY_REPORTING_PERIOD_FROM_AUGUST_1_AEMT_MG7G
     description: Weekly United States Hospitalization Metrics by Jurisdiction, During Mandatory Reporting
       Period from August 1, 2020 to April 30, 2024, and for Data Reported Voluntarily Beginning May 1,
       2024, National Healthcare Safety Network (NHSN) - ARCHIVED (CDC). https://data.cdc.gov/d/aemt-mg7g
