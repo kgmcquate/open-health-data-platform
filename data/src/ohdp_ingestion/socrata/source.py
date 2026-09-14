@@ -166,9 +166,21 @@ def socrata_source(
         )
         # dlt's documented pattern is to default the arg to the incremental object;
         # B008 flags the call in the default but that is exactly how the hint is wired.
+        #
+        # `range_start="open"` matches the SoQL `$where` below, which is already
+        # strictly `>` the last cursor value — boundary rows are never re-fetched,
+        # so dlt's boundary deduplication has nothing to do. Left on (its default
+        # `"closed"`) it stores a primary-key hash for *every* row whose cursor
+        # equals `last_value`, in the pipeline state. Socrata bulk-rewrites a
+        # dataset with one uniform `:updated_at` — CDC `2ew6-ywp6` is archived with
+        # all 837k rows at a single timestamp — which puts the whole table on the
+        # boundary and blows the state past Snowflake's 16 MB VARCHAR ceiling
+        # (`_dlt_pipeline_state` load fails with SQL 100074).
         def rows(
             cursor: dlt.sources.incremental[str] | None = (
-                dlt.sources.incremental(incremental_cursor, initial_value=_EPOCH)  # noqa: B008
+                dlt.sources.incremental(  # noqa: B008
+                    incremental_cursor, initial_value=_EPOCH, range_start="open"
+                )
                 if incremental_cursor
                 else None
             ),

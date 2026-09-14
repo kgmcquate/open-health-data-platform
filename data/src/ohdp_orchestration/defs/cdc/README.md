@@ -9,8 +9,14 @@ for the original shape.
 
 ```
 component.py                     CDCDataset — a 3-line bind of SocrataDataset
-datasets/<slug>/defs.yaml        one CDCDataset instance per dataset (generated)
+datasets/defs.yaml               every CDCDataset instance, one `---` document each (generated)
 ```
+
+All of them live in one file, one YAML document per dataset with `---` between:
+Dagster's component loader reads a multi-document `defs.yaml` natively and gives
+each document its own component node, so "go to definition" still lands on the
+right line. A dataset's identity comes from its `attributes` (`raw_table` + the
+domain), never from the path.
 
 The class that does the work is
 [`components/socrata.py`](../../components/socrata.py); `component.py` only
@@ -25,9 +31,10 @@ components (no per-instance config) — they're plain code in
 cd data && uv run python scripts/scrape_socrata.py --domain data.cdc.gov --top-n 8
 ```
 
-Walks the Socrata catalog API, (re)writes every `datasets/<slug>/defs.yaml`
-(including the column schema), prunes dirs no longer in the catalog, and
-regenerates `data/dbt/models/raw/_stg_cdc__sources.yml`. Safe to re-run: your
+Walks the Socrata catalog API, rewrites `datasets/defs.yaml` whole (including
+every column schema) and regenerates
+`data/dbt/models/raw/_stg_cdc__sources.yml`. Datasets that left the catalog
+simply stop being emitted, so there is nothing to prune. Safe to re-run: your
 edits to `enabled`, `cadence`, `row_limit` and `incremental_cursor` in an
 instance are preserved.
 
@@ -122,7 +129,8 @@ to one type.
 
 ## Enable another dataset
 
-Edit `datasets/<slug>/defs.yaml`:
+Find the dataset's document in `datasets/defs.yaml` (search for its `raw_table`
+or its 4x4 `id`) and edit it in place:
 
 ```yaml
 attributes:
