@@ -215,7 +215,7 @@ extraEnvVars:
   - name: OPENAI_API_CONFIGS
     value: '{"0":{"enable":true,"model_ids":["claude-sonnet-5"]}}'
   - name: DEFAULT_MODELS
-    value: "claude-sonnet-5"
+    value: "health-data-analyst"
   # ENABLE_OLLAMA_API is already rendered by `ollama.enabled: false` above —
   # repeating it here would be a duplicate env entry, not a stronger one.
   #
