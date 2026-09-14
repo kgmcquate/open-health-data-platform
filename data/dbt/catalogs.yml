@@ -1,0 +1,14 @@
+catalogs:
+  - name: horizon_catalog
+    type: horizon
+    table_format: iceberg
+    config:
+      snowflake:
+        external_volume: OHDP_LAKEHOUSE_VOL
+      duckdb:
+        warehouse: CURATED
+        endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
+        secret: horizon_secret # references the profiles.yml secret above
+        default_schema: CORE
+        access_delegation_mode: VENDED_CREDENTIALS # Horizon vends temp S3 creds; no AWS keys needed
+

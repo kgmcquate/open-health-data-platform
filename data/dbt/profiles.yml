@@ -52,10 +52,10 @@ ohdp:
       # let it and the data files reach S3. Writing to a REST catalog needs
       # DuckDB 1.5.4+. Pre-installed in the image (data/Dockerfile) so a run
       # pod doesn't fetch them on every start.
-      extensions:
-        - httpfs
-        - aws
-        - iceberg
+      # extensions:
+      #   - httpfs
+      #   - aws
+      #   - iceberg
 
       secrets:
         # OAuth2 client credentials for Horizon's REST catalog, shared by all
@@ -73,43 +73,10 @@ ohdp:
         # exactly the `invalid_scope` ADR-0012 burned a round on. Keep it in
         # sync with ohdp_shared.settings.horizon_scope.
         - type: iceberg
-          name: ohdp_horizon
+          name: horizon_secret
           client_id: ""
           client_secret: "{{ env_var('OHDP_SNOWFLAKE_PAT', '') }}"
           oauth2_server_uri: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens"
           oauth2_scope: "session:role:{{ env_var('OHDP_SNOWFLAKE_ROLE', '') }}"
 
-      # One attachment per medallion-layer database (ADR-0013). Each Snowflake
-      # database is its own Iceberg catalog, and its schemas are that catalog's
-      # namespaces — which is why the layer does not have to be folded into the
-      # namespace name, and why these are three ATTACHes rather than one.
-      #
-      # Three rather than a single nested-namespace catalog because DuckDB's
-      # qualified names have exactly three parts (catalog.schema.table): a
-      # namespace nested any deeper has nowhere to go in the SQL.
-      #
-      # ACCESS_DELEGATION_MODE makes Horizon vend short-lived, scoped S3
-      # credentials for the table files, so DuckDB needs no AWS key of its own
-      # — the files live in the external volume Snowflake governs
-      # (platform/terraform/snowflake.tf).
-      attach:
-        - path: RAW
-          type: horizon
-          table_format: iceberg
-          alias: RAW
-          secret: ohdp_horizon
-          options: &horizon
-            endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
-            access_delegation_mode: vended_credentials
-        - path: CLEAN
-          type: horizon
-          table_format: iceberg
-          alias: CLEAN
-          secret: ohdp_horizon
-          options: *horizon
-        - path: CURATED
-          type: horizon
-          table_format: iceberg
-          alias: CURATED
-          secret: ohdp_horizon
-          options: *horizon
+
