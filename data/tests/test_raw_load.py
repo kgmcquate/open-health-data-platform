@@ -1,10 +1,10 @@
-"""The raw loader writes Iceberg tables into the Glue catalog in prod
-(ADR-0019). Socrata is stubbed, and so is the *location* of the lakehouse: a
-temp directory instead of S3, and a SQLite pyiceberg catalog instead of Glue's
-REST endpoint. Everything between — dlt's filesystem destination, pyiceberg's
-writer, schema evolution, ``replace``'s truncate, nested-array flattening — is
-the real production path, so these tests cover the Iceberg write itself rather
-than a SQL stand-in for it.
+"""The raw loader writes Snowflake-managed Iceberg tables through Horizon in
+prod (ADR-0019). Socrata is stubbed, and so is the *location* of the lakehouse:
+a temp directory instead of S3, and a SQLite pyiceberg catalog instead of
+Snowflake's REST endpoint. Everything between — dlt's filesystem destination,
+the upper-casing naming convention, pyiceberg's writer, schema evolution,
+``replace``'s truncate, nested-array flattening — is the real production path,
+so these tests cover the Iceberg write itself rather than a SQL stand-in.
 
 Exercises ``CustomDagsterDltResource`` (the actual production code path —
 ``ohdp_orchestration.components.socrata`` runs every table asset through it)
@@ -47,7 +47,7 @@ def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # does it lazily on first use, and dlt loads tables in parallel workers, so
     # two of them racing to bootstrap the same SQLite file fails with "table
     # iceberg_tables already exists". Purely an artifact of the test catalog —
-    # Glue has nothing to bootstrap.
+    # Horizon has nothing to bootstrap.
     _load_test_catalog(root)
     # dlt keeps pipeline state (the incremental cursor) here.
     monkeypatch.setenv("DLT_DATA_DIR", str(tmp_path / "dlt"))
@@ -55,7 +55,7 @@ def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     import ohdp_ingestion.socrata.source as src
 
     monkeypatch.setattr(src, "_destination", lambda: _local_destination(root))
-    monkeypatch.setattr(src, "configure_iceberg_catalog", lambda: _local_catalog(root))
+    monkeypatch.setattr(src, "configure_catalog", lambda: _local_catalog(root))
     return root
 
 
@@ -79,11 +79,14 @@ def _catalog_config(root: Path) -> dict[str, Any]:
 def _load_test_catalog(root: Path) -> Any:
     from pyiceberg.catalog import load_catalog
 
-    return load_catalog(naming.catalog(), **_catalog_config(root))
+    return load_catalog(naming.database("raw"), **_catalog_config(root))
 
 
 def _local_catalog(root: Path) -> None:
-    dlt.config["iceberg_catalog.iceberg_catalog_name"] = naming.catalog()
+    # Same upper-casing convention production uses — the table names these
+    # tests assert on depend on it.
+    dlt.config["schema.naming"] = "ohdp_ingestion.sql_upper"
+    dlt.config["iceberg_catalog.iceberg_catalog_name"] = naming.database("raw")
     dlt.config["iceberg_catalog.iceberg_catalog_type"] = "sql"
     dlt.config["iceberg_catalog.iceberg_catalog_config"] = _catalog_config(root)
 
@@ -98,8 +101,16 @@ def _rows(root: Path, source: str, table: str) -> dict[str, Any]:
     which is exactly what the catalog hands back.
     """
     catalog = _load_test_catalog(root)
-    arrow_table = catalog.load_table((naming.schema("raw", source), table)).scan().to_arrow()
-    return dict(arrow_table.to_pydict())
+    # dlt normalizes every identifier through `ohdp_ingestion.sql_upper`, so
+    # the committed table is `DEMO`, not `demo` — see that module for why the
+    # lakehouse is upper case throughout.
+    arrow_table = (
+        catalog.load_table((naming.schema("raw", source), table.upper())).scan().to_arrow()
+    )
+    # Keys come back upper case (see the note above). Lower them here so the
+    # assertions below read as statements about the *data*; the casing itself
+    # is asserted once, in `test_identifiers_are_upper_cased`.
+    return {name.lower(): values for name, values in arrow_table.to_pydict().items()}
 
 
 def _stub_socrata(monkeypatch: pytest.MonkeyPatch, pages: list[list[dict[str, Any]]]) -> None:
@@ -157,6 +168,23 @@ def _load(
         yield from dlt.run(context=context)
 
     return materialize([_assets], resources={"dlt": CustomDagsterDltResource()})
+
+
+def test_identifiers_are_upper_cased(lake: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Snowflake addresses namespaces, tables and columns in all capitals
+    through Horizon's REST catalog (ADR-0019), so dlt has to create them that
+    way — `ohdp_ingestion.sql_upper`. This is the one place that contract is
+    checked end to end; everything downstream (dbt's generated sources, the
+    schema/alias macros) is written to match it."""
+    _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": 1}]])
+    assert _load(resource_id="abcd-1234", table_name="demo").success
+
+    catalog = _load_test_catalog(lake)
+    assert ("HEALTHDATA_GOV",) in catalog.list_namespaces()
+    assert ("HEALTHDATA_GOV", "DEMO") in catalog.list_tables("HEALTHDATA_GOV")
+
+    columns = catalog.load_table(("HEALTHDATA_GOV", "DEMO")).scan().to_arrow().column_names
+    assert {"SOCRATA_ID", "SOCRATA_UPDATED_AT", "V"} <= set(columns)
 
 
 def test_write_disposition_follows_the_cursor() -> None:
@@ -335,5 +363,5 @@ def test_nested_json_reports_a_materialization_per_child_table(
     assert result.success
 
     for table in ("nested", "nested__tags"):
-        key = AssetKey(["lakehouse", naming.catalog(), "raw_healthdata_gov", table])
+        key = AssetKey(["lakehouse", "raw", "healthdata_gov", table])
         assert instance.get_latest_materialization_event(key) is not None, table

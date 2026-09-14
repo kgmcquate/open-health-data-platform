@@ -39,14 +39,14 @@ Three assets per dataset, so lineage is explicit:
 |---|---|---|---|---|---|
 | **source asset** | `sources/cdc/<raw_table>` | `sources_cdc` | `socrata` | never | always |
 | **table asset** | `ingestion/cdc/<raw_table>` | `ingestion_cdc` | `dlt`, `filesystem` | yes | `enabled: true` |
-| **raw-layer asset** | `lakehouse/lakehouse/raw_cdc/<raw_table>` | `lakehouse_raw` | `iceberg` | runless event | `enabled: true` |
+| **raw-layer asset** | `lakehouse/raw/cdc/<raw_table>` | `lakehouse_raw` | `iceberg` | runless event | `enabled: true` |
 
-`source -> ingestion -> lakehouse/…/raw_* -> (dbt clean → curated)`. The raw-layer
+`source -> ingestion -> lakehouse/raw/* -> (dbt clean → curated)`. The raw-layer
 asset never runs an op of its own; the ingestion op reports a runless
 materialization against it for every table the load actually touched, including
 the `<raw_table>__<nested>` children dlt splits out of nested JSON.
 
-dlt **appends** to `lakehouse.raw_cdc.<raw_table>` (ADR-0019) — full history, schema
+dlt **appends** to `RAW.CDC.<raw_table>` (ADR-0013) — full history, schema
 auto-evolves; `incremental_cursor: null` datasets `replace` instead.
 
 ## The enabled set
@@ -92,10 +92,10 @@ the topic instead.
 Every enabled dataset has a clean model; the curated layer and Cube sit on top.
 
 ```
-lakehouse.raw_cdc.<table>            dlt (this component)
-  -> lakehouse.clean_cdc.<name>      models/clean/stg_cdc/     -- 16 models, one per dataset
-  -> lakehouse.core.<fact>           models/curated/core/      -- 10 conformed facts
-  -> lakehouse.mart_<mart>.<table>   models/curated/<mart>/    -- chronic_disease, infectious_disease,
+RAW.CDC.<table>                      dlt (this component)
+  -> CLEAN.STG_CDC.<name>            models/clean/stg_cdc/     -- 16 models, one per dataset
+  -> CURATED.CORE.<fact>             models/curated/core/      -- 10 conformed facts
+  -> CURATED.<MART>.<table>          models/curated/<mart>/    -- chronic_disease, infectious_disease,
                                                                   respiratory, behavioral_health, immunization
   -> Cube                            semantic/cube/model/      -- measures per mart
 ```

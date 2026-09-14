@@ -12,8 +12,8 @@ dependencies = [
     "dagster-aws>=0.24",
     "dbt-duckdb>=1.9",
     "duckdb>=1.5.3",
-    # filesystem+iceberg is how raw tables land in the Glue catalog (ADR-0019);
-    # s3/parquet are what that path reads and writes through.
+    # filesystem+iceberg is how raw tables land in Snowflake's catalog
+    # (ADR-0019); s3/parquet are what that path reads and writes through.
     "dlt[filesystem,parquet,pyiceberg,s3]>=1.30",
     "sqlalchemy>=2.0.18",
     "httpx>=0.27",

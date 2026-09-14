@@ -1,8 +1,11 @@
 # Nightly pg_dump output (ARCHITECTURE.md §11) and the mirrored Snowflake
 # private key below. The publish-and-replicate DuckDB snapshot mechanism this
-# bucket originally also held (ADR-0002) was retired in ADR-0012; the lakehouse
-# and Dagster's compute logs live on AWS S3 (aws.tf, ADR-0019), so this is the
-# only Spaces bucket left besides the tfstate one.
+# bucket originally also held (ADR-0002) was retired in ADR-0012. The lakehouse
+# itself lives on AWS S3 (aws.tf, ADR-0019) because Snowflake cannot keep
+# Iceberg files on Spaces — but nothing else moved: compute logs are still
+# here, since the pipeline authenticates to Snowflake's catalog with a token
+# rather than with AWS credentials, so the two object stores never contend for
+# boto3's environment variables.
 resource "digitalocean_spaces_bucket" "warehouse" {
   name   = var.snapshot_bucket
   region = var.location
@@ -13,6 +16,30 @@ resource "digitalocean_spaces_bucket" "warehouse" {
 # state in a bucket it also creates is a bootstrap cycle: destroying the bucket
 # destroys the record of the bucket. Create the Space once by hand and then
 # point the backend at it as described in backend.tf.
+
+# Dagster's S3ComputeLogManager (platform/helm/values/dagster.yaml). Kept
+# separate from the `warehouse` bucket above on purpose: compute logs are the
+# one thing here meant to be publicly browsable (docs/ARCHITECTURE.md's
+# world-readable-run-logs policy), while `warehouse` holds private Postgres
+# backups and the mirrored Snowflake private key — mixing those sensitivity
+# levels in one bucket would undo the point of the ACL. Private ACL is still
+# correct even so: the webserver proxies objects server-side rather than
+# handing out public URLs (S3ComputeLogManager's `show_url_only` stays unset).
+# Expiration mirrors the existing Postgres run-history retention window
+# (`retention.schedule.purgeAfterDays: 30` in dagster.yaml) so this doesn't
+# grow unbounded.
+resource "digitalocean_spaces_bucket" "compute_logs" {
+  name   = var.compute_logs_bucket
+  region = var.location
+  acl    = "private"
+
+  lifecycle_rule {
+    enabled = true
+    expiration {
+      days = 30
+    }
+  }
+}
 
 # The Snowflake query role's private key (snowflake.tf, ADR-0019), mirrored
 # into the warehouse bucket as a private object. This is in addition to the

@@ -49,23 +49,21 @@ env:
   SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
   AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
-  # The Iceberg lakehouse (ADR-0019): admin credentials that create the S3
-  # buckets, the Glue databases and the IAM identities — including the
-  # pipeline's own key, which this stack issues rather than reads.
+  # The lakehouse's storage (ADR-0019): admin credentials that create the S3
+  # bucket and the IAM identities — including the pipeline's own key, which
+  # this stack issues rather than reads. The *catalog* is Snowflake, below.
   TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
   TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   # Filled in only for the second apply, once Snowflake has generated them —
-  # see platform/terraform/README.md. Unset, the roles Snowflake assumes exist
-  # but trust nothing.
+  # see platform/terraform/README.md. Unset, the role Snowflake assumes for the
+  # external volume exists but trusts nothing.
   TF_VAR_snowflake_storage_aws_iam_user_arn: ${{ secrets.SNOWFLAKE_STORAGE_AWS_IAM_USER_ARN }}
   TF_VAR_snowflake_storage_aws_external_id: ${{ secrets.SNOWFLAKE_STORAGE_AWS_EXTERNAL_ID }}
-  TF_VAR_snowflake_glue_aws_iam_user_arn: ${{ secrets.SNOWFLAKE_GLUE_AWS_IAM_USER_ARN }}
-  TF_VAR_snowflake_glue_aws_external_id: ${{ secrets.SNOWFLAKE_GLUE_AWS_EXTERNAL_ID }}
-  # Snowflake, the read side of the lakehouse (ADR-0019). The provider reads
+  # Snowflake, which is the Iceberg catalog (ADR-0019). The provider reads
   # user/role/key from the environment; only the account identifier is a
   # variable. SNOWFLAKE_ROLE must be able to create account-level objects
-  # (database, role, user, network policy, external volume, catalog
-  # integration) — ACCOUNTADMIN unless you have made a narrower one.
+  # (database, role, user, network policy, external volume, programmatic access
+  # token) — ACCOUNTADMIN unless you have made a narrower one.
   SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
   SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
   SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
@@ -143,15 +141,16 @@ jobs:
         run: |
           echo "cluster_id=$(terraform output -raw cluster_id)"
           echo "cluster_endpoint=$(terraform output -raw cluster_endpoint)"
-          echo "glue_catalog_id=$(terraform output -raw glue_catalog_id)"
+          echo "lakehouse_catalogs=$(terraform output -json lakehouse_catalogs)"
           echo "lakehouse_bucket=$(terraform output -raw lakehouse_bucket)"
+          echo "horizon_catalog_uri=$(terraform output -raw horizon_catalog_uri)"
           echo ""
           echo "Fetch the kubeconfig and store it as the KUBECONFIG_B64 secret:"
           echo "  terraform output -raw kubeconfig | base64"
           echo ""
-          echo "Publish the lakehouse IAM key for deploy-platform.yml:"
+          echo "Publish the pipeline's catalog token and IAM key for deploy-platform.yml:"
+          terraform output -raw snowflake_pipeline_pat_command
           terraform output -raw aws_pipeline_key_commands
           echo ""
-          echo "Set OHDP_GLUE_CATALOG_ID in platform-base's pipelineConfig to the"
-          echo "glue_catalog_id above, then finish the Snowflake trust policies —"
+          echo "Then finish the external volume's trust policy —"
           echo "see platform/terraform/README.md, 'The second apply'."

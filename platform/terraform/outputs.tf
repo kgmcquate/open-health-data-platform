@@ -44,41 +44,51 @@ output "warehouse_bucket" {
 }
 
 # ---------------------------------------------------------------------------
-# The Iceberg lakehouse (ADR-0019). Bucket/region/catalog id are non-secret and
-# live in the `ohdp-pipeline-config` ConfigMap; the IAM access key is a pair of
-# repo secrets.
+# The Iceberg lakehouse (ADR-0019). Snowflake is the catalog; AWS only holds
+# the files. Bucket and region are non-secret and live in the
+# `ohdp-pipeline-config` ConfigMap; the IAM access key and the Snowflake PAT
+# are repo secrets.
 # ---------------------------------------------------------------------------
 output "lakehouse_bucket" {
-  description = "OHDP_LAKEHOUSE_BUCKET — S3 bucket every Iceberg table's files live in."
+  description = "OHDP_LAKEHOUSE_BUCKET — S3 bucket behind the external volume."
   value       = aws_s3_bucket.lakehouse.bucket
 }
 
 output "compute_logs_bucket" {
-  description = "S3 bucket holding Dagster's S3ComputeLogManager output."
-  value       = aws_s3_bucket.compute_logs.bucket
+  description = "Spaces bucket holding Dagster's S3ComputeLogManager output."
+  value       = digitalocean_spaces_bucket.compute_logs.name
 }
 
 output "aws_region" {
-  description = "OHDP_AWS_REGION — region of the lakehouse bucket and the Glue catalog."
+  description = "OHDP_AWS_REGION — region of the external volume's bucket."
   value       = var.aws_region
 }
 
-output "glue_catalog_id" {
+output "horizon_catalog_uri" {
   description = <<-EOT
-    OHDP_GLUE_CATALOG_ID — the AWS account ID, which is what Glue calls the
-    account-level catalog. dbt's `attach` path, dlt's pyiceberg `warehouse` and
-    Snowflake's REST_CONFIG.CATALOG_NAME are all this value.
+    Snowflake Horizon's Iceberg REST endpoint — what dlt (pyiceberg) and
+    DuckDB's `ATTACH` both point at. Derived from the account identifier, so
+    nothing has to carry it in config; shown here for debugging.
   EOT
-  value       = data.aws_caller_identity.current.account_id
+  value       = local.horizon_catalog_uri
 }
 
-output "glue_rest_uri" {
-  description = "Glue's Iceberg REST endpoint — derived from aws_region, shown for debugging."
-  value       = local.glue_rest_uri
+output "lakehouse_catalogs" {
+  description = <<-EOT
+    The medallion-layer databases (ADR-0013). Each is simultaneously a
+    Snowflake database, an Iceberg catalog served over Horizon, and a DuckDB
+    ATTACH alias.
+  EOT
+  value       = values(local.snowflake_layer_databases)
 }
 
 output "aws_pipeline_access_key_id" {
-  description = "OHDP_AWS_ACCESS_KEY_ID — the pipeline IAM user's access key."
+  description = <<-EOT
+    OHDP_AWS_ACCESS_KEY_ID — the pipeline IAM user's access key. Needed for one
+    job only: dlt writes each raw table's Parquet into the volume's bucket
+    itself and cannot use the credentials Horizon vends. DuckDB does use those,
+    and has no AWS key.
+  EOT
   value       = aws_iam_access_key.pipeline.id
 }
 
@@ -96,46 +106,60 @@ output "aws_pipeline_key_commands" {
   ])
 }
 
+output "snowflake_pipeline_pat" {
+  description = <<-EOT
+    OHDP_SNOWFLAKE_PAT — the pipeline's programmatic access token for Horizon's
+    Iceberg REST catalog. Store it as the repo secret SNOWFLAKE_PIPELINE_PAT,
+    which deploy-platform.yml reads. Expires; see snowflake_pat_days_to_expiry.
+  EOT
+  value       = snowflake_user_programmatic_access_token.pipeline.token
+  sensitive   = true
+}
+
+output "snowflake_pipeline_pat_command" {
+  description = "Push the catalog token straight into the GitHub repo secret the deploy reads."
+  value       = "terraform output -raw snowflake_pipeline_pat | gh secret set SNOWFLAKE_PIPELINE_PAT"
+}
+
 output "snowflake_trust_policy_inputs" {
   description = <<-EOT
     Second-apply inputs (ADR-0019). Snowflake generates an IAM user ARN and an
-    external ID when it creates the external volume and the catalog
-    integration; the AWS roles it assumes can only trust them afterwards. Read
-    them out and apply again:
+    external ID when it creates the external volume; the AWS role it assumes
+    can only trust them afterwards. Read them out and apply again:
 
-      DESC EXTERNAL VOLUME <volume>;       -> STORAGE_AWS_IAM_USER_ARN, STORAGE_AWS_EXTERNAL_ID
-      DESC CATALOG INTEGRATION <integration>;  -> API_AWS_IAM_USER_ARN, API_AWS_EXTERNAL_ID
+      DESC EXTERNAL VOLUME <volume>;  -> STORAGE_AWS_IAM_USER_ARN, STORAGE_AWS_EXTERNAL_ID
 
-    then set TF_VAR_snowflake_storage_aws_iam_user_arn,
-    TF_VAR_snowflake_storage_aws_external_id,
-    TF_VAR_snowflake_glue_aws_iam_user_arn and
-    TF_VAR_snowflake_glue_aws_external_id.
+    then set TF_VAR_snowflake_storage_aws_iam_user_arn and
+    TF_VAR_snowflake_storage_aws_external_id.
   EOT
   value = {
-    external_volume     = local.snowflake_external_volume
-    catalog_integration = local.snowflake_catalog_integration
+    external_volume = local.snowflake_external_volume
   }
 }
 
 # ---------------------------------------------------------------------------
-# Snowflake connection (ADR-0019). Exactly the OHDP_SNOWFLAKE_* settings Cube
-# and Streamlit read; account/user/role/warehouse are non-secret and live in
-# Helm values, the private key is a repo secret. There is no
-# OHDP_SNOWFLAKE_DATABASE: the catalog-linked database's name is fixed
+# Snowflake connection (ADR-0019). The OHDP_SNOWFLAKE_* settings:
+# account/user/role/warehouse are non-secret and live in Helm values; the
+# private key (SQL) and the PAT (REST, above) are repo secrets. There is no
+# OHDP_SNOWFLAKE_DATABASE: the catalog's name is fixed
 # (ohdp_ingestion.naming.CATALOG), not passed through the environment.
 # ---------------------------------------------------------------------------
 output "snowflake_account" {
-  description = "OHDP_SNOWFLAKE_ACCOUNT — the <organization>-<account> identifier Cube and Streamlit connect to."
+  description = "OHDP_SNOWFLAKE_ACCOUNT — the <organization>-<account> identifier, for both SQL and the REST endpoint."
   value       = local.snowflake_account_identifier
 }
 
 output "snowflake_user" {
-  description = "OHDP_SNOWFLAKE_USER — the service user Cube and Streamlit connect as."
+  description = "OHDP_SNOWFLAKE_USER — the service user everything connects as; also the OAuth2 client id."
   value       = snowflake_service_user.pipeline.name
 }
 
 output "snowflake_role" {
-  description = "OHDP_SNOWFLAKE_ROLE — the read-only role their sessions run as."
+  description = <<-EOT
+    OHDP_SNOWFLAKE_ROLE — the role every session runs as. Also half of
+    Horizon's OAuth2 scope (`session:role:<this>`), so the pipeline reads it
+    too, not just Cube and Streamlit.
+  EOT
   value       = snowflake_account_role.pipeline.name
 }
 
@@ -144,10 +168,7 @@ output "snowflake_warehouse" {
   value       = snowflake_warehouse.ohdp.name
 }
 
-output "snowflake_linked_database" {
-  description = "Catalog-linked database the lakehouse's namespaces appear under in Snowflake."
-  value       = local.snowflake_linked_database
-}
+
 
 output "snowflake_private_key" {
   description = <<-EOT

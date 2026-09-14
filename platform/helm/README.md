@@ -99,8 +99,9 @@ kubectl -n data create secret generic ohdp-pipeline-secrets \
 # The non-secret half — account, user, role, warehouse — is in
 # data/ohdp-pipeline-config, so when you `terraform apply` a new account,
 # update `pipelineConfig` in charts/platform-base/values.yaml to match the
-# `snowflake_*` outputs. The lakehouse's own credentials are the OHDP_AWS_*
-# pair in the same Secret.
+# `snowflake_*` outputs. The pipeline's *catalog* credential is a different
+# thing again — OHDP_SNOWFLAKE_PAT, in the same Secret, for the Iceberg REST
+# endpoint (ADR-0019).
 
 # Streamlit queries Snowflake directly with the same read-only role/key as
 # Cube (ADR-0015, ADR-0019). Mirrored into `bi`

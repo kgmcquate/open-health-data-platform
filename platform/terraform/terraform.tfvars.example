@@ -21,7 +21,7 @@ dns_hostnames = ["app", "dagster", "catalog", "cube", "streamlit"]
 # to; do not create a DigitalOcean reserved IP for this.
 loadbalancer_ip = ""
 
-# --- The Iceberg lakehouse: AWS S3 + Glue (ADR-0019) -----------------------
+# --- The Iceberg lakehouse: Snowflake catalog, S3 storage (ADR-0019) -------
 # AWS credentials are NOT set here. Export them instead — and note the
 # TF_VAR_ prefix: the plain AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY pair belongs
 # to the Spaces state backend, which is also "S3" (see versions.tf).
@@ -31,16 +31,13 @@ loadbalancer_ip = ""
 # Everything below has a working default; override only if you mean to.
 # aws_region        = "us-east-1"
 # lakehouse_bucket  = "ohdp-lakehouse"
-# lakehouse_catalog = "lakehouse"        # must equal ohdp_ingestion.naming.CATALOG
 # lakehouse_sources = ["healthdata_gov", "cdc"]
-# lakehouse_marts   = ["core", "respiratory", ...]
+# lakehouse_marts   = ["respiratory", "chronic_disease", ...]   # CURATED.CORE is always created
 #
-# Filled in on the SECOND apply, from DESC EXTERNAL VOLUME / DESC CATALOG
-# INTEGRATION — see README.md. Empty on the first one.
+# Filled in on the SECOND apply, from DESC EXTERNAL VOLUME — see README.md.
+# Empty on the first one.
 # snowflake_storage_aws_iam_user_arn = ""
 # snowflake_storage_aws_external_id  = ""
-# snowflake_glue_aws_iam_user_arn    = ""
-# snowflake_glue_aws_external_id     = ""
 
 # --- Snowflake: the read side of the lakehouse (ADR-0019) ------------------
 # Credentials are NOT set here. Export them instead, the same way the Cloudflare
@@ -55,9 +52,10 @@ snowflake_organization_name = ""
 snowflake_account_name      = ""
 
 # Everything below has a working default; override only if you mean to.
-# snowflake_warehouse     = "OHDP_WH"
-# snowflake_pipeline_role = "OHDP_PIPELINE"
-# snowflake_pipeline_user = "OHDP_PIPELINE"
+# snowflake_warehouse          = "OHDP_WH"
+# snowflake_pipeline_role      = "OHDP_PIPELINE"
+# snowflake_pipeline_user      = "OHDP_PIPELINE"
+# snowflake_pat_days_to_expiry = 365     # Snowflake's cap; the PAT does expire
 #
 # Account-wide network policy. Defaults to 0.0.0.0/0 — narrow it only once the
 # DOKS egress IPs are stable, or a node recycle will lock out the account.

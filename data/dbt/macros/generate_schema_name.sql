@@ -1,36 +1,37 @@
 {#
-    One Iceberg catalog holds every layer, so the namespace (a Glue database;
-    a schema to DuckDB and Snowflake) is what carries the medallion layer —
-    `raw_<source>`, `clean_<source>`, `core`, `mart_<name>` (ADR-0019). Same
-    scheme as ohdp_ingestion.naming.schema(), which the raw loader uses.
+    The namespace within a layer's catalog. The layer itself lives in the
+    database (generate_database_name.sql), so the schema only has to carry the
+    source or mart — ADR-0013's scheme, which ADR-0019 keeps: a Snowflake
+    database is an Iceberg catalog and its schemas are that catalog's
+    namespaces, so nothing has to be flattened together.
 
-    dbt's default macro concatenates <target_schema>_<custom_schema>
-    (e.g. "core_cdc"), which is not it. Derive from the model name instead:
+    Derived from the model name rather than configured per folder, so a model
+    following the dbt-labs `stg_<source>__<table>` convention lands in the
+    right namespace without a `+schema` config and without renaming the file
+    (which would break its unique dbt model ID / ref()s):
 
-      stg_<source>__<table>  ->  clean_<source>   (the dbt-labs staging convention)
-      core__<table>          ->  core
-      <mart>__<table>        ->  mart_<mart>
+      stg_<source>__<table>  ->  STG_<SOURCE>   (in CLEAN)
+      core__<table>          ->  CORE           (in CURATED)
+      <mart>__<table>        ->  <MART>         (in CURATED)
 
-    So clean/cdc/stg_cdc__nndss_weekly.sql lands in lakehouse.clean_cdc without
-    a `+schema` config and without renaming the file (which would break its
-    unique dbt model ID / ref()s). Anything not following the `<prefix>__<name>`
-    convention falls back to the explicit `+schema` config, then
-    target.schema, same as dbt's default.
+    So clean/stg_cdc/stg_cdc__nndss_weekly.sql lands in CLEAN.STG_CDC.
+
+    **Upper case, deliberately.** Snowflake requires an external engine
+    reaching it through the Horizon REST catalog to address namespaces and
+    tables in all capitals, and unquoted SQL identifiers fold to upper case
+    anyway — so this is the one casing that resolves from DuckDB, from Cube and
+    from Streamlit without quoting.
+
+    Anything not following the `<prefix>__<name>` convention falls back to the
+    explicit `+schema` config, then target.schema, same as dbt's default.
 #}
 {% macro generate_schema_name(custom_schema_name, node) -%}
     {%- set parts = node.name.split('__', 1) -%}
     {%- if parts | length == 2 -%}
-        {%- set prefix = parts[0] -%}
-        {%- if prefix.startswith('stg_') -%}
-            clean_{{ prefix[4:] }}
-        {%- elif prefix == 'core' -%}
-            core
-        {%- else -%}
-            mart_{{ prefix }}
-        {%- endif -%}
+        {{ parts[0] | upper }}
     {%- elif custom_schema_name is none -%}
         {{ target.schema }}
     {%- else -%}
-        {{ custom_schema_name | trim }}
+        {{ custom_schema_name | trim | upper }}
     {%- endif -%}
 {%- endmacro %}

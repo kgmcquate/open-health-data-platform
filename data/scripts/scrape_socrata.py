@@ -34,7 +34,7 @@ import yaml
 
 from ohdp_ingestion.cdc import CDC
 from ohdp_ingestion.healthdata_gov import HEALTHDATA_GOV
-from ohdp_ingestion.naming import catalog as ns_catalog
+from ohdp_ingestion.naming import database as ns_database
 from ohdp_ingestion.naming import schema as ns_schema
 from ohdp_ingestion.socrata import DatasetConfig, SocrataDomain, iter_catalog, slugify
 
@@ -124,9 +124,9 @@ def _dump_dataset(cfg: DatasetConfig, target: _Target) -> str:
 
 
 def _write_dbt_sources(configs: list[DatasetConfig], target: _Target) -> None:
-    """Raw tables, one Iceberg namespace per domain (ADR-0019)."""
+    """Raw tables, one namespace per domain in the RAW catalog (ADR-0013)."""
     source = target.socrata.source
-    raw_database = ns_catalog()
+    raw_database = ns_database("raw")
     raw_schema = ns_schema("raw", source)
     enabled = [c for c in configs if c.enabled]
     doc = {
@@ -142,7 +142,12 @@ def _write_dbt_sources(configs: list[DatasetConfig], target: _Target) -> None:
                 "schema": raw_schema,
                 "tables": [
                     {
+                        # `name` is the key models reference through `source()`
+                        # and stays lower case; `identifier` is the physical
+                        # table, which dlt creates upper case because Snowflake
+                        # is the catalog (ADR-0019, ohdp_ingestion.sql_upper).
                         "name": c.raw_table,
+                        "identifier": c.raw_table.upper(),
                         "description": f"{c.name} ({c.publisher}). {c.source_url}",
                         "columns": [
                             {"name": col.name, "description": col.description}

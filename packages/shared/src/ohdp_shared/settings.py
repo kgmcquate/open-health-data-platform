@@ -27,47 +27,60 @@ class Settings(BaseSettings):
     spaces_region: str = "nyc3"
     spaces_bucket: str = "ohdp-warehouse"
 
-    # --- The Iceberg lakehouse: AWS S3 + the Glue Iceberg REST catalog
-    # (ADR-0019). dlt writes raw tables through pyiceberg and dbt-duckdb writes
-    # clean/core/marts through DuckDB's ATTACH; both authenticate with the same
-    # IAM user, and both sign Glue's REST endpoint with SigV4.
+    # --- The Iceberg lakehouse (ADR-0019). Snowflake is the catalog: dlt and
+    # dbt-duckdb both write Snowflake-managed Iceberg tables through Horizon's
+    # Iceberg REST endpoint, and the table files land in an external volume on
+    # S3. Snowflake reads the very same tables over SQL for Cube and Streamlit.
+    #
+    # Two credentials, because the two protocols authenticate differently:
+    # a PAT for the REST catalog (below) and the RSA key pair for the SQL
+    # connector (further down).
+    snowflake_account: str = Field(
+        default="",
+        description=(
+            "<organization>-<account> identifier. Also what the Horizon REST "
+            "endpoint is addressed by — see horizon_catalog_uri."
+        ),
+    )
+    snowflake_pat: str = Field(
+        default="",
+        description=(
+            "Programmatic access token for the Horizon Iceberg REST catalog. This "
+            "is the pipeline's *write* credential — dlt (pyiceberg) and dbt "
+            "(DuckDB) both exchange it for an OAuth2 access token. Terraform's "
+            "snowflake_pipeline_pat output. PATs require the user to carry a "
+            "network policy, which snowflake.tf attaches."
+        ),
+    )
     aws_region: str = "us-east-1"
+    lakehouse_bucket: str = Field(
+        default="ohdp-lakehouse",
+        description=(
+            "S3 bucket behind the external volume. Snowflake decides where inside "
+            "it each table's files go; this is only needed by dlt, which writes "
+            "its Parquet there directly."
+        ),
+    )
     aws_access_key_id: str = Field(
         default="",
         description=(
-            "Pipeline IAM user's access key. Terraform's aws_pipeline_access_key_id "
-            "output; also exported as AWS_ACCESS_KEY_ID for boto3/pyiceberg's own "
-            "SigV4 signing (see ohdp_ingestion.socrata.source)."
+            "Pipeline IAM user's access key, for writing data files into the "
+            "external volume's bucket. Terraform's aws_pipeline_access_key_id "
+            "output. DuckDB can instead take catalog-vended credentials; dlt's "
+            "fsspec writer cannot, so this stays."
         ),
     )
     aws_secret_access_key: str = ""
-    lakehouse_bucket: str = Field(
-        default="ohdp-lakehouse",
-        description="S3 bucket holding every Iceberg table's data and metadata files.",
-    )
-    glue_catalog_id: str = Field(
-        default="",
-        description=(
-            "AWS account ID — what the Glue Iceberg REST endpoint calls the catalog "
-            "name. Terraform's aws_account_id output."
-        ),
-    )
     # Namespace names are derived per medallion layer (ohdp_ingestion.naming,
     # ADR-0019), not configured here.
 
-    # Snowflake (ADR-0019). No longer the pipeline's compute: it reads the same
-    # Iceberg tables through a catalog-linked database, for Cube's metric
-    # queries and Streamlit's ad-hoc ones.
-    snowflake_account: str = Field(
-        default="",
-        description="<organization>-<account> identifier Cube/Streamlit connect to.",
-    )
     snowflake_user: str = "OHDP_PIPELINE"
     snowflake_private_key: str = Field(
         default="",
         description=(
-            "The query role's RSA private key (PKCS#8 PEM) — Snowflake SERVICE users "
-            "don't accept password auth. Terraform's snowflake_private_key output."
+            "RSA private key (PKCS#8 PEM) for the SQL connector — Snowflake SERVICE "
+            "users don't accept password auth. What Cube and Streamlit authenticate "
+            "with. Terraform's snowflake_private_key output."
         ),
     )
     snowflake_role: str = "OHDP_PIPELINE"
@@ -106,15 +119,31 @@ class Settings(BaseSettings):
     paid_monthly_questions: int = 500
 
     @property
-    def glue_rest_uri(self) -> str:
-        """Glue's Iceberg REST endpoint for `aws_region`. The one URI dlt
-        (pyiceberg), DuckDB's `ATTACH` and Snowflake's catalog integration all
-        point at."""
-        return f"https://glue.{self.aws_region}.amazonaws.com/iceberg"
+    def horizon_catalog_uri(self) -> str:
+        """Snowflake Horizon's Iceberg REST endpoint — the one URI both dlt
+        (pyiceberg) and DuckDB's `ATTACH` point at. Apache Polaris is what
+        serves it inside Horizon, hence the path."""
+        return f"https://{self.snowflake_account}.snowflakecomputing.com/polaris/api/catalog"
+
+    @property
+    def horizon_oauth_uri(self) -> str:
+        """Token endpoint the PAT is exchanged at, for the OAuth2
+        client-credentials flow both clients use."""
+        return f"{self.horizon_catalog_uri}/v1/oauth/tokens"
+
+    @property
+    def horizon_scope(self) -> str:
+        """OAuth2 scope Snowflake's token endpoint requires: the role the
+        resulting session runs as.
+
+        Getting this wrong is not a quiet failure — it is the `invalid_scope`
+        that ADR-0012 spent a round on before abandoning the catalog.
+        """
+        return f"session:role:{self.snowflake_role}"
 
     @property
     def lakehouse_url(self) -> str:
-        """`s3://` root every Iceberg table's files live under."""
+        """`s3://` root of the external volume's bucket."""
         return f"s3://{self.lakehouse_bucket}"
 
 

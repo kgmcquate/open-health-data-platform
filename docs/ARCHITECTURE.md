@@ -47,8 +47,8 @@ flowchart TB
         BUILD["dbt build pod<br/>ephemeral"]
     end
 
-    subgraph storage["Iceberg lakehouse — AWS S3 + Glue catalog"]
-        LAKE["raw_* / clean_* / core / mart_*<br/>namespace per layer+source"]
+    subgraph storage["Iceberg lakehouse — Snowflake catalog, S3 volume"]
+        LAKE["RAW / CLEAN / CURATED<br/>one catalog per layer"]
     end
 
     subgraph serving["Serving"]
@@ -69,12 +69,12 @@ flowchart TB
     IDP["Hosted IdP<br/>OIDC"]
     PG[("Postgres<br/>4 databases")]
 
-    SNOW["Snowflake<br/>catalog-linked database"]
+    SNOW["Snowflake<br/>catalog + query engine"]
 
     S1 & S2 & S3 & S4 & S5 --> BUILD
     DAG -->|launches| BUILD
-    BUILD -->|dlt loads, dbt-duckdb builds| LAKE
-    LAKE -->|read-only| SNOW
+    BUILD -->|dlt loads, dbt-duckdb builds<br/>Iceberg REST| LAKE
+    LAKE --- SNOW
     SNOW --> CUBE
     CUBE --> DASH
     CUBE --> BOT
@@ -100,38 +100,38 @@ flowchart TB
 | Hub app | Signup, billing, chat UI, links to every tool (including Streamlit) | The only thing most users see first |
 | Dagster | Ingestion, dbt orchestration, ML inference, alert checks | Publicly visible, hardened (§5) |
 | dbt | SQL transformation and tests | dbt-duckdb, writing Iceberg (ADR-0019) |
-| Iceberg lakehouse | Storage for the medallion layers — S3 files, Glue catalog | dlt writes `raw_*`, dbt-duckdb writes the rest |
-| Snowflake | Query engine over the same tables, through a catalog-linked database | Read-only; Cube's metrics and Streamlit's ad-hoc queries (ADR-0019) |
+| Iceberg lakehouse | The medallion layers, as Snowflake-managed Iceberg tables | dlt writes `RAW.*`, dbt-duckdb writes the rest, both over Horizon's REST endpoint |
+| Snowflake | **The Iceberg catalog**, and the query engine over it | Serves Cube's metrics and Streamlit's ad-hoc queries over SQL (ADR-0019) |
 | Cube Core | Semantic layer: measures, dimensions, access control, REST/SQL APIs | Single definition of every metric, queries Snowflake directly. No MCP server in Core — see §6 |
 | Streamlit | Dashboards, standalone (linked from the hub app, not embedded) | Direct Snowflake for now (M1); repoint at Cube once M2 lands |
 | OpenMetadata | Catalog, lineage, glossary, metric directory, discovery MCP | Human-browsable surface |
 | Postgres | App metadata for Dagster, OpenMetadata, hub app | One instance, three databases |
 | Spaces | Postgres backups | S3-compatible, zero egress fees |
-| AWS S3 + Glue | The lakehouse's files and catalog; Dagster's compute logs | On AWS because Snowflake's external volumes can't read Spaces (ADR-0019) |
+| AWS S3 | The external volume behind the lakehouse's tables | On AWS because Snowflake's external volumes can't use Spaces (ADR-0019) |
 
 ---
 
 ## 3. Data lifecycle
 
 The core pattern (ADR-0019). dlt and dbt-duckdb commit Iceberg tables through
-one catalog; there is no separate publish/replicate step, and no snapshot file
-to keep two processes from sharing. Snowflake reads the same committed tables
-rather than being written to.
+one catalog — Snowflake's own, over the Iceberg REST protocol; there is no
+separate publish/replicate step, and no snapshot file to keep two processes from
+sharing. Snowflake then serves the very same tables over SQL.
 
 ```mermaid
 sequenceDiagram
     participant Sched as Dagster schedule
     participant Build as pipeline pod
-    participant Lake as Iceberg catalog
+    participant Lake as Snowflake (Horizon)
     participant OM as OpenMetadata
 
     Sched->>Build: launch run (concurrency 1)
-    Build->>Lake: dlt loads (raw_* tables)
+    Build->>Lake: dlt loads (RAW.* tables, REST)
     Build->>Build: dbt build (models + tests)
     alt tests fail
         Build-->>Sched: fail run, models roll back per-model
     else tests pass
-        Build->>Lake: dbt-duckdb commits clean_*/core/mart_*
+        Build->>Lake: dbt-duckdb commits CLEAN.*/CURATED.*
         Build->>OM: upsert lineage, metrics, freshness
     end
 ```
@@ -265,7 +265,7 @@ cube, ...) will otherwise take down the node.
 | Item | Monthly |
 |---|---|
 | Hetzner CX52 + IPv4 | ~$35 (EUR 32.40 + IPv4) |
-| AWS S3 + Glue (the lakehouse) | ~$1 — storage plus catalog requests at this volume |
+| AWS S3 (the external volume) | ~$1 — storage at this data volume |
 | Snowflake | Query credits only; no warehouse runs during a build any more (ADR-0019) |
 | R2 (10 GB free tier), Cloudflare, hosted IdP, Grafana Cloud, Resend | $0 |
 | Domain amortized | ~$1 |
@@ -444,9 +444,9 @@ previous is green for a week.
 
 **M0 — Pipeline spine**
 Two sources (OpenAQ, one CDC surveillance dataset). dbt-duckdb building Iceberg
-tables in the Glue catalog (ADR-0019, after a detour through native Snowflake
-tables in ADR-0012/0014). Dagster running the build. No auth, no UI, no catalog.
-Goal: prove dlt loads + dbt builds stay green.
+tables through Snowflake's catalog (ADR-0019, after a detour through native
+Snowflake tables in ADR-0012/0014). Dagster running the build. No auth, no UI,
+no data catalog. Goal: prove dlt loads + dbt builds stay green.
 
 **M1 — Platform on k3s**
 Provision the VM, k3s, Postgres, ingress, TLS. Deploy Dagster with oauth2-proxy and
@@ -488,9 +488,9 @@ Things that will look like reasonable improvements and are not:
   which ADR-0012 retired. DuckDB is back as of ADR-0019, but only as the
   *build* engine — it holds nothing, and serving still reads Snowflake
   (directly, or via Cube).
-- **Do not write to the lakehouse from Snowflake.** Its role has no DML on
-  purpose: dbt-duckdb owns those tables, and a second writer against the same
-  catalog is a real conflict (ADR-0019).
+- **Do not write to the lakehouse from Snowflake SQL.** dlt and dbt-duckdb own
+  these tables, through the REST catalog; a third writer against the same
+  catalog is a real conflict, not extra flexibility (ADR-0019).
 - **Do not use the dbt Semantic Layer's serving APIs.** They require dbt Cloud at
   roughly $100/user/month. MetricFlow itself is open source; the serving tier is not.
 - **Do not give the agent a raw SQL tool** on the grounds that it would be more flexible.
@@ -519,7 +519,7 @@ Flag these rather than deciding unilaterally:
 ## 11. Backups
 
 The lakehouse is fully reproducible from public sources plus git, so it is not
-backed up — neither the S3 files nor the Glue catalog. (Iceberg keeps snapshot
+backed up — neither the S3 files nor the catalog. (Iceberg keeps snapshot
 history per table, which covers rollback but is not a backup.)
 
 Backed up: nightly `pg_dump` of the single Postgres instance to R2, covering Dagster run

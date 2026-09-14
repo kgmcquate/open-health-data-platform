@@ -1,7 +1,7 @@
 # SQL linter/formatter for this dbt project (https://github.com/quarylabs/sqruff).
 #
 # Not wired into CI: the dbt templater fully renders each model, which needs
-# the Glue catalog attached (ADR-0019) — CI's `OHDP_AWS_*` vars are
+# the catalog attached (ADR-0019) — CI's `OHDP_SNOWFLAKE_*` vars are
 # deliberately empty (profiles.yml). Run it locally with real creds exported:
 #
 #   cd data/dbt && uvx --with dbt-duckdb --from "sqruff[dbt]" sqruff lint models

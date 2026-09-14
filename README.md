@@ -23,7 +23,7 @@ as a product.
 | `data/src/ohdp_ml` | Anomaly detection and forecasting, classical baselines first |
 | `semantic/cube` | Cube Core semantic layer — one definition per metric |
 | `catalog/openmetadata` | Catalog sync (Cube → metrics, dbt → lineage) and seed data |
-| `platform/terraform` | DigitalOcean cluster, DNS + Spaces, the AWS lakehouse (S3 + Glue), Snowflake |
+| `platform/terraform` | DigitalOcean cluster, DNS + Spaces, Snowflake (the Iceberg catalog) + its S3 volume |
 | `platform/helm` | Charts for hub-api, streamlit, and the authz proxy; values for upstream charts |
 | `platform/k3s` | Base manifests — namespaces, ingress, cert-manager |
 | `packages/shared` | Shared Python config, types, redacting logger |

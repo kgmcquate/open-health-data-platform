@@ -74,9 +74,13 @@ jobs:
         env:
           SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
           SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
-          # The lakehouse IAM user Terraform issues (ADR-0019):
+          # The lakehouse credentials Terraform issues (ADR-0019): a Snowflake
+          # PAT for the Iceberg REST catalog, and an IAM key for the one thing
+          # that can't use it (dlt's Parquet writes into the external volume).
+          #   terraform output -raw snowflake_pipeline_pat         | gh secret set SNOWFLAKE_PIPELINE_PAT
           #   terraform output -raw aws_pipeline_access_key_id     | gh secret set AWS_PIPELINE_ACCESS_KEY_ID
           #   terraform output -raw aws_pipeline_secret_access_key | gh secret set AWS_PIPELINE_SECRET_ACCESS_KEY
+          SNOWFLAKE_PIPELINE_PAT: ${{ secrets.SNOWFLAKE_PIPELINE_PAT }}
           AWS_PIPELINE_ACCESS_KEY_ID: ${{ secrets.AWS_PIPELINE_ACCESS_KEY_ID }}
           AWS_PIPELINE_SECRET_ACCESS_KEY: ${{ secrets.AWS_PIPELINE_SECRET_ACCESS_KEY }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
@@ -116,34 +120,30 @@ jobs:
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
             --dry-run=client -o yaml | kubectl apply -f -; }
-          # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY duplicate the OHDP_AWS_*
-          # values under the names boto3 reads, because two things in this pod
-          # take no access-key config of their own and go straight to the
-          # process environment: Dagster's S3ComputeLogManager (dagster.yaml)
-          # and pyiceberg's SigV4 signer for the Glue REST endpoint. Both now
-          # point at AWS — which is why the compute-log bucket moved off Spaces
-          # in ADR-0019; the two could not share one pair of variables.
-          #
-          # OHDP_SPACES_* stays for the Postgres backups, which are still on
-          # Spaces and read their credentials by that name.
+          # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are the *Spaces* pair, for
+          # Dagster's S3ComputeLogManager (dagster.yaml) — it takes no
+          # access-key config and reads them off the process environment. The
+          # lakehouse never competes for them: dlt takes its S3 credentials as
+          # explicit config (OHDP_AWS_*), and the catalog is reached with a
+          # Snowflake token rather than an AWS signature (ADR-0019).
           upsert data ohdp-pipeline-secrets \
             --from-literal=OHDP_SPACES_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
             --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
+            --from-literal=AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+            --from-literal=AWS_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
             --from-literal=OHDP_AWS_ACCESS_KEY_ID="$AWS_PIPELINE_ACCESS_KEY_ID" \
             --from-literal=OHDP_AWS_SECRET_ACCESS_KEY="$AWS_PIPELINE_SECRET_ACCESS_KEY" \
-            --from-literal=AWS_ACCESS_KEY_ID="$AWS_PIPELINE_ACCESS_KEY_ID" \
-            --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_PIPELINE_SECRET_ACCESS_KEY" \
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
+            --from-literal=OHDP_SNOWFLAKE_PAT="$SNOWFLAKE_PIPELINE_PAT" \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
           # Streamlit queries Snowflake directly with the OHDP_PIPELINE
-          # role/key, which since ADR-0019 is read-only over the
-          # catalog-linked database — so ADR-0015's "temporary privilege
-          # trade-off" is now just the read role, shared with Cube.
+          # role/key — the same identity the pipeline writes with, which is
+          # ADR-0015's documented privilege trade-off, unchanged by ADR-0019.
           upsert bi streamlit-snowflake \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
-          # Cube queries Snowflake directly too, same read-only role/key as
+          # Cube queries Snowflake directly too, same role/key as
           # streamlit-snowflake above.
           upsert data cube-snowflake \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
@@ -170,10 +170,11 @@ jobs:
           upsert app openmetadata-mcp-secret \
             --from-literal=OM_MCP_BOT_TOKEN="$OPENWEBUI_OPENMETADATA_MCP_TOKEN"
 
-          # OHDP_SNOWFLAKE_PRIVATE_KEY is the query role's RSA key pair's
-          # private half (PKCS#8 PEM) — Snowflake SERVICE users don't accept
-          # password auth, so this is what Cube's and Streamlit's drivers
-          # authenticate with (ADR-0019). Terraform generates it; publish with:
+          # OHDP_SNOWFLAKE_PRIVATE_KEY is the RSA key pair's private half
+          # (PKCS#8 PEM) — Snowflake SERVICE users don't accept password auth,
+          # so this is what the SQL connector authenticates with. The REST
+          # catalog uses the PAT instead (ADR-0019). Terraform generates both;
+          # publish the key with:
           #   terraform output -raw snowflake_private_key | gh secret set SNOWFLAKE_PIPELINE_PRIVATE_KEY
           # To rotate, force-replace the key and re-run the two steps above:
           #   terraform apply -replace=tls_private_key.pipeline

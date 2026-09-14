@@ -4,14 +4,15 @@ Operational procedures. Keep this current — it is the thing you reach for at 2
 
 ## Build failed — a bad model may already be live
 
-Serving reads the lakehouse through Snowflake (ADR-0019) — there is no publish
+Serving reads the lakehouse through Snowflake, which is also its catalog
+(ADR-0019) — there is no publish
 gate between a `dbt build` and what dashboards see. dbt materializes each model,
 *then* runs its tests, so a test failure means the (possibly bad) data is
 already committed by the time you find out. Triage:
 
 1. Open the failed Dagster run. Logs are redacted — if you need raw output, run
-   `make dbt-build` locally with lakehouse credentials (`OHDP_AWS_*` plus the
-   unprefixed `AWS_*` pair — see `.env.example`).
+   `make dbt-build` locally with lakehouse credentials (`OHDP_SNOWFLAKE_PAT`
+   and friends — see `.env.example`).
 2. If an upstream API changed shape, fix the ingestion schema contract and the
    staging model in the same PR.
 3. If the bad data is already visible downstream, the fix is normally a new
@@ -21,7 +22,7 @@ already committed by the time you find out. Triage:
 
    ```sql
    -- from DuckDB, against the attached catalog
-   SELECT * FROM lakehouse.core.<table>.snapshots();   -- find the good snapshot_id
+   SELECT * FROM CURATED.CORE.<table>.snapshots();   -- find the good snapshot_id
    ```
 
    Rolling back is a catalog operation (`rollback_to_snapshot` via pyiceberg);

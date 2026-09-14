@@ -9,9 +9,9 @@
 # filter(paths=['curated/']) is ADR-0003's "every cube reads a dbt mart, never
 # a staging or raw table" enforced at load time: a cube can't reference a
 # model this filter excludes, because dbt_model() would return None for it.
-# "curated/" is the dbt folder, not the namespace: models under it land in
-# `core` and `mart_<name>` (ADR-0019), the presentation layer dashboards and
-# Cube read. `raw_*`/`clean_*` are staging.
+# "curated/" is both the dbt folder and the database: models under it land in
+# CURATED.CORE and CURATED.<MART> (ADR-0013), the presentation layer dashboards
+# and Cube read. RAW and CLEAN are staging.
 from cube import TemplateContext
 from cube_dbt import Dbt
 

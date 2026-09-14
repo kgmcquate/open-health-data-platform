@@ -23,7 +23,7 @@ test: ## pytest
 dbt-parse: ## Parse dbt models (no catalog connection required)
 	cd data/dbt && uv run dbt deps && uv run dbt parse
 
-dbt-build: ## Build the lakehouse (needs OHDP_AWS_* + AWS_* — see .env.example)
+dbt-build: ## Build the lakehouse (needs OHDP_SNOWFLAKE_* — see .env.example)
 	cd data/dbt && uv run dbt build
 
 dagster-dev: ## Run the Dagster webserver against the local code location

@@ -1,5 +1,7 @@
 """The dbt project surfaces as Dagster assets under `lakehouse/`, wired into the
-ingestion lineage (ADR-0019)."""
+ingestion lineage (ADR-0019). Keys are `[lakehouse, <database>, <schema>,
+<table>]`, lower-cased — the SQL identifiers are upper case, but an asset key
+is a graph label and should not move with a casing convention."""
 
 from __future__ import annotations
 
@@ -14,9 +16,9 @@ def test_models_are_lakehouse_prefixed_and_grouped_by_layer() -> None:
     from ohdp_orchestration.definitions import defs
 
     graph = defs.resolve_asset_graph()
-    # Keyed by the full `lakehouse/<catalog>/<namespace>/<name>` string: with
-    # `_Translator.get_asset_key` on `[prefix, catalog, namespace, name]`, the
-    # trailing name alone is no longer unique across layers.
+    # Keyed by the full `lakehouse/<database>/<schema>/<name>` string: with
+    # `_Translator.get_asset_key` on `[prefix, database, schema, name]`, the
+    # trailing name alone is not unique across layers.
     lakehouse_nodes = {
         k.to_user_string(): graph.get(k)
         for k in graph.get_all_asset_keys()
@@ -31,31 +33,29 @@ def test_models_are_lakehouse_prefixed_and_grouped_by_layer() -> None:
         assert "dbt" in node.kinds and "iceberg" in node.kinds
         assert node.tags["domain"] == "lakehouse"
 
-    assert "lakehouse/lakehouse/clean_healthdata_gov/hospital_capacity_by_state" in models
+    assert "lakehouse/clean/stg_healthdata_gov/hospital_capacity_by_state" in models
     assert (
-        models["lakehouse/lakehouse/core/hospital_utilization_daily"].group_name == "lakehouse_core"
+        models["lakehouse/curated/core/hospital_utilization_daily"].group_name == "lakehouse_core"
     )
     # `curated/<mart>/` groups as a mart, `curated/core/` does not — the split
     # `_layer()` exists to make (assets/lakehouse_dbt.py).
-    assert (
-        models["lakehouse/lakehouse/mart_respiratory/hospital_load"].group_name == "lakehouse_marts"
-    )
+    assert models["lakehouse/curated/respiratory/hospital_load"].group_name == "lakehouse_marts"
 
 
 def test_dbt_sources_resolve_to_the_ingestion_raw_key() -> None:
     """dbt's `healthdata_gov` source resolves to the same
-    `lakehouse/<catalog>/raw_<source>/<table>` key the ingestion component
-    owns (`SocrataDataset.lakehouse_raw_key`), which is what keeps the graph
+    `lakehouse/raw/<source>/<table>` key the ingestion component owns
+    (`SocrataDataset.lakehouse_raw_key`), which is what keeps the graph
     continuous across the dlt/dbt boundary."""
     from ohdp_orchestration.definitions import defs
 
     graph = defs.resolve_asset_graph()
     by_str = {k.to_user_string(): k for k in graph.get_all_asset_keys()}
 
-    stg = graph.get(by_str["lakehouse/lakehouse/clean_healthdata_gov/hospital_capacity_by_state"])
+    stg = graph.get(by_str["lakehouse/clean/stg_healthdata_gov/hospital_capacity_by_state"])
     parents = {p.to_user_string() for p in stg.parent_keys}
     assert parents == {
-        "lakehouse/lakehouse/raw_healthdata_gov/"
+        "lakehouse/raw/healthdata_gov/"
         "covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
     }
 
@@ -70,7 +70,7 @@ def test_healthdata_gov_bridges_the_dlt_table_to_a_raw_asset() -> None:
     by_str = {k.to_user_string(): k for k in graph.get_all_asset_keys()}
 
     bridge_str = (
-        "lakehouse/lakehouse/raw_healthdata_gov/"
+        "lakehouse/raw/healthdata_gov/"
         "covid_19_reported_patient_impact_and_hospital_capacity_by_state_timeseries_raw"
     )
     assert bridge_str in by_str, "did SocrataDataset._lakehouse_raw_spec() change key shape?"

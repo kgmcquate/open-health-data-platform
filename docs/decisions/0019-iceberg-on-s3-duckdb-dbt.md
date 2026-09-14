@@ -1,89 +1,117 @@
-# 0019 — Iceberg on S3 with a Glue REST catalog; DuckDB builds, Snowflake reads
+# 0019 — Snowflake as the Iceberg catalog; DuckDB builds, Snowflake serves
 
 **Status:** Accepted
 **Relates to:** supersedes [ADR-0012](0012-native-snowflake-tables.md) (native
-Snowflake tables), [ADR-0013](0013-per-layer-snowflake-databases.md) (one
-Snowflake database per layer) and [ADR-0014](0014-snowflake-only-compilation.md)
-(Snowflake-only compilation). Returns to the medallion *lakehouse* shape of
-[ADR-0010](0010-iceberg-medallion-lakehouse.md) — Iceberg tables, layer-prefixed
-namespaces, dbt on DuckDB — but with a managed catalog and object store instead
-of a self-hosted Polaris on Spaces, and with none of the bespoke write code
-that decision needed. [ADR-0011](0011-snowflake-horizon-catalog.md) (Horizon
-Catalog) stays superseded. Snowflake is not retired: it keeps serving Cube and
-Streamlit ([ADR-0003](0003-cube-core-over-dbt-semantic-layer.md),
-[ADR-0015](0015-streamlit-over-superset.md) are unaffected).
+Snowflake tables) and [ADR-0014](0014-snowflake-only-compilation.md)
+(Snowflake-only compilation). **Keeps
+[ADR-0013](0013-per-layer-snowflake-databases.md) intact** — one database per
+medallion layer, same databases, same schemas, same table names. Reinstates
+[ADR-0011](0011-snowflake-horizon-catalog.md)'s catalog choice — Snowflake's own
+Iceberg catalog — and [ADR-0010](0010-iceberg-medallion-lakehouse.md)'s medallion
+shape, without the custom dbt write plugin that decision needed. Cube
+([ADR-0003](0003-cube-core-over-dbt-semantic-layer.md)) and Streamlit
+([ADR-0015](0015-streamlit-over-superset.md)) are unaffected: they still query
+Snowflake over SQL.
 
 ## Context
 
-ADR-0012 moved everything to native Snowflake tables after the Iceberg attempt
-collapsed under an accumulation of integration defects — vended-credential
-scoping, an account-wide network policy, an OAuth `invalid_scope`, a `403` on
-`CREATE ICEBERG TABLE`, and dlt's inability to create a table without passing an
-explicit `location` that Snowflake-managed storage rejects. ADR-0014 then
-deleted the DuckDB targets so there was one dialect instead of two.
+ADR-0012 moved everything to native Snowflake tables after the
+Iceberg-via-Horizon attempt collapsed under an accumulation of integration
+defects — a `403` on `CREATE ICEBERG TABLE` traced to a missing external-volume
+grant, an `invalid_scope` OAuth failure from pyiceberg's token exchange, a
+network policy that had to be attached account-wide, and dlt's Iceberg support
+insisting on an explicit table `location` that Snowflake-managed storage
+rejected. ADR-0014 then deleted the DuckDB targets so there was one SQL dialect
+instead of two.
 
 That left a warehouse the project pays for on every build, with the transform
-layer locked to one vendor's SQL, and the tables invisible to anything without
-Snowflake credentials. The three things that made Iceberg fail in ADR-0012 have
-each since stopped being true:
+layer locked to one vendor's SQL, and the tables reachable only through
+Snowflake credentials. Three things have changed since:
 
-- **Writing Iceberg from DuckDB is now first-class.** DuckDB's `iceberg`
-  extension gained write support against REST catalogs in v1.4 and filled in
-  the rest in v1.5.3 — `CREATE`/`DROP SCHEMA` and `TABLE`, `INSERT`, `UPDATE`,
-  `DELETE`, `MERGE INTO`, and `ALTER TABLE` including `RENAME TO`, which is
-  what dbt's table materialization is built on.
-- **dlt writes Iceberg through a real catalog.** Its `filesystem` destination
-  takes `table_format="iceberg"` and a configurable pyiceberg catalog, and
-  handles schema evolution (`union_by_name`) and pipeline state itself. The
-  hand-rolled `ohdp_ingestion.iceberg.commit` of ADR-0010 has no job left.
-- **Snowflake reads an external catalog without per-table DDL.** A
-  *catalog-linked database* over an Iceberg REST catalog integration syncs
-  namespaces and tables automatically, and as of Snowflake's 2026-04-30 change
-  case-insensitive catalogs (Glue among them) no longer force double-quoted
-  lowercase identifiers.
+- **External engines can now write Snowflake-managed Iceberg tables.** Writing
+  through Snowflake Horizon's Iceberg REST endpoint went to preview in March
+  2026 and GA in May 2026. When ADR-0011 and ADR-0012 were written, external
+  engines could only *read* — which is most of why that design had so little to
+  offer for the trouble it cost.
+- **DuckDB writes Iceberg.** Its `iceberg` extension gained REST-catalog writes
+  in v1.4 and filled in the rest in v1.5.3 — `CREATE`/`DROP SCHEMA` and `TABLE`,
+  `INSERT`, `UPDATE`, `DELETE`, `MERGE INTO`, and `ALTER TABLE` including
+  `RENAME TO`, which is what dbt's table materialization is built on. The custom
+  `ohdp_ingestion.dbt.iceberg` plugin of ADR-0010 exists only because none of
+  that did.
+- **Credential vending works on S3.** Horizon hands an external engine
+  short-lived, scoped storage credentials. ADR-0010 had to *suppress* that
+  header, because Polaris could not subscope credentials for non-AWS Spaces.
 
-The remaining question was storage. Snowflake cannot use DigitalOcean Spaces
-for Iceberg — its external volumes are S3/Azure/GCS only — so the lakehouse has
-to live on AWS S3 even though the cluster stays on DigitalOcean.
+Storage has to be AWS S3: Snowflake's external volumes accept S3, Azure and
+GCS, and DigitalOcean Spaces is not among them. The cluster stays on
+DigitalOcean.
 
 ## Decision
 
-One Iceberg catalog holds every table. **DuckDB writes it, Snowflake reads it.**
+**Snowflake is the Iceberg catalog. DuckDB builds the tables; Snowflake serves
+them.**
 
-### Storage and catalog
+### A Snowflake database is a catalog; its schemas are namespaces
 
-- **Storage**: a single AWS S3 bucket (`ohdp-lakehouse`), every table's data and
-  metadata under it.
-- **Catalog**: the **AWS Glue Data Catalog**, addressed through its Iceberg REST
-  endpoint (`https://glue.<region>.amazonaws.com/iceberg`, SigV4). Chosen over
-  S3 Tables because dlt creates tables with an explicit `location` — the exact
-  thing Snowflake-managed storage rejected in ADR-0012, and that an S3 Tables
-  bucket rejects for the same reason — and over a self-hosted Lakekeeper or
-  Polaris because ADR-0010 already paid for that (a JVM service, a Postgres
-  database, a console, a second oauth2-proxy, ~1 GB against §4's budget) and
-  ADR-0012 wrote off the result.
-- **Namespaces are flat and layer-prefixed**, because Glue's are:
-  `raw_<source>`, `clean_<source>`, `core`, `mart_<name>`. ADR-0013's
-  one-database-per-layer split does not survive — there is one catalog — but the
-  layer/source/mart structure does. `ohdp_ingestion.naming` is still the single
-  definition of these names.
-- The catalog is known as `lakehouse` to **both** engines: it is DuckDB's
-  `ATTACH ... AS lakehouse` alias and the name of Snowflake's catalog-linked
-  database. That equality is load-bearing: one compiled dbt manifest then
-  describes relations (`lakehouse.core.hospital_utilization_daily`) that both
-  engines resolve, which is what lets Cube keep generating its SQL from the
-  manifest (`cube-dbt`) while DuckDB does the building.
+That equivalence is the whole reason this migration changes so few names.
+Iceberg namespaces nest, and Snowflake's nest exactly one level deep —
+database, then schema — so ADR-0013's layout maps onto the catalog without
+being flattened into it:
+
+    RAW.<SOURCE>          RAW.CDC            written by dlt
+    CLEAN.STG_<SOURCE>    CLEAN.STG_CDC      written by dbt-duckdb
+    CURATED.CORE          conformed          written by dbt-duckdb
+    CURATED.<MART>        CURATED.RESPIRATORY
+
+Each layer database is created with `CATALOG = 'SNOWFLAKE'` and an
+`EXTERNAL_VOLUME` on S3, and Horizon serves all three over the open Iceberg
+REST protocol at
+`https://<account>.snowflakecomputing.com/polaris/api/catalog`.
+
+Each database is therefore one object with three names that are deliberately
+the same string: the Snowflake database, the Iceberg catalog, and a DuckDB
+`ATTACH ... AS RAW` alias. Keeping them equal is load-bearing — one compiled
+dbt manifest then describes relations
+(`CURATED.CORE.HOSPITAL_UTILIZATION_DAILY`) that DuckDB resolves through the
+REST catalog and Snowflake resolves as ordinary SQL, which is what lets Cube
+keep generating its queries straight from the manifest (`cube-dbt`) while
+DuckDB does the building.
+
+dbt attaches three catalogs rather than one, because DuckDB's qualified names
+have exactly three parts (`catalog.schema.table`): a namespace nested any
+deeper than one level has nowhere to go in the SQL. `ohdp_ingestion.naming` is
+still the single definition of all of these names.
+
+### Everything is upper case
+
+Not a style preference. Snowflake requires an external engine reaching it
+through Horizon to address the database, namespaces and tables **in all
+capitals**, whatever case they were created with; it is also what an unquoted
+identifier folds to in Snowflake SQL, so Cube and Streamlit resolve the same
+names without quoting. Three places had to agree, and now do:
+`ohdp_ingestion.naming`, dbt's
+`generate_database_name`/`generate_schema_name`/`generate_alias_name`, and dlt —
+which needed a naming convention of its own (`ohdp_ingestion.sql_upper`), since
+dlt ships only lower-casing ones. In practice this changes nothing about the
+*stored* names: Snowflake already folded the old lower-case dbt project's
+unquoted identifiers to upper case.
+
+Asset keys stay lower case throughout. They are labels in the Dagster graph, not
+identifiers, and should not move if this convention ever changes again.
 
 ### Write side
 
-- **raw**: dlt's `filesystem` destination on `s3://`, `table_format="iceberg"`,
-  catalog config injected through `dlt.config` from `ohdp_shared.settings`
-  (nothing to mount into the run pod). Append-only, schema-evolving, cursor
-  state in the destination — unchanged behaviour, different storage.
-- **clean/core/marts**: **dbt-duckdb**. The profile attaches the Glue catalog
-  and every model is an ordinary `materialized="table"` in it. There is no
-  custom write plugin — the ADR-0010 `ohdp_ingestion.dbt.iceberg` plugin exists
-  only because DuckDB could not write Iceberg then, and it can now.
+- **raw**: dlt's `filesystem` destination with `table_format="iceberg"`,
+  committing to the `RAW` catalog through Horizon. Auth is OAuth2 client-credentials — the Snowflake
+  user as client id, a **programmatic access token** as the secret, `scope =
+  session:role:<ROLE>`. dlt handles schema evolution (`union_by_name`), the
+  write dispositions and the incremental cursor, as it does against any
+  destination.
+- **clean/core/marts**: **dbt-duckdb**. The profile attaches `CLEAN` and
+  `CURATED` (and `RAW`, to read sources), and every model is an ordinary
+  `materialized="table"` in whichever its `+database` names. No custom write
+  plugin. DuckDB takes catalog-vended credentials, so it holds no AWS key.
 - The clean models drop `incremental`/`merge` for a plain table rebuild. They
   were never compute-incremental (the dedupe is a `qualify` over all of raw);
   only the write was, and a full rebuild is the DuckDB-Iceberg path with the
@@ -94,11 +122,22 @@ One Iceberg catalog holds every table. **DuckDB writes it, Snowflake reads it.**
 
 ### Read side
 
-Snowflake keeps the query workloads that want a warehouse behind them —
-Cube's metric queries and Streamlit's ad-hoc ones — reading the same tables
-through an external volume + Iceberg REST catalog integration + catalog-linked
-database. Read-only: `CREATE TABLE` and the DML grants come off the query role,
-because nothing in Snowflake writes any more.
+Cube and Streamlit are unchanged, full stop — they connect to Snowflake with
+the RSA key pair and query `CURATED.CORE.*` / `CURATED.<MART>.*`, the same
+relations under the same names as before. There is no
+catalog integration, no catalog-linked database, no external table DDL: these
+*are* Snowflake tables. OpenMetadata's Snowflake connector likewise keeps
+working, crawling the same three databases it always did.
+
+### Two credentials, one identity
+
+The two protocols authenticate differently, so the one service user carries
+both: an **RSA key pair** for the SQL connector, and a **PAT** for the REST
+catalog. ADR-0012 deleted the PAT resource on the grounds that nothing did an
+OAuth2 exchange any more; something does again, and it is the whole write path.
+PATs only work for a user covered by a network policy, which is what finally
+gives the account-wide policy a job — ADR-0012 kept it only because it was
+already proven.
 
 ### Dialect
 
@@ -108,55 +147,57 @@ split/rebuild), `div0`, `try_to_date` (`try_cast(... as date)`),
 `date_from_parts` (`make_date`), plus `_dlt_load_id` parsing. `* exclude`,
 `qualify` and `try_cast` were already valid in both.
 
-### Credentials
-
-- The pipeline authenticates to AWS as one IAM user (Terraform-created access
-  key), used by dlt, pyiceberg's SigV4 signing and DuckDB's S3 secret alike.
-- **Dagster's compute logs move from Spaces to the same AWS account.**
-  `S3ComputeLogManager` takes no access-key config — it reads
-  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` off the process environment — and
-  those variables now have to hold the real AWS credentials for pyiceberg's
-  signer. Two different S3 credentials cannot coexist in one pod, so the
-  compute-log bucket follows the lakehouse to AWS rather than the lakehouse
-  bending around it. Spaces keeps the tfstate backend and the (still-stubbed)
-  Postgres backups.
-- Snowflake's two AWS roles (one for the external volume's S3 access, one for
-  SigV4-signing Glue) are created by Terraform but need a **second apply** to
-  finish: their trust policies name an IAM user ARN and external ID that only
-  exist once the external volume and catalog integration do. `terraform apply`,
-  read them out of Snowflake, set two variables, apply again — documented in
-  `platform/terraform/README.md`.
-
 ## Consequences
 
 - **Existing Snowflake data is abandoned, not migrated** — the same call
-  ADR-0011 and ADR-0012 each made. The RAW/CLEAN/CURATED databases go away with
-  the Terraform that made them; re-running the loads against the catalog is the
-  whole migration path.
-- **CI still cannot run `dbt build`.** `dbt parse` is offline-safe and stays the
-  gate, as ADR-0014 left it. The difference is that a live target is now cheap
-  to stand up (S3 + Glue, no warehouse), so wiring a real build into CI is a
-  smaller decision than it was.
+  ADR-0011 and ADR-0012 each made. The RAW/CLEAN/CURATED databases are replaced
+  in place by catalog-enabled ones of the same names; re-running the loads is
+  the whole migration path.
+- **The names do not move.** Databases, schemas and tables keep the identifiers
+  they had as plain Snowflake tables, so Cube's models, Streamlit's queries and
+  anything else addressing `CURATED.CORE.*` are unaffected by what is now
+  backing them.
+- **Snowflake is still in the stack, and still costs money** — but only for
+  serving. No warehouse runs during a build: that is DuckDB, in the pipeline
+  pod. The pod is now the compute, so its memory limit matters in a way it
+  didn't when it only shipped SQL to a warehouse (ARCHITECTURE.md §4).
+- **The pipeline keeps one AWS credential for one job.** dlt writes each raw
+  table's Parquet into the volume's bucket itself, through fsspec, which cannot
+  consume vended credentials. Everything else — the catalog, DuckDB's file
+  access — goes through Snowflake. Dagster's compute logs therefore stay on
+  Spaces: nothing contends for boto3's environment variables.
+- **The PAT expires** (365 days, Snowflake's cap), unlike the RSA key pair.
+  Rotation is a `terraform apply -replace` plus a secret push, documented in
+  `platform/terraform/README.md` — but it is a deadline the project did not have
+  before.
+- **A second apply is still required.** The external volume's IAM trust policy
+  names an ARN and external ID that only exist once Snowflake has created the
+  volume. One round-trip, documented in the same README.
+- **Open risk: dlt passes an explicit table `location` on create.** That is the
+  exact thing ADR-0012 recorded Snowflake-managed storage rejecting. External
+  writes were read-only then and are GA now, so the behaviour may well have
+  changed — but it has not been verified against a live account, and it is the
+  first thing to check if raw loads fail on table creation. If Snowflake still
+  rejects it, the fix is to pre-create each raw table with Snowflake DDL (the
+  column set is in the dataset config) so dlt takes its `evolve_table` path,
+  which passes no location. The dbt layers do not have this exposure — DuckDB
+  lets the catalog choose.
 - **The test suite got closer to production, not further.** `test_raw_load.py`
   used to stub the destination with SQLite over dlt's `sqlalchemy` destination;
   it now writes actual Iceberg tables to a temp directory through a SQLite
-  pyiceberg catalog, and reads them back through the catalog. The only
-  substitutions are *where* the lake is and *which* catalog implementation
-  backs it.
+  pyiceberg catalog, reads them back through the catalog, and asserts the
+  upper-casing contract. The only substitutions are *where* the lake is and
+  *which* catalog implementation backs it.
 - **Two engines again, but not two dialects.** ADR-0014's complaint was that
   every model had to stay portable across DuckDB and Snowflake. That does not
-  come back: models are compiled for DuckDB only. Snowflake reads the *tables*,
-  not the project, and the manifest is compiled once against the one target.
+  come back: models compile for DuckDB only. Snowflake reads the *tables*, not
+  the project.
 - **The asset graph is renamed**: `snowflake/…` becomes `lakehouse/…`, keyed
-  `[lakehouse, <catalog>, <namespace>, <table>]`, kinds `dbt` + `iceberg`. The
-  `openmetadata_snowflake_sync` ingestion is unchanged — it points at the
-  catalog-linked database, so the catalog still sees every table.
-- **New failure mode: two writers, one catalog.** dlt and dbt commit through
-  the same Glue catalog. Iceberg's per-table ACID means neither can half-write
-  a table, and `maxConcurrentRuns: 1` (§3/§4) still serializes the pipeline —
-  but a Snowflake-side write would now be a real conflict, which is part of why
-  the query role is read-only.
-- **AWS becomes a third provider** (after DigitalOcean and Cloudflare), with
-  its own Terraform provider, credentials and bill. Cost is S3 storage plus
-  Glue requests — under a dollar a month at this data volume, against the
-  Snowflake credits each dbt build used to burn.
+  `[lakehouse, <database>, <schema>, <table>]` as before, kinds `dbt` +
+  `iceberg`. Keys stay lower case even though the SQL identifiers are upper
+  case — a key is a graph label, not an identifier.
+- **Two writers, one catalog.** dlt and dbt both commit through Horizon.
+  Iceberg's per-table ACID means neither can half-write a table, and
+  `maxConcurrentRuns: 1` (§3/§4) still serializes the pipeline. Snowflake itself
+  writes nothing — the role has the privilege, because it is one role, but
+  nothing in the design uses it.

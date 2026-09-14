@@ -57,7 +57,9 @@ def _table_key(socrata: SocrataDomain, cfg: DatasetConfig) -> str:
 
 
 def _raw_key(socrata: SocrataDomain, cfg: DatasetConfig) -> str:
-    return f"lakehouse/{naming.catalog()}/{naming.schema('raw', socrata.source)}/{cfg.raw_table}"
+    database = naming.database("raw").lower()
+    schema = naming.schema("raw", socrata.source).lower()
+    return f"lakehouse/{database}/{schema}/{cfg.raw_table}"
 
 
 def test_scraper_has_run(socrata: SocrataDomain) -> None:
@@ -120,8 +122,8 @@ def test_only_enabled_datasets_get_the_downstream_assets(socrata: SocrataDomain)
             assert catalog.child_keys == set()
             # Deliberately *not* asserting `raw_str not in by_str`: the
             # `lakehouse/` raw keyspace is shared with dbt's own source nodes
-            # (assets/lakehouse_dbt.py derives the same [prefix, catalog,
-            # namespace, table] key), so a disabled dataset left behind in a
+            # (assets/lakehouse_dbt.py derives the same [prefix, database,
+            # schema, table] key), so a disabled dataset left behind in a
             # generated `_stg_<source>__sources.yml` legitimately has a key
             # there. What matters is that nothing ingests it.
 

@@ -17,10 +17,9 @@ module's docstring for why.
 * ``openmetadata_snowflake_sync`` — database/schema/table/column metadata,
   authenticating with the read-only query role's key pair
   (``ohdp_shared.settings.snowflake_*``). Snowflake is still the ingestion
-  surface even though nothing writes there any more (ADR-0019): its
-  catalog-linked database ``LAKEHOUSE`` mirrors every namespace and Iceberg
-  table in the Glue catalog, which is exactly what OpenMetadata wants to
-  crawl — and there is no Glue connector to point at instead. Its service name
+  surface (ADR-0019): the medallion-layer databases *are* the Iceberg
+  catalogs, so crawling them over SQL sees every namespace and table the
+  pipeline wrote through the REST endpoint. Its service name
   is what ``openmetadata_dagster_sync``'s lineage edges resolve tables
   against, so that sync's asset-graph lineage links up with the table lineage
   dbt/dlt publish under ``lakehouse/``.
@@ -64,6 +63,11 @@ from ohdp_shared import get_logger
 from ohdp_shared.settings import settings
 
 log = get_logger(__name__)
+
+# The three medallion-layer databases, which are also the three Iceberg
+# catalogs the pipeline writes through (ADR-0013, ADR-0019).
+_LAYERS: tuple[naming.Layer, ...] = ("raw", "clean", "curated")
+_LAYER_DATABASES = [naming.database(layer) for layer in _LAYERS]
 
 _SNOWFLAKE_SERVICE_NAME = "snowflake"
 
@@ -111,10 +115,10 @@ def _snowflake_workflow_config() -> dict[str, Any]:
                         "lookbackDays": 7,
                         "safetyMarginDays": 1,
                     },
-                    # One catalog-linked database holds every namespace since
-                    # ADR-0019 (ohdp_ingestion.naming.CATALOG, upper-cased the
-                    # way Snowflake stores a database name).
-                    "databaseFilterPattern": {"includes": [naming.catalog().upper()]},
+                    # One database per medallion layer (ADR-0013), each its
+                    # own Iceberg catalog since ADR-0019. Already upper case —
+                    # see ohdp_ingestion.naming.
+                    "databaseFilterPattern": {"includes": _LAYER_DATABASES},
                     "schemaFilterPattern": {
                         "excludes": ["INFORMATION_SCHEMA", "PUBLIC", "DBT_TEST__AUDIT"]
                     },
@@ -145,7 +149,7 @@ def _dbt_workflow_config() -> dict[str, Any]:
                     "dbtUpdateDescriptions": True,
                     "includeTags": True,
                     "databaseFilterPattern": {
-                        "includes": [naming.catalog().upper()],
+                        "includes": _LAYER_DATABASES,
                     },
                 }
             },

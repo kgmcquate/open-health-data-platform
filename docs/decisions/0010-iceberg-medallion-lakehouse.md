@@ -3,7 +3,7 @@
 **Status:** Superseded (twice over). [ADR-0011](0011-snowflake-horizon-catalog.md)
 then [ADR-0012](0012-native-snowflake-tables.md) retired it; [ADR-0019](0019-iceberg-on-s3-duckdb-dbt.md)
 revives the *shape* below — Iceberg medallion layers, layer-prefixed namespaces,
-dbt on DuckDB — on AWS S3 with a Glue REST catalog, and without the custom write
+dbt on DuckDB — with Snowflake as the catalog and without the custom write
 plugin, which DuckDB's own Iceberg writer has since made unnecessary. The
 original superseding note follows.
 

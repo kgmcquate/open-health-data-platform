@@ -1,13 +1,13 @@
 """Cached Snowflake connection shared by every dashboard page.
 
-Queries the Iceberg lakehouse through Snowflake's catalog-linked database
-`LAKEHOUSE` (ADR-0019) — the same tables dbt-duckdb builds, the same relation
-names the dbt manifest carries.
+Queries the CURATED database, which since ADR-0019 *is* an Iceberg catalog —
+the same tables dbt-duckdb builds through Horizon's REST endpoint, under the
+same names they have always had.
 
 Uses the shared `OHDP_PIPELINE` role/key (`ohdp_shared.settings`) rather than a
-dedicated one. Since ADR-0019 that role is read-only over the lakehouse, so
-this is now sharing a read credential with Cube rather than the privilege
-trade-off docs/decisions/0015-streamlit-over-superset.md described.
+dedicated read-only one. That is a deliberate, temporary privilege trade-off
+made when Streamlit replaced Superset; see
+docs/decisions/0015-streamlit-over-superset.md.
 """
 
 from __future__ import annotations

@@ -21,7 +21,7 @@ the ``DatasetConfig`` contract) emits up to three assets:
   actually is that run. Only when ``enabled: true``. The run goes through
   ``ohdp_orchestration.resources.dlt.DLT_RESOURCE`` — see that module for why a
   plain ``dlt.run()`` isn't safe here.
-* a **raw-layer asset** ``lakehouse/<catalog>/raw_<source>/<raw_table>`` — an
+* a **raw-layer asset** ``lakehouse/raw/<source>/<raw_table>`` — an
   unexecutable ``AssetSpec`` labelling the Iceberg table in the catalog, which
   receives a *runless* materialization event from the table asset's op for
   every table the load actually touched. Only when ``enabled: true``.
@@ -70,7 +70,7 @@ INGESTION_PREFIX = "ingestion"
 # Must match ohdp_orchestration.assets.lakehouse_dbt's `KEY_PREFIX` — there's
 # no shared constant since the two modules are independent, but the dbt
 # translator's `get_asset_key` (assets/lakehouse_dbt.py) computes
-# [prefix, catalog, namespace, name] for each source's dbt source nodes too,
+# [prefix, database, schema, name] for each source's dbt source nodes too,
 # and that key needs to line up with `_lakehouse_raw_spec()` below.
 LAKEHOUSE_PREFIX = "lakehouse"
 
@@ -128,7 +128,7 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
 
     @property
     def _raw_namespace(self) -> str:
-        """e.g. ``"lakehouse.raw_healthdata_gov"`` (ADR-0019)."""
+        """e.g. ``"RAW.HEALTHDATA_GOV"`` (ADR-0013)."""
         return naming.namespace("raw", self._source)
 
     # --- keys ---------------------------------------------------------------
@@ -141,10 +141,17 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
         return AssetKey([INGESTION_PREFIX, self._source, self.raw_table])
 
     def _lakehouse_raw_key(self, table: str) -> AssetKey:
-        """Label for where a table lives in the catalog's raw layer —
-        `[prefix, catalog, "raw_<source>", table]`, via the same
+        """Label for where a table lives in the raw layer —
+        `[prefix, "raw", "<source>", table]`, via the same
         `ohdp_ingestion.naming` module the raw loader itself uses, and
         matching dbt's actual compiled source-node asset key (ADR-0019).
+
+        Lower-cased, unlike the SQL identifiers themselves: an asset key is a
+        label in the Dagster graph, and it should not move if the lakehouse's
+        casing convention ever changes again. The dbt translator
+        (`assets/lakehouse_dbt.py`) lowers the same three components for the
+        same reason, which is what keeps the two sides equal.
+
         Takes an explicit table name (not always
         `self.raw_table`) because one dlt run can normalize nested JSON into
         several physical tables — `<raw_table>__<nested_field>`, one per
@@ -154,9 +161,9 @@ class SocrataDataset(Component, DatasetConfig, Resolvable):
         return AssetKey(
             [
                 LAKEHOUSE_PREFIX,
-                naming.catalog(),
-                naming.schema("raw", self._source),
-                table,
+                naming.database("raw").lower(),
+                naming.schema("raw", self._source).lower(),
+                table.lower(),
             ]
         )
 

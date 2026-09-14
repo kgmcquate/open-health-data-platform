@@ -31,7 +31,7 @@ from ohdp_ingestion.socrata.config import (
 from ohdp_ingestion.socrata.domain import SocrataDomain
 from ohdp_ingestion.socrata.source import (
     build_pipeline,
-    configure_iceberg_catalog,
+    configure_catalog,
     iceberg_catalog_config,
     socrata_source,
     write_disposition,
@@ -45,7 +45,7 @@ __all__ = [
     "DatasetConfig",
     "SocrataDomain",
     "build_pipeline",
-    "configure_iceberg_catalog",
+    "configure_catalog",
     "iceberg_catalog_config",
     "iter_catalog",
     "slugify",

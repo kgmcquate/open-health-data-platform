@@ -4,11 +4,12 @@
 # Relax only this module.
 # mypy: disable-error-code="no-untyped-def,untyped-decorator,call-overload,no-any-return,arg-type"
 """A ``dlt`` source over one Socrata dataset — any domain (ADR-0018) — landing
-an Iceberg table in the ``raw_<source>`` namespace of the Glue catalog
-(ADR-0019). dlt's own filesystem/Iceberg support handles schema evolution and
-the incremental cursor; there is no bespoke stage-then-commit step the way
-ADR-0010 needed. dlt keeps its pipeline state in the destination dataset, which
-is what makes the cursor survive a pod restart.
+a Snowflake-managed Iceberg table in ``RAW.<SOURCE>``, through Snowflake's
+Horizon catalog (ADR-0013 for the layout, ADR-0019 for the catalog). dlt's own
+filesystem/Iceberg support handles schema evolution and the incremental cursor;
+there is no bespoke
+stage-then-commit step the way ADR-0010 needed. dlt keeps its pipeline state in
+the destination dataset, which is what makes the cursor survive a pod restart.
 
 Every row carries two system columns we alias in explicitly:
 
@@ -164,7 +165,7 @@ def socrata_source(
             write_disposition=write_disposition(incremental_cursor),
             columns=_column_hints(columns),
             # What makes the filesystem destination commit an Iceberg table
-            # (registered in the Glue catalog) rather than bare Parquet files.
+            # (registered in Horizon) rather than bare Parquet files.
             table_format="iceberg",
         )
         # dlt's documented pattern is to default the arg to the incremental object;
@@ -226,20 +227,19 @@ def write_disposition(incremental_cursor: str | None) -> WriteDisposition:
 
 def _destination() -> Any:
     """dlt destination for the raw table (ADR-0019): the ``filesystem``
-    destination on S3, writing Iceberg tables registered in the Glue catalog.
+    destination, committing Iceberg tables through Snowflake's Horizon catalog.
 
-    dlt's own Iceberg support does the two things the bespoke ADR-0010 commit
-    path used to: it evolves the table schema (``union_by_name``) on every
-    append, and it keeps the pipeline state — the incremental cursor — in the
+    dlt's Iceberg support does the two things the bespoke ADR-0010 commit path
+    used to: it evolves the table schema (``union_by_name``) on every append,
+    and it keeps the pipeline state — the incremental cursor — in the
     destination, so the cursor survives a pod restart.
 
-    The catalog is configured through dlt's ``iceberg_catalog`` config section
-    (``dlt.common.libs.pyiceberg.get_catalog``) rather than a ``.pyiceberg.yaml``
-    file, so there is nothing to mount into the run pod. ``sigv4`` is what makes
-    pyiceberg sign its REST calls as an AWS request; the signing credentials
-    come from the environment (``AWS_ACCESS_KEY_ID`` / ``AWS_SECRET_ACCESS_KEY``,
-    set alongside the ``OHDP_AWS_*`` settings by the deploy), which is the only
-    place boto3's signer reads them from.
+    ``bucket_url`` is the external volume's bucket, because dlt writes each
+    table's Parquet itself, through fsspec, using the credentials below. It
+    cannot use the catalog-vended credentials Horizon hands out (DuckDB can —
+    see data/dbt/profiles.yml), so the pipeline keeps an IAM key for this one
+    job. Snowflake still owns the *table*; this only writes files beneath the
+    volume it already governs.
     """
     return dlt.destinations.filesystem(
         bucket_url=settings.lakehouse_url,
@@ -253,27 +253,38 @@ def _destination() -> Any:
 
 
 def iceberg_catalog_config() -> dict[str, Any]:
-    """pyiceberg ``load_catalog`` kwargs for the Glue Iceberg REST endpoint.
+    """pyiceberg ``load_catalog`` kwargs for Snowflake's Horizon REST catalog.
 
-    ``name`` is Glue's own catalog name, which for the account-level catalog is
-    the AWS account ID (Snowflake's ``REST_CONFIG.CATALOG_NAME`` is the same
-    value — see platform/terraform/snowflake.tf).
+    ``warehouse`` is the catalog's name, which for Horizon is the Snowflake
+    database — here ``RAW``, the only one the loader writes to
+    (``ohdp_ingestion.naming.database``). The clean and curated layers are
+    separate catalogs, attached separately by dbt.
+
+    Auth is OAuth2 client-credentials with a programmatic access token: the
+    Snowflake user is the client id and the PAT the client secret, exchanged at
+    Horizon's token endpoint. ``scope`` is not optional — Snowflake's token
+    endpoint rejects the exchange without ``session:role:<ROLE>``, which is the
+    ``invalid_scope`` ADR-0012 hit.
+
+    The access-delegation header asks Horizon to vend short-lived storage
+    credentials for reads. ADR-0010 had to *suppress* this header, because
+    Polaris could not subscope credentials for non-AWS storage; on S3 with
+    Snowflake as the catalog it is the supported path.
     """
     return {
         "type": "rest",
-        "uri": settings.glue_rest_uri,
-        "warehouse": settings.glue_catalog_id,
-        "rest.sigv4-enabled": "true",
-        "rest.signing-name": "glue",
-        "rest.signing-region": settings.aws_region,
-        "s3.region": settings.aws_region,
-        "s3.access-key-id": settings.aws_access_key_id,
-        "s3.secret-access-key": settings.aws_secret_access_key,
+        "uri": settings.horizon_catalog_uri,
+        "warehouse": naming.database("raw"),
+        "credential": f"{settings.snowflake_user}:{settings.snowflake_pat}",
+        "oauth2-server-uri": settings.horizon_oauth_uri,
+        "scope": settings.horizon_scope,
+        "header.X-Iceberg-Access-Delegation": "vended-credentials",
     }
 
 
-def configure_iceberg_catalog() -> None:
-    """Publish the catalog config into dlt's config providers.
+def configure_catalog() -> None:
+    """Publish the catalog config and the naming convention into dlt's config
+    providers.
 
     The filesystem destination resolves its catalog lazily, deep inside the
     load (``FilesystemClient.get_open_table_catalog`` -> ``get_catalog``), with
@@ -282,8 +293,12 @@ def configure_iceberg_catalog() -> None:
     rather than a ``secrets.toml``/``.pyiceberg.yaml`` file keeps it derived
     from ``ohdp_shared.settings`` (§5: secrets come from the environment) and
     leaves nothing to mount into the run pod.
+
+    ``schema.naming`` is what makes dlt create ``RAW_CDC.NNDSS_WEEKLY_DATA``
+    rather than its default lower case — see ``ohdp_ingestion.sql_upper``.
     """
-    dlt.config["iceberg_catalog.iceberg_catalog_name"] = naming.catalog()
+    dlt.config["schema.naming"] = "ohdp_ingestion.sql_upper"
+    dlt.config["iceberg_catalog.iceberg_catalog_name"] = naming.database("raw")
     dlt.config["iceberg_catalog.iceberg_catalog_type"] = "rest"
     dlt.config["iceberg_catalog.iceberg_catalog_config"] = iceberg_catalog_config()
 
@@ -293,10 +308,10 @@ def build_pipeline(*, pipeline_name: str, source: str) -> dlt.Pipeline:
 
     Used to build a ``@dlt_assets``-decorated asset (see
     ``ohdp_orchestration.components.socrata``), which runs it and commits the
-    result to the ``raw_<source>`` namespace (ADR-0019); dbt reads the tables as
+    result to ``RAW.<SOURCE>`` (ADR-0013); dbt reads the tables as
     dbt sources (the generated ``_stg_<source>__sources.yml``).
     """
-    configure_iceberg_catalog()
+    configure_catalog()
     return dlt.pipeline(
         pipeline_name=pipeline_name,
         destination=_destination(),

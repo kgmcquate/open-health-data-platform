@@ -8,8 +8,8 @@
 # dimensions and column descriptions.
 #
 # dbt-duckdb because that is the project's adapter (ADR-0019); the manifest's
-# relation names (`lakehouse.<namespace>.<table>`) resolve in Snowflake too,
-# which is what Cube actually connects to — see the catalog-linked database in
+# relation names (`CURATED.<SCHEMA>.<TABLE>`) resolve in Snowflake too, because
+# Snowflake *is* the catalog those tables live in — see
 # platform/terraform/snowflake.tf.
 FROM python:3.12-slim AS dbt-manifest
 RUN pip install --no-cache-dir "dbt-duckdb>=1.9"

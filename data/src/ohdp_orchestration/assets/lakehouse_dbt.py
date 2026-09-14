@@ -1,22 +1,23 @@
 # mypy: disable-error-code="no-untyped-def, no-untyped-call, type-arg, arg-type, override"
 """The dbt medallion project as Dagster assets, under the ``lakehouse/`` prefix
-(dbt-duckdb writing Iceberg, ADR-0019). Named for the catalog every model
-lands in — ``ohdp_ingestion.naming.CATALOG`` — rather than for whichever engine
-happens to be reading or writing it, which is the whole point of the format:
-DuckDB writes these tables, Snowflake reads them.
+(dbt-duckdb writing Iceberg, ADR-0019). Named for the thing the models land in
+rather than for whichever engine happens to be reading or writing it, which is
+the whole point of the format: DuckDB writes these tables, Snowflake reads
+them.
 
 Plain module-level ``@dbt_assets``, not a ``Component`` — there is exactly one
 dbt project, so a `defs.yaml` config layer would only add indirection.
 
-* models  -> ``lakehouse/<catalog>/<namespace>/<table_name>`` (lowercased,
+* models  -> ``lakehouse/<database>/<schema>/<table_name>`` (lowercased,
   table name not dbt unique-id name), grouped
   ``lakehouse_<layer>`` (`clean` / `core` / `marts`), kinds ``dbt`` + ``iceberg``.
 * dbt **sources** map back to the raw-layer keys the ingestion components
-  already own (``lakehouse/lakehouse/raw_<source>/<table>``, see
+  already own (``lakehouse/raw/<source>/<table>``, see
   ``SocrataDataset.lakehouse_raw_key``) — so the graph is continuous:
 
       sources/healthdata_gov/… → ingestion/healthdata_gov/<raw_table> (dlt)
-        → lakehouse/…/raw_… → lakehouse/…/clean_… → lakehouse/…/core → lakehouse/…/mart_…
+        → lakehouse/raw/… → lakehouse/clean/stg_…
+        → lakehouse/curated/core → lakehouse/curated/<mart>
 
 Needs ``dbt/target/manifest.json``. ``dagster dev`` builds it (``prepare_if_dev``);
 CI and the image run ``dbt parse``. Locally: ``cd data/dbt && uv run dbt parse``.
@@ -73,18 +74,21 @@ class _Translator(DagsterDbtTranslator):
         if hardcoded_asset_key:
             return super().get_asset_key(dbt_resource_props)
 
-        # Match the structure of the Iceberg catalog: one catalog, one
-        # namespace per layer+source/mart within it (ADR-0019). dbt **sources**
+        # Match the structure of the lakehouse: one catalog (a Snowflake
+        # database) per medallion layer, a namespace per source/mart within it
+        # (ADR-0013, kept by ADR-0019). dbt **sources**
         # keep the untouched database/name so they stay equal to the raw-layer
         # keys the ingestion side already owns (`SocrataDataset.lakehouse_raw_key`).
         # Models instead use the alias (the actual table name, e.g. after
         # generate_alias_name.sql strips the `stg_<source>__` prefix) rather
-        # than the dbt unique-id name, and lowercase catalog/namespace — Glue
-        # namespaces are lowercase and Snowflake case-folds unquoted
-        # identifiers, so the asset key should stay stable regardless of how
-        # either engine happens to case them.
+        # than the dbt unique-id name. All three components are lower-cased:
+        # the lakehouse's SQL identifiers are upper case (ADR-0019), but an
+        # asset key is a label in the Dagster graph and should not move if that
+        # convention changes again. `SocrataDataset._lakehouse_raw_key` lowers
+        # the same three, which is what keeps the two sides equal.
 
         table_name = dbt_resource_props.get("alias") or dbt_resource_props["name"].split("__")[-1]
+        table_name = table_name.lower()
         database = dbt_resource_props["database"].lower()
         schema = dbt_resource_props["schema"].lower()
 

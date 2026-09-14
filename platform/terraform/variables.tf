@@ -37,12 +37,7 @@ variable "snapshot_bucket" {
 }
 
 variable "compute_logs_bucket" {
-  description = <<-EOT
-    AWS S3 bucket for Dagster's S3ComputeLogManager (raw stdout/stderr compute
-    logs). On AWS rather than Spaces because that log manager reads its
-    credentials off the process environment, which the pipeline pod now needs
-    for the lakehouse (ADR-0019).
-  EOT
+  description = "DigitalOcean Spaces bucket for Dagster's S3ComputeLogManager (raw stdout/stderr compute logs)."
   type        = string
   default     = "ohdp-compute-logs"
 }
@@ -61,8 +56,8 @@ variable "dns_base" {
 variable "dns_hostnames" {
   description = "Service hostnames (left-most label) fronted by the Traefik ingress."
   type        = list(string)
-  # "catalog" is OpenMetadata, not the Iceberg catalog — that is AWS Glue
-  # (ADR-0019), an AWS-hosted endpoint; nothing of ours is served for it.
+  # "catalog" is OpenMetadata, not the Iceberg catalog — that is Snowflake
+  # (ADR-0019), reached at its own hostname; nothing of ours is served for it.
   # "chat" is Open WebUI (ADR-0017), a second chat surface alongside "app"
   # (hub-api's own UI); "app" is not being retired by it.
   default = ["app", "chat", "dagster", "catalog", "cube", "streamlit"]
@@ -84,14 +79,14 @@ variable "loadbalancer_ip" {
 }
 
 # ---------------------------------------------------------------------------
-# The Iceberg lakehouse: AWS S3 + the Glue catalog (ADR-0019)
+# The Iceberg lakehouse: Snowflake is the catalog, S3 is the storage (ADR-0019)
 # ---------------------------------------------------------------------------
 
 variable "aws_region" {
   description = <<-EOT
-    AWS region for the lakehouse bucket and the Glue catalog. Unrelated to
-    `location` (DigitalOcean) — the cluster stays where it is; only the tables
-    live here, because Snowflake cannot read Iceberg from Spaces.
+    AWS region for the external volume's bucket. Unrelated to `location`
+    (DigitalOcean) — the cluster stays where it is; only the table files live
+    here, because Snowflake's external volumes cannot use Spaces.
   EOT
   type        = string
   default     = "us-east-1"
@@ -114,26 +109,15 @@ variable "aws_secret_access_key" {
 }
 
 variable "lakehouse_bucket" {
-  description = "S3 bucket holding every Iceberg table's data and metadata files."
+  description = "S3 bucket behind the external volume, holding every Iceberg table's files."
   type        = string
   default     = "ohdp-lakehouse"
 }
 
-variable "lakehouse_catalog" {
-  description = <<-EOT
-    Name both engines know the catalog by: DuckDB's `ATTACH ... AS <name>`
-    alias (data/dbt/profiles.yml) and the Snowflake catalog-linked database.
-    Must equal ohdp_ingestion.naming.CATALOG — that module is what the pipeline
-    reads at runtime.
-  EOT
-  type        = string
-  default     = "lakehouse"
-}
-
 variable "lakehouse_sources" {
   description = <<-EOT
-    Ingestion sources. Each gets a `raw_<source>` and a `clean_<source>`
-    namespace in the Glue catalog (ADR-0019), matching
+    Ingestion sources. Each gets a namespace in the RAW catalog (`RAW.<SOURCE>`)
+    and one in CLEAN (`CLEAN.STG_<SOURCE>`), matching
     ohdp_ingestion.naming.schema() and dbt's generate_schema_name.sql.
   EOT
   type        = list(string)
@@ -142,9 +126,9 @@ variable "lakehouse_sources" {
 
 variable "lakehouse_marts" {
   description = <<-EOT
-    Presentation-layer marts. Each gets a `mart_<name>` namespace alongside the
-    always-present `core` one. dlt and dbt-duckdb can also open a namespace on
-    their own; list one here to bring it under Terraform.
+    Presentation-layer marts. Each gets a `CURATED.<MART>` namespace alongside
+    the always-present `CURATED.CORE`. dlt and dbt-duckdb can also open a
+    namespace on their own; list one here to bring it under Terraform.
   EOT
   type        = list(string)
   default = [
@@ -175,21 +159,6 @@ variable "snowflake_storage_aws_external_id" {
   default     = ""
 }
 
-variable "snowflake_glue_aws_iam_user_arn" {
-  description = <<-EOT
-    API_AWS_IAM_USER_ARN from `DESC CATALOG INTEGRATION` — the IAM user
-    Snowflake assumes the Glue role as. Second apply; see README.md.
-  EOT
-  type        = string
-  default     = ""
-}
-
-variable "snowflake_glue_aws_external_id" {
-  description = "API_AWS_EXTERNAL_ID from `DESC CATALOG INTEGRATION`. Second apply; see README.md."
-  type        = string
-  default     = ""
-}
-
 # ---------------------------------------------------------------------------
 # Snowflake — the read side of the lakehouse (ADR-0019)
 # ---------------------------------------------------------------------------
@@ -216,19 +185,37 @@ variable "snowflake_warehouse" {
 
 variable "snowflake_pipeline_role" {
   description = <<-EOT
-    Account role Cube and Streamlit authenticate as. Read-only over the
-    catalog-linked database (ADR-0019). Name kept from when it was the
-    pipeline's write role so the existing repo/Kubernetes secrets and Helm
-    values don't all have to rotate at once.
+    Account role everything runs as. It reads and writes the lakehouse, and
+    Horizon's OAuth2 scope names it (`session:role:<this>`) — see
+    ohdp_shared.settings.horizon_scope, which must agree.
   EOT
   type        = string
   default     = "OHDP_PIPELINE"
 }
 
 variable "snowflake_pipeline_user" {
-  description = "SERVICE user Cube and Streamlit authenticate as, via its RSA key pair."
+  description = <<-EOT
+    SERVICE user everything authenticates as: the pipeline with a programmatic
+    access token over Horizon's Iceberg REST API, Cube and Streamlit with the
+    RSA key pair over SQL.
+  EOT
   type        = string
   default     = "OHDP_PIPELINE"
+}
+
+variable "snowflake_pat_days_to_expiry" {
+  description = <<-EOT
+    Lifetime of the pipeline's programmatic access token, in days. Snowflake
+    caps this at 365 — unlike the RSA key pair, this credential expires, so put
+    a reminder somewhere. Rotation is in README.md.
+  EOT
+  type        = number
+  default     = 365
+
+  validation {
+    condition     = var.snowflake_pat_days_to_expiry > 0 && var.snowflake_pat_days_to_expiry <= 365
+    error_message = "snowflake_pat_days_to_expiry must be between 1 and 365."
+  }
 }
 
 variable "snowflake_allowed_ips" {

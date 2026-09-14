@@ -25,8 +25,8 @@ WORKDIR /app/data
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-editable
 
-# dbt deps hits the network (dbt Hub); dbt parse is offline — no AWS creds
-# needed, the catalog is only attached on a real run. Copy just the dbt project
+# dbt deps hits the network (dbt Hub); dbt parse is offline — no Snowflake
+# credentials needed, the catalog is only attached on a real run. Copy just the dbt project
 # first so ordinary source changes elsewhere in data/ don't force a re-fetch of
 # dbt packages: this manifest.json build for the `lakehouse` dbt assets
 # (ADR-0019) only reruns when the dbt project itself changes.

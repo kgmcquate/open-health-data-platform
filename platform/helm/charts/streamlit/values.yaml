@@ -94,8 +94,8 @@ env:
 envFrom:
   # streamlit-snowflake — mirrored by the `secrets` step of deploy-platform.yml
   # from the SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret Cube also uses:
-  # OHDP_SNOWFLAKE_PRIVATE_KEY. Read-only over the LAKEHOUSE catalog-linked
-  # database since ADR-0019.
+  # OHDP_SNOWFLAKE_PRIVATE_KEY. Queries the CURATED database, which since
+  # ADR-0019 holds Snowflake-managed Iceberg tables under the same names.
   secrets:
     - streamlit-snowflake
   configMaps: []
