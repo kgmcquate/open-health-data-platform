@@ -32,7 +32,12 @@ server:
   # repo's own Kubernetes example omits this and does not work as written.)
   host: "0.0.0.0"
   port: 5000
-  workers: 2
+  # Sync workers, so this is also the hard concurrency cap. The Dagster UI fires
+  # many GraphQL requests in parallel on page load; at 2 the health endpoint
+  # queued behind them and blew the probe timeout, and the kubelet killed a pod
+  # that was merely busy. Raise workers and probe timeouts together — each
+  # worker adds ~52 MiB of baseline to the limit above.
+  workers: 4
   healthcheckPath: "/gqlproxy/health"
   # Token re-validation against the IdP on every request. Leave off while
   # oauth2-proxy is the only entry point; turn on if the proxy is ever reachable
@@ -40,6 +45,20 @@ server:
   validateToken: false
   idp: "github"
   enableConfigJinja: false
+
+# Probe tuning. The chart previously set no timeoutSeconds, so both probes used
+# the 1s default — long enough to fail whenever a worker was mid-request against
+# a slow upstream query, which is exactly when the proxy must not be restarted.
+probes:
+  timeoutSeconds: 5
+  liveness:
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    failureThreshold: 6
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
 
 service:
   type: ClusterIP
@@ -61,14 +80,21 @@ ingress:
     enabled: true
     secretName: dagster-tls
 
-# Shares the 0.3 GB budget line with ingress/cert-manager/oauth2-proxy (§4).
+# Shares the 0.5 GB budget line with ingress/cert-manager/oauth2-proxy (§4).
+#
+# Sizing is empirical, not a guess. Idle baseline is ~105 MiB for two gunicorn
+# workers (~52 MiB each — Python + Flask, before a single request). The proxy
+# buffers the whole upstream response in memory rather than streaming it, and a
+# run's event log deserialises to tens of MiB, so a single run-logs page view
+# spikes well past a 192Mi limit. That limit OOMKilled the pod mid-request, and
+# because the browser retries the same heavy query on reload it crash-looped.
 resources:
   requests:
     cpu: 50m
-    memory: 128Mi
+    memory: 256Mi
   limits:
     cpu: 500m
-    memory: 192Mi
+    memory: 512Mi
 
 podSecurityContext:
   runAsNonRoot: true

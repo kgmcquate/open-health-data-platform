@@ -242,12 +242,12 @@ Steady state ~14.5 GB, burst ~16 GB during a build.
 | openmetadata-server | 2 GB | JVM |
 | streamlit | 0.5 GB | Single process, no operator, no metastore (ADR-0015) |
 | postgres | 1 GB | 3 databases: dagster, openmetadata, app |
-| dagster-webserver + daemon | 1 GB | |
+| dagster-webserver + daemon | 1 GB | Requests. The webserver's *limit* is 2 GB: one `logsForRun` query costs ~78 MiB of heap regardless of how small the response is, and the run-logs page issues several at once (see values/dagster.yaml) |
 | cube | 0.5 GB | No Cube Store, no pre-aggregations initially; queries Snowflake directly |
 | hub-web + hub-api | 0.5 GB | |
 | open-webui | 1 GB | Chat UI (ADR-0017). Ollama, Pipelines, Tika and the bundled Redis subcharts are all off — with them it is ~2.5 GB |
 | mcp-cube | 0.25 GB | Cube's tool surface over MCP; the hub-api image with a different command |
-| ingress, cert-manager, oauth2-proxy, graphql-proxy | 0.3 GB | |
+| ingress, cert-manager, oauth2-proxy, graphql-proxy | 0.5 GB | graphql-proxy alone idles at ~105 MiB for 2 gunicorn workers and buffers whole upstream responses; 192Mi OOMKilled it in a crash loop |
 | k3s system | 1 GB | |
 | pipeline pod | 1.5 GB | Burst only, concurrency capped at 1; compute is Snowflake, not this pod |
 

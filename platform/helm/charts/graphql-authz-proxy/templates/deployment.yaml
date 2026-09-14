@@ -74,14 +74,18 @@ spec:
             httpGet:
               path: {{ .Values.server.healthcheckPath }}
               port: http
-            initialDelaySeconds: 15
-            periodSeconds: 20
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
           readinessProbe:
             httpGet:
               path: {{ .Values.server.healthcheckPath }}
               port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

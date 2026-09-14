@@ -33,13 +33,23 @@ postgresql:
 # ---------------------------------------------------------------------------
 dagsterWebserver:
   replicaCount: 1
+  # Sized against measured behaviour, not the result size. A single
+  # logsForRun(limit: 1000) costs ~78 MiB of webserver heap even when the run has
+  # ~50 events and the response is 17 KB — the cost is in executing the query,
+  # not in what comes back, so it does not shrink for small runs. Idle is
+  # ~220 MiB, and the run-logs page issues several of these at once, which is how
+  # 768Mi and then 1Gi both got OOMKilled mid-request. At 2Gi there is room for
+  # roughly twenty concurrent log queries.
+  #
+  # The limit is what grows; the request stays at 512Mi, so scheduling is
+  # unchanged and this still fits the nodes it already lands on.
   resources:
     requests:
       cpu: 100m
       memory: 512Mi
     limits:
       cpu: "1"
-      memory: 768Mi
+      memory: 2Gi
   # Belt and braces. The proxy is the real control (§5) — this only hides the
   # mutating affordances in the UI — but there is no reason to leave them on.
   enableReadOnly: false
