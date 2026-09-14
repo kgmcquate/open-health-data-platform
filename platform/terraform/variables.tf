@@ -114,34 +114,6 @@ variable "lakehouse_bucket" {
   default     = "ohdp-lakehouse"
 }
 
-variable "lakehouse_sources" {
-  description = <<-EOT
-    Ingestion sources. Each gets a namespace in the RAW catalog (`RAW.<SOURCE>`)
-    and one in CLEAN (`CLEAN.STG_<SOURCE>`), matching
-    ohdp_ingestion.naming.schema() and dbt's generate_schema_name.sql.
-  EOT
-  type        = list(string)
-  default     = ["healthdata_gov", "cdc"]
-}
-
-variable "lakehouse_marts" {
-  description = <<-EOT
-    Presentation-layer marts. Each gets a `CURATED.<MART>` namespace alongside
-    the always-present `CURATED.CORE`. dlt and dbt-duckdb can also open a
-    namespace on their own; list one here to bring it under Terraform.
-  EOT
-  type        = list(string)
-  default = [
-    "access",
-    "behavioral_health",
-    "child_welfare",
-    "chronic_disease",
-    "education",
-    "immunization",
-    "infectious_disease",
-    "respiratory",
-  ]
-}
 
 variable "snowflake_storage_aws_iam_user_arn" {
   description = <<-EOT

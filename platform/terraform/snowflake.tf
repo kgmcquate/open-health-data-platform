@@ -20,9 +20,11 @@
 #   external volume -> where the table files live (S3, aws.tf)
 #   database        -> one per medallion layer (RAW/CLEAN/CURATED, ADR-0013),
 #                      each a catalog in its own right, with CATALOG='SNOWFLAKE'
-#   schema          -> a namespace in it: RAW.<SOURCE>, CLEAN.STG_<SOURCE>,
-#                      CURATED.CORE, CURATED.<MART>
 #   PAT             -> the pipeline's credential for the REST endpoint
+#
+# Namespaces (RAW.<SOURCE>, CLEAN.STG_<SOURCE>, CURATED.CORE, CURATED.<MART>)
+# are NOT here: dbt and dlt open them as they write, and this file only grants
+# the CREATE SCHEMA that lets them (ADR-0020, see the databases below).
 #
 # The layer databases are unchanged from ADR-0013 — a Snowflake database is an
 # Iceberg catalog and its schemas are that catalog's namespaces, so nothing had
@@ -67,34 +69,6 @@ locals {
     clean   = "CLEAN"
     curated = "CURATED"
   }
-
-  # Namespaces to create, keyed uniquely for a stable for_each. Every source
-  # gets a schema in RAW (named for the source) and one in CLEAN (the
-  # `STG_<SOURCE>` staging convention the model names already carry); CURATED
-  # always gets CORE plus one schema per mart. Matches
-  # ohdp_ingestion.naming.schema() and dbt's generate_schema_name.sql.
-  #
-  # Upper case because Snowflake resolves unquoted identifiers that way and
-  # Horizon requires external engines to address them in capitals.
-  #
-  # dlt and dbt-duckdb both open a missing namespace themselves, so this is
-  # about making the structure legible and grantable, not about unblocking the
-  # pipeline.
-  # `layer` is the snowflake_layer_databases key, not the database name, so the
-  # schema resource can reference snowflake_database.layer[...] and inherit the
-  # dependency edge rather than declaring one.
-  snowflake_namespaces = merge(
-    { for s in var.lakehouse_sources : upper("raw.${s}") => {
-      layer = "raw", schema = upper(s)
-    } },
-    { for s in var.lakehouse_sources : upper("clean.stg_${s}") => {
-      layer = "clean", schema = upper("stg_${s}")
-    } },
-    { "CURATED.CORE" = { layer = "curated", schema = "CORE" } },
-    { for m in var.lakehouse_marts : upper("curated.${m}") => {
-      layer = "curated", schema = upper(m)
-    } },
-  )
 }
 
 # Snowflake SERVICE users don't accept password auth. Two credentials hang off
@@ -246,29 +220,43 @@ resource "snowflake_database" "layer" {
   comment         = "OHDP ${each.key} layer — an Iceberg catalog, written over Horizon (ADR-0019)."
 }
 
-# The catalogs' namespaces. Same reason as the database for pinning
-# with_managed_access and is_transient explicitly — an unset boolean reads back
-# as a diff, and the diff is a drop.
-resource "snowflake_schema" "namespace" {
-  for_each = local.snowflake_namespaces
+# The catalogs' namespaces are deliberately NOT here (ADR-0020). The pipeline
+# opens each one as it writes it — dbt-duckdb's create_schema issues
+# `CREATE SCHEMA IF NOT EXISTS CLEAN.STG_CDC` over Horizon before building the
+# models in it, and dlt does the same for its RAW dataset — so there is one
+# definition of the layout (dbt's folders and generate_schema_name.sql, plus
+# ohdp_ingestion.naming) instead of that list mirrored in a Terraform variable.
+# The `CREATE SCHEMA` in the database grant below is what permits it.
+#
+# Nothing about Iceberg storage is lost by leaving it out: CATALOG and
+# EXTERNAL_VOLUME are *database* defaults and tables inherit them through
+# table -> schema -> database, so a namespace created over the REST API with
+# neither set still yields Iceberg tables in our own S3 bucket. That inheritance
+# is why the database resource above stays, and stays where the storage decision
+# is made.
+#
+# The trade is that nothing prunes a namespace any more. Rename a mart and its
+# old `CURATED.<OLD>` is orphaned until someone drops it by hand — Terraform
+# used to do that, and no longer sees it.
 
-  database            = snowflake_database.layer[each.value.layer].name
-  name                = each.value.schema
-  is_transient        = "false"
-  with_managed_access = "false"
-  comment             = "OHDP lakehouse namespace ${local.snowflake_layer_databases[each.value.layer]}.${each.value.schema} (ADR-0013)."
-}
+# The namespaces Terraform used to declare are dropped, not forgotten — the
+# first apply after ADR-0020 destroys them and the Iceberg tables in them, and
+# the pipeline rebuilds the layout on its next run. dlt re-ingests RAW from
+# upstream (its `_dlt_pipeline_state` went with the schema, so incremental
+# cursors start over) and dbt rebuilds CLEAN and CURATED from it.
 
 # Read *and* write, per layer database: the pipeline creates and rewrites
 # tables through the REST catalog, and CREATE SCHEMA is what lets a new mart
 # appear without a Terraform run. Cube and Streamlit share the role but only
 # ever SELECT.
 #
-# Five grants per database, because ALL and FUTURE are different statements in
-# Snowflake and so different resources here. ALL covers what exists at apply
-# time — the schemas above; FUTURE covers everything the pipeline creates
-# afterwards, which is the whole point, since its schemas and tables come and
-# go without Terraform ever seeing them.
+# Three grants per database: one on the database, and FUTURE on its schemas and
+# their Iceberg tables. There are no matching ALL grants, deliberately —
+# post-ADR-0020 every namespace and table is created by the pipeline role, which
+# owns what it creates and needs no grant on it. FUTURE is here for the case
+# that isn't: an object created by some other role (a manual fix as
+# ACCOUNTADMIN), which it covers at creation time. ALL would only ever restate
+# what ownership already grants.
 resource "snowflake_grant_privileges_to_account_role" "lakehouse_database" {
   for_each = local.snowflake_layer_databases
 
@@ -281,19 +269,6 @@ resource "snowflake_grant_privileges_to_account_role" "lakehouse_database" {
   }
 }
 
-resource "snowflake_grant_privileges_to_account_role" "lakehouse_all_schemas" {
-  for_each = local.snowflake_layer_databases
-
-  account_role_name = snowflake_account_role.pipeline.name
-  privileges        = ["USAGE", "CREATE ICEBERG TABLE"]
-
-  on_schema {
-    all_schemas_in_database = snowflake_database.layer[each.key].name
-  }
-
-  depends_on = [snowflake_schema.namespace]
-}
-
 resource "snowflake_grant_privileges_to_account_role" "lakehouse_future_schemas" {
   for_each = local.snowflake_layer_databases
 
@@ -303,22 +278,6 @@ resource "snowflake_grant_privileges_to_account_role" "lakehouse_future_schemas"
   on_schema {
     future_schemas_in_database = snowflake_database.layer[each.key].name
   }
-}
-
-resource "snowflake_grant_privileges_to_account_role" "lakehouse_all_tables" {
-  for_each = local.snowflake_layer_databases
-
-  account_role_name = snowflake_account_role.pipeline.name
-  privileges        = ["SELECT", "INSERT", "UPDATE", "DELETE"]
-
-  on_schema_object {
-    all {
-      object_type_plural = "ICEBERG TABLES"
-      in_database        = snowflake_database.layer[each.key].name
-    }
-  }
-
-  depends_on = [snowflake_schema.namespace]
 }
 
 resource "snowflake_grant_privileges_to_account_role" "lakehouse_future_tables" {

@@ -31,8 +31,10 @@ loadbalancer_ip = ""
 # Everything below has a working default; override only if you mean to.
 # aws_region        = "us-east-1"
 # lakehouse_bucket  = "ohdp-lakehouse"
-# lakehouse_sources = ["healthdata_gov", "cdc"]
-# lakehouse_marts   = ["respiratory", "chronic_disease", ...]   # CURATED.CORE is always created
+#
+# There is no source or mart list here: the pipeline creates its own namespaces
+# as it writes them (ADR-0020), so adding a source or a mart is a change to dbt
+# and ohdp_ingestion.naming only — never to Terraform.
 #
 # Filled in on the SECOND apply, from DESC EXTERNAL VOLUME — see README.md.
 # Empty on the first one.

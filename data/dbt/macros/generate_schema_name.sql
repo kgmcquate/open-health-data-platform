@@ -24,6 +24,19 @@
 
     Anything not following the `<prefix>__<name>` convention falls back to the
     explicit `+schema` config, then target.schema, same as dbt's default.
+
+    **This macro is the only definition of the namespace layout** (ADR-0020).
+    Whatever it returns, dbt creates: before building, dbt issues
+    `CREATE SCHEMA IF NOT EXISTS <database>.<schema>` for every schema in the
+    run, which dbt-duckdb sends to Horizon as a CREATE NAMESPACE on the attached
+    Iceberg catalog. So a new mart needs no Terraform run — the folder and the
+    model name are the whole change. Terraform grants `CREATE SCHEMA` on each
+    layer database (platform/terraform/snowflake.tf) and stops there.
+
+    The namespace inherits CATALOG and EXTERNAL_VOLUME from its database, since
+    Iceberg tables resolve both through table -> schema -> database — which is
+    why creating one here still lands the files in our own S3 bucket and not in
+    Snowflake's storage.
 #}
 {% macro generate_schema_name(custom_schema_name, node) -%}
     {%- set parts = node.name.split('__', 1) -%}
