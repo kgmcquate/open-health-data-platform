@@ -26,6 +26,28 @@ ohdp:
       schema: CORE
       threads: 4
 
+      # dbt's `table` materialization wraps `CREATE ..._dbt_tmp` and
+      # `RENAME ..._dbt_tmp TO ...` in one explicit BEGIN/COMMIT. Against a
+      # catalog-backed attachment (Horizon's Iceberg REST catalog here) that
+      # rename can fail with "Catalog Error: This table (X__dbt_tmp) was
+      # modified already, can't be renamed!" even for a single writer with no
+      # concurrency involved — the rename resolves against a catalog
+      # snapshot that predates the transaction's own CREATE. Symptom when it
+      # happens: the CREATE's data files land in S3 but the transaction never
+      # commits, so the table never appears in the catalog (data orphaned in
+      # storage, nothing to show for it). Confirmed same bug class as
+      # https://github.com/duckdb/ducklake/issues/509 ("does not happen if
+      # you remove the BEGIN and END") and the DuckLake mitigation dbt-duckdb
+      # itself ships in https://github.com/duckdb/dbt-duckdb/pull/694, which
+      # forces exactly this flag for MotherDuck DuckLake targets. Disabling
+      # transactions makes every statement auto-commit individually instead,
+      # so the rename always sees its own just-committed CREATE. Trade-off:
+      # a failure mid-materialization can now leave a stray but *committed*
+      # `_dbt_tmp`/`_dbt_backup` table instead of nothing — the `table` macro
+      # already drops those itself at the start of the next run
+      # (`drop_relation_if_exists`), so that's a clean recovery either way.
+      # disable_transactions: true
+
       # `iceberg` brings ATTACH ... (TYPE iceberg); `httpfs` + `aws` are what
       # let it and the data files reach S3. Writing to a REST catalog needs
       # DuckDB 1.5.4+. Pre-installed in the image (data/Dockerfile) so a run
@@ -72,19 +94,22 @@ ohdp:
       # (platform/terraform/snowflake.tf).
       attach:
         - path: RAW
-          type: iceberg
+          type: horizon
+          table_format: iceberg
           alias: RAW
           secret: ohdp_horizon
           options: &horizon
             endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
             access_delegation_mode: vended_credentials
         - path: CLEAN
-          type: iceberg
+          type: horizon
+          table_format: iceberg
           alias: CLEAN
           secret: ohdp_horizon
           options: *horizon
         - path: CURATED
-          type: iceberg
+          type: horizon
+          table_format: iceberg
           alias: CURATED
           secret: ohdp_horizon
           options: *horizon
