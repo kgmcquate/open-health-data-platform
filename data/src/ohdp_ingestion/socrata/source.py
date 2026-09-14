@@ -255,13 +255,13 @@ def _destination() -> Any:
     volume it already governs.
     """
     return dlt.destinations.filesystem(
-        bucket_url=settings.lakehouse_url,
+        # bucket_url=settings.lakehouse_url,
         destination_name="lakehouse",
-        credentials={
-            "aws_access_key_id": settings.aws_access_key_id,
-            "aws_secret_access_key": settings.aws_secret_access_key,
-            "region_name": settings.aws_region,
-        },
+        # credentials={
+        #     "aws_access_key_id": settings.aws_access_key_id,
+        #     "aws_secret_access_key": settings.aws_secret_access_key,
+        #     "region_name": settings.aws_region,
+        # },
     )
 
 

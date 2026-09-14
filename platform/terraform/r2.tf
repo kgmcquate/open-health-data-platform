@@ -66,10 +66,13 @@ resource "digitalocean_spaces_bucket_object" "snowflake_pipeline_private_key" {
 # string, and every dbt run then dies at Horizon's token endpoint with
 # `invalid_client` rather than with anything naming the missing token.
 #
-# `sensitive()` is load-bearing, not decoration: deploy-infra.yml pipes the
-# whole plan into the job summary, which anyone with Actions read access can
-# see. Marked, the token renders there as "(sensitive value)". Do not drop it on
-# the assumption that the provider marks the attribute itself.
+# What makes that safe to plan in CI: deploy-infra.yml pipes the whole plan into
+# the job summary, readable by anyone with Actions access, and the token would
+# be the one credential printed there in clear text. It is not, because the
+# provider marks `token` sensitive and Terraform carries that mark through the
+# reference — `content` itself is an unmarked attribute, so the redaction is
+# inherited, not intrinsic. `sensitive()` restates it at the point of use so a
+# provider that ever stops marking the attribute cannot quietly un-redact it.
 #
 # No trailing newline, unlike the PEM above — whatever pipes this object into a
 # header or a Secret should not have to strip one.
