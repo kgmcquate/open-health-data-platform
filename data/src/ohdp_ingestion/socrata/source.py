@@ -31,7 +31,9 @@ from collections.abc import Iterator, Sequence
 from typing import Any, Literal
 
 import dlt
+import pyarrow.parquet as pq
 from dlt.common.data_types import TDataType
+from dlt.common.libs.pyiceberg import get_catalog, write_iceberg_table
 from dlt.common.schema.typing import TColumnSchema
 from dlt.sources.helpers import requests
 
@@ -254,15 +256,42 @@ def _destination() -> Any:
     job. Snowflake still owns the *table*; this only writes files beneath the
     volume it already governs.
     """
-    return dlt.destinations.filesystem(
-        # bucket_url=settings.lakehouse_url,
-        destination_name="lakehouse",
-        # credentials={
-        #     "aws_access_key_id": settings.aws_access_key_id,
-        #     "aws_secret_access_key": settings.aws_secret_access_key,
-        #     "region_name": settings.aws_region,
-        # },
+    # Register a custom REST/pyiceberg sink that reads the parquet file path
+    # directly and writes it into the Horizon REST catalog so tables are
+    # visible/registered in the catalog.
+
+    namespace =  naming.namespace("raw")
+
+    @dlt.destination(
+        loader_file_format="parquet",
+        batch_size=0,
+        skip_dlt_columns_and_tables=False,
+        naming_convention="direct",
     )
+    def iceberg_rest_sink(file_path: str, table: dict) -> None:
+        # Load the catalog using the same config we publish to dlt.config
+        catalog = get_catalog(iceberg_catalog_type="rest", iceberg_catalog_config=iceberg_catalog_config())
+        # Ensure the namespace (DATABASE.SCHEMA) exists
+        catalog.create_namespace_if_not_exists(namespace)
+
+        table_name = table.get("name")
+        if not table_name:
+            raise ValueError("destination called without table name")
+
+        # Avoid collisions for dlt-internal tables across pipelines
+        # if table_name.startswith("_dlt"):
+        #     table_name = f"{pipeline_name}{table_name}"
+
+        identifier = f"{namespace}.{table_name}"
+
+        # Read the parquet file into an Arrow table and create/load the
+        # Iceberg table with a compatible schema, then append
+        arrow = pq.read_table(file_path)
+        
+        tbl = catalog.create_table_if_not_exists(identifier, arrow.schema)
+        write_iceberg_table(table=tbl, data=arrow, write_disposition="append")
+
+    return iceberg_rest_sink
 
 
 def iceberg_catalog_config() -> dict[str, Any]:
