@@ -64,7 +64,7 @@ implementations of one protocol to keep in sync.
    CDC's schedules fire at 06:00 UTC — ahead of HealthData.gov's 07:00 and the
    08:00 dbt build, so with `maxConcurrentRuns: 1` both buckets drain first.
 
-7. **CDC captures the whole catalog** — 1,077 dataset instances, 8 enabled.
+7. **CDC captures the whole catalog** — 1,077 dataset instances, 16 enabled.
 
 ## Two bugs this surfaced, both fixed in the shared core
 
@@ -99,22 +99,29 @@ Neither could fire on HealthData.gov's catalog; both would have on CDC's.
   each. Generated and pruned by the scraper; a human only ever opens the one
   they're enabling.
 - `RAW.cdc` is a new Snowflake schema, with `_stg_cdc__sources.yml` generated
-  beside HealthData.gov's. No `clean`/`curated` models read it yet — the raw
-  tables land first, modelling follows.
-- The CDC `enabled` set is **live surveillance, not the top 8 by page views**.
-  Page-view rank is an all-time counter and ranks archived 2020-2021 COVID
-  datasets above everything current; the scraper still *defaults* to `--top-n`
-  by page views, and the eight below were then set by hand (the scraper
-  preserves that across re-runs):
-  NNDSS Weekly Data; NWSS SARS-CoV-2 wastewater metrics; wastewater viral
-  activity (SARS-CoV-2/Flu A/RSV); RSV-NET; NSSP ED visit trajectories; weekly
-  US hospitalization metrics; and two vaccination-coverage datasets on
-  `monthly`.
-- **`row_limit: null` on five of the eight.** The cap truncates an `:id`-ordered
-  scan, and because the incremental cursor then advances past rows that were
-  never fetched, the missing tail is never backfilled. Five of these datasets
-  exceed the 500k default (NNDSS is ~2M rows), so they run uncapped; the first
-  run is therefore a multi-million-row backfill.
+  beside HealthData.gov's. The read side follows the same bind-per-domain shape:
+  `macros/socrata_current_rows.sql` is the shared clean-layer body and
+  `cdc_current_rows` / `healthdata_gov_current_rows` are one-line bindings of it,
+  exactly as `SocrataDomain` is on the write side. `CLEAN.stg_cdc` has one model
+  per enabled dataset, feeding ten `CURATED.core` facts, five marts
+  (chronic_disease, infectious_disease, respiratory, behavioral_health,
+  immunization) and their Cube measures.
+- The CDC `enabled` set is **chosen by hand, not by page views**. Page-view
+  rank is an all-time counter and ranks archived 2020-2021 COVID datasets above
+  everything current; the scraper still *defaults* to `--top-n` by page views,
+  and the 16 were then set by hand (the scraper preserves that across re-runs).
+  Eight are live surveillance — NNDSS Weekly, two wastewater feeds, RSV-NET,
+  NSSP ED visit trajectories, hospitalization metrics, two vaccination-coverage
+  sets. Eight more track the topics cdc.gov features on its front page: measles
+  and H5 bird flu wastewater, mental-health ED visits, provisional drug overdose
+  deaths, obesity (BRFSS), Chronic Disease Indicators, Alzheimer's, and PLACES
+  county data. See `defs/cdc/README.md` for the topic-to-dataset mapping.
+- **`row_limit: null` on eight of the sixteen.** The cap truncates an
+  `:id`-ordered scan, and because the incremental cursor then advances past rows
+  that were never fetched, the missing tail is never backfilled. Anything above
+  ~200k rows therefore runs uncapped, leaving headroom before a growing dataset
+  crosses the 500k default (NNDSS is already ~2M). The first run across the
+  enabled set is a multi-million-row backfill.
 - `ohdp_ingestion.cdc.CDCSodaSource` — an M0 stub that never did anything but
   raise `NotImplementedError` — is deleted; the shared component supersedes it.
 - ADRs 0008/0013/0014 refer to `scripts/scrape_healthdata_gov.py` by name. Those

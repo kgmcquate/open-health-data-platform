@@ -4,7 +4,7 @@ attributes:
   id: xkb8-kh2a
   name: VSRR Provisional Drug Overdose Death Counts
   publisher: National Center for Health Statistics
-  enabled: false
+  enabled: true
   cadence: monthly
   raw_table: vsrr_provisional_drug_overdose_death_counts
   incremental_cursor: socrata_updated_at

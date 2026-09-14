@@ -4,8 +4,8 @@ attributes:
   id: hn4x-zwk7
   name: Nutrition, Physical Activity, and Obesity - Behavioral Risk Factor Surveillance System
   publisher: Centers for Disease Control and Prevention
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: nutrition_physical_activity_and_obesity_behavioral_risk_factor_surveillance_system
   incremental_cursor: socrata_updated_at
   row_limit: 500000

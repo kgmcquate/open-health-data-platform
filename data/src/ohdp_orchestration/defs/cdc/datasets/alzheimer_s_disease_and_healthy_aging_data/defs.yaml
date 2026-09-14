@@ -4,11 +4,11 @@ attributes:
   id: hfr9-rurv
   name: Alzheimer's Disease and Healthy Aging Data
   publisher: Centers for Disease Control and Prevention
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: alzheimer_s_disease_and_healthy_aging_data
   incremental_cursor: socrata_updated_at
-  row_limit: 500000
+  row_limit: null
   source_url: https://data.cdc.gov/d/hfr9-rurv
   page_views: 111248
   keywords:

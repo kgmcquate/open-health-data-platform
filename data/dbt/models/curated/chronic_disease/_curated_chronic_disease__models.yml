@@ -1,0 +1,137 @@
+version: 2
+
+# Chronic disease (CDI, PLACES, BRFSS nutrition/activity/obesity, Alzheimer's).
+# Dimensions and their descriptions are read from the column docs below by
+# cube-dbt -- semantic/cube/model/chronic_disease.yml renders them, so this file
+# is the source of truth for those descriptions, not the Cube model.
+
+models:
+  - name: chronic_disease__state_indicator_trend
+    description: >
+      State-level chronic-disease indicators over time, conformed from three CDC
+      sources (Chronic Disease Indicators, BRFSS nutrition/physical
+      activity/obesity, Alzheimer's & healthy aging). One row per source x state
+      x year x measure x value type x demographic stratum. Values are
+      prevalences, rates and means in mixed units -- always read data_value
+      alongside data_value_type and data_value_unit.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: source_dataset
+        description: Which CDC dataset the row came from.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [chronic_disease_indicators, nutrition_activity_obesity, alzheimers_healthy_aging]
+      - name: location_level
+        description: Geographic level of the row -- state, or the national rollup CDC publishes alongside.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [state, national]
+      - name: state_abbr
+        description: Two-letter state or territory postal code; "US" for the national row.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: state_name
+        description: Full state, territory or jurisdiction name.
+        data_type: varchar
+      - name: year
+        description: Year the indicator was measured (the start year where CDC reports a range).
+        data_type: integer
+        data_tests: [not_null]
+      - name: category
+        description: >
+          Topic grouping -- CDI's topic (e.g. Diabetes, Cardiovascular Disease,
+          Tobacco), or the class of the BRFSS/Alzheimer's source.
+        data_type: varchar
+      - name: measure
+        description: The indicator question as CDC words it.
+        data_type: varchar
+      - name: measure_id
+        description: CDC's stable short code for the measure; use this, not the wording, to filter.
+        data_type: varchar
+      - name: data_value_type
+        description: >-
+          How the value was computed -- Crude Prevalence, Age-adjusted
+          Prevalence, Number, Crude Rate, Mean, and so on. Never average across
+          different types.
+        data_type: varchar
+      - name: data_value_unit
+        description: Unit of data_value -- "%", "cases per 100,000", "Number", "Years".
+        data_type: varchar
+      - name: stratification_category
+        description: >-
+          Demographic dimension the row is broken down by (Race/Ethnicity, Sex,
+          Age, Grade, Age Group), or "Overall" for the unstratified row.
+        data_type: varchar
+      - name: stratification
+        description: The specific stratum within stratification_category.
+        data_type: varchar
+      - name: data_value
+        description: >-
+          The indicator value, in data_value_unit. A prevalence or rate -- average
+          it, never sum it.
+        data_type: double
+      - name: low_confidence_limit
+        description: Lower bound of CDC's 95% confidence interval for data_value.
+        data_type: double
+      - name: high_confidence_limit
+        description: Upper bound of CDC's 95% confidence interval for data_value.
+        data_type: double
+      - name: confidence_interval_width
+        description: Width of the 95% confidence interval; a proxy for estimate precision.
+        data_type: double
+
+  - name: chronic_disease__county_prevalence
+    description: >
+      PLACES model-based county-level prevalence estimates, latest release year
+      per measure. One row per county x measure x value type. Covers the chronic
+      conditions and risk behaviours cdc.gov features -- diabetes, high blood
+      pressure, obesity, smoking, and the rest of the PLACES measure set.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: state_abbr
+        description: Two-letter state postal code the county sits in.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: county_name
+        description: County name as PLACES publishes it.
+        data_type: varchar
+      - name: county_fips
+        description: County FIPS code.
+        data_type: varchar
+      - name: year
+        description: PLACES release year the estimate belongs to.
+        data_type: integer
+      - name: category
+        description: >-
+          PLACES category -- Health Outcomes, Prevention, Health Risk Behaviors,
+          Disability, Health Status, Health-Related Social Needs.
+        data_type: varchar
+      - name: measure
+        description: Full wording of the PLACES measure.
+        data_type: varchar
+      - name: measure_id
+        description: PLACES short measure code (e.g. DIABETES, BPHIGH, OBESITY, CSMOKING).
+        data_type: varchar
+      - name: data_value_type
+        description: Crude prevalence or age-adjusted prevalence. Never average across both.
+        data_type: varchar
+      - name: prevalence_pct
+        description: >-
+          Modelled prevalence for the county, as a percentage of the relevant
+          population. Average or map it -- summing across counties is meaningless.
+        data_type: double
+      - name: prevalence_ci_low
+        description: Lower bound of the 95% credible interval for prevalence_pct.
+        data_type: double
+      - name: prevalence_ci_high
+        description: Upper bound of the 95% credible interval for prevalence_pct.
+        data_type: double

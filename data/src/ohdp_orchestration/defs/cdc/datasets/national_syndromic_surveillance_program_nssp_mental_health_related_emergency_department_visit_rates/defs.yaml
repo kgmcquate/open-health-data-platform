@@ -5,8 +5,8 @@ attributes:
   name: National Syndromic Surveillance Program (NSSP) Mental Health-Related Emergency Department Visit
     Rates
   publisher: Mental Health
-  enabled: false
-  cadence: monthly
+  enabled: true
+  cadence: weekly
   raw_table: national_syndromic_surveillance_program_nssp_mental_health_related_emergency_department_visit_rates
   incremental_cursor: socrata_updated_at
   row_limit: 500000

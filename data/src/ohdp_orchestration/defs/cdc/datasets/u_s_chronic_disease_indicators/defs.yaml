@@ -4,11 +4,11 @@ attributes:
   id: hksd-2xuw
   name: U.S. Chronic Disease Indicators
   publisher: Centers for Disease Control and Prevention
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: u_s_chronic_disease_indicators
   incremental_cursor: socrata_updated_at
-  row_limit: 500000
+  row_limit: null
   source_url: https://data.cdc.gov/d/hksd-2xuw
   page_views: 67530
   keywords:

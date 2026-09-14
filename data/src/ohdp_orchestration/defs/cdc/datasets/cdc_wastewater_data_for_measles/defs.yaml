@@ -4,7 +4,7 @@ attributes:
   id: akvg-8vrb
   name: CDC Wastewater Data for Measles
   publisher: Public Health Surveillance
-  enabled: false
+  enabled: true
   cadence: weekly
   raw_table: cdc_wastewater_data_for_measles
   incremental_cursor: socrata_updated_at

@@ -4,11 +4,11 @@ attributes:
   id: swc5-untb
   name: 'PLACES: Local Data for Better Health, County Data, 2025 release'
   publisher: Centers for Disease Control and Prevention
-  enabled: false
-  cadence: weekly
+  enabled: true
+  cadence: monthly
   raw_table: places_local_data_for_better_health_county_data_2025_release
   incremental_cursor: socrata_updated_at
-  row_limit: 500000
+  row_limit: null
   source_url: https://data.cdc.gov/d/swc5-untb
   page_views: 191040
   keywords:

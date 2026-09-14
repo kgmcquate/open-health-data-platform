@@ -4,7 +4,7 @@ attributes:
   id: mtpu-urpp
   name: CDC Wastewater Data for Avian Influenza A (H5)
   publisher: Public Health Surveillance
-  enabled: false
+  enabled: true
   cadence: weekly
   raw_table: cdc_wastewater_data_for_avian_influenza_a_h5
   incremental_cursor: socrata_updated_at

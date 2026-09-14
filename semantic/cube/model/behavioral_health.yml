@@ -1,0 +1,93 @@
+# Overdose and mental health (CDC VSRR, NSSP). Dimensions and their descriptions
+# come straight from dbt's column docs (globals.py / cube-dbt) -- edit
+# descriptions in
+# data/dbt/models/curated/behavioral_health/_curated_behavioral_health__models.yml,
+# not here. Measures are hand-written: dbt documents columns, it does not declare
+# aggregations.
+{% set overdose = dbt_model('behavioral_health__overdose_deaths_monthly') %}
+{% set mental_health = dbt_model('behavioral_health__mental_health_ed_monthly') %}
+
+{% set overdose_measures = [
+    'deaths_12_month_ending', 'predicted_deaths_12_month_ending',
+    'percent_pending_investigation',
+] %}
+{% set mental_health_measures = ['rate_per_100k_visits'] %}
+
+cubes:
+  - {{ overdose.as_cube() }}
+
+    dimensions:
+      {{ overdose.as_dimensions(skip=overdose_measures) }}
+
+    measures:
+      # VSRR publishes 12-month-ending rolling totals, so there is deliberately
+      # no SUM measure on this cube. Summing twelve consecutive months would
+      # count the same deaths twelve times. Every measure is a max or an
+      # average, and cross-state totals are only valid within a single month.
+      - name: latest_deaths_12_month_ending
+        sql: deaths_12_month_ending
+        type: max
+        description: >-
+          Deaths in the 12 months ending at the latest month in the selection.
+          A MAX, not a SUM -- consecutive months overlap almost entirely.
+
+      - name: peak_deaths_12_month_ending
+        sql: deaths_12_month_ending
+        type: max
+        description: Highest 12-month-ending death count reached in the selection.
+
+      - name: latest_predicted_deaths
+        sql: predicted_deaths_12_month_ending
+        type: max
+        description: {{ overdose.column('predicted_deaths_12_month_ending').description }}
+
+      - name: avg_percent_pending_investigation
+        sql: percent_pending_investigation
+        type: avg
+        description: >-
+          Mean share of deaths still pending investigation -- a completeness
+          caveat. A high value means the reported count will rise.
+
+      - name: state_month_count
+        type: count
+        description: "Number of state-months in the current filter -- a coverage check, not a KPI."
+
+  - {{ mental_health.as_cube() }}
+
+    dimensions:
+      {{ mental_health.as_dimensions(skip=mental_health_measures) }}
+
+    measures:
+      # The rate is per 100,000 ED visits -- a ratio, so averaged, never summed.
+      # The seven conditions overlap ("Any Mental Health" contains the others),
+      # so the headline measure filters to that single condition rather than
+      # aggregating across them.
+      - name: avg_rate_per_100k_visits
+        sql: rate_per_100k_visits
+        type: avg
+        description: >-
+          Mean mental health-related ED visits per 100,000 ED visits. Filter to
+          one condition -- the categories overlap.
+
+      - name: avg_any_mental_health_rate
+        sql: rate_per_100k_visits
+        type: avg
+        filters:
+          - sql: "{CUBE}.condition = 'Any Mental Health'"
+          - sql: "{CUBE}.is_total"
+        description: >-
+          The headline series: all mental health-related ED visits per 100,000
+          visits, unstratified. Safe to read without further filtering.
+
+      - name: avg_suicide_attempt_rate
+        sql: rate_per_100k_visits
+        type: avg
+        filters:
+          - sql: "{CUBE}.condition = 'Suspected Suicide Attempts'"
+          - sql: "{CUBE}.is_total"
+        description: Suspected suicide attempt ED visits per 100,000 visits, unstratified.
+
+      - name: peak_rate_per_100k_visits
+        sql: rate_per_100k_visits
+        type: max
+        description: Highest monthly rate reached in the current selection.

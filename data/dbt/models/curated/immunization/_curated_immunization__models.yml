@@ -1,0 +1,72 @@
+version: 2
+
+# Vaccination coverage. Dimensions and their descriptions are read from the
+# column docs below by cube-dbt -- semantic/cube/model/immunization.yml renders
+# them, so this file is the source of truth for those descriptions, not the Cube
+# model.
+
+models:
+  - name: immunization__coverage
+    description: >
+      Vaccination coverage estimates, seasonal influenza and childhood
+      immunisation (0-35 months) conformed into one table. One row per program x
+      vaccine x dose x geography x season x month x demographic stratum.
+      Coverage is a percentage of a population -- average it, never sum it.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: program
+        description: Which immunisation programme the row belongs to -- seasonal influenza or childhood (0-35 months).
+        data_type: varchar
+        data_tests: [not_null]
+      - name: vaccine
+        description: >-
+          Vaccine measured (Seasonal Influenza; or DTaP, Hib, PCV, Polio, MMR,
+          Hep A, Hep B, Rotavirus, Varicella, Combined 7 Series for children).
+        data_type: varchar
+      - name: dose
+        description: >-
+          Dose threshold the estimate is for (">=3 Doses", "Primary Series",
+          "Full Series"). Null for influenza, which is not dose-stratified here.
+        data_type: varchar
+      - name: geography
+        description: Geographic area name -- a state, local area, county, HHS region, or "United States".
+        data_type: varchar
+      - name: geography_level
+        description: >-
+          Level of the geography -- national_or_region, state, or county. Rows at
+          different levels overlap, so filter to one before aggregating.
+        data_type: varchar
+      - name: geography_type
+        description: CDC's own geography label, kept verbatim.
+        data_type: varchar
+      - name: year_season
+        description: Survey year or influenza season the estimate covers (e.g. "2023-24").
+        data_type: varchar
+      - name: month
+        description: Month within the influenza season the estimate was measured in. Null for childhood coverage.
+        data_type: integer
+      - name: stratification_category
+        description: Demographic dimension the row breaks down by -- Age, Race and Ethnicity, Poverty, Insurance Coverage, Urbanicity, Overall.
+        data_type: varchar
+      - name: stratification
+        description: The specific stratum within stratification_category.
+        data_type: varchar
+      - name: coverage_pct
+        description: >-
+          Estimated share of the population vaccinated, as a percentage. Average
+          it across strata or geographies; never sum it.
+        data_type: double
+      - name: coverage_ci_low
+        description: Lower bound of the 95% confidence interval for coverage_pct.
+        data_type: double
+      - name: coverage_ci_high
+        description: Upper bound of the 95% confidence interval for coverage_pct.
+        data_type: double
+      - name: coverage_ci_width
+        description: Width of the 95% confidence interval; a proxy for estimate precision.
+        data_type: double
+      - name: sample_size
+        description: Survey sample size behind the estimate, where CDC publishes it.
+        data_type: double

@@ -1,0 +1,139 @@
+# Chronic disease (CDC: Chronic Disease Indicators, PLACES, BRFSS
+# nutrition/activity/obesity, Alzheimer's). Dimensions and their descriptions
+# come straight from dbt's column docs (globals.py / cube-dbt) -- edit
+# descriptions in
+# data/dbt/models/curated/chronic_disease/_curated_chronic_disease__models.yml,
+# not here. Measures are hand-written: dbt documents columns, it does not
+# declare aggregations.
+#
+# The governing fact about this data: `data_value` mixes crude and age-adjusted
+# estimates of the same measure in one column, so a bare AVG over it averages
+# two different statistics together. Every measure below is therefore *filtered*
+# to one data_value_type. That is the whole reason these cubes look more
+# defensive than respiratory_hospital_load's.
+#
+# Everything here is a prevalence or a rate, so nothing is a SUM.
+{% set trend = dbt_model('chronic_disease__state_indicator_trend') %}
+{% set county = dbt_model('chronic_disease__county_prevalence') %}
+
+{% set trend_measures = [
+    'data_value', 'low_confidence_limit', 'high_confidence_limit',
+    'confidence_interval_width',
+] %}
+{% set county_measures = [
+    'prevalence_pct', 'prevalence_ci_low', 'prevalence_ci_high',
+] %}
+
+cubes:
+  - {{ trend.as_cube() }}
+
+    dimensions:
+      {{ trend.as_dimensions(skip=trend_measures) }}
+
+    measures:
+      # Crude and age-adjusted are separate measures, never one AVG: they are
+      # different statistics that happen to share a column. Age-adjusted is the
+      # one to compare across states; crude is the one that describes who
+      # actually has the condition.
+      - name: avg_crude_prevalence
+        sql: data_value
+        type: avg
+        filters:
+          - sql: "{CUBE}.data_value_type in ('Crude Prevalence', 'Crude prevalence')"
+        description: >-
+          Mean crude prevalence (%) across the selected states, years and
+          measures. Filter to a single measure_id for a meaningful number.
+
+      - name: avg_age_adjusted_prevalence
+        sql: data_value
+        type: avg
+        filters:
+          - sql: "{CUBE}.data_value_type in ('Age-adjusted Prevalence', 'Age-adjusted prevalence')"
+        description: >-
+          Mean age-adjusted prevalence (%) across the selection -- the comparable
+          figure when comparing states or periods with different age structures.
+
+      - name: avg_crude_rate
+        sql: data_value
+        type: avg
+        filters:
+          - sql: "{CUBE}.data_value_type = 'Crude Rate'"
+        description: Mean crude rate for rate-typed indicators, in the measure's own unit.
+
+      - name: avg_age_adjusted_rate
+        sql: data_value
+        type: avg
+        filters:
+          - sql: "{CUBE}.data_value_type = 'Age-adjusted Rate'"
+        description: Mean age-adjusted rate for rate-typed indicators, in the measure's own unit.
+
+      - name: total_count
+        sql: data_value
+        type: sum
+        filters:
+          - sql: "{CUBE}.data_value_type = 'Number'"
+        description: >-
+          Sum of count-typed indicators only. The one measure here that is a SUM,
+          and it is safe precisely because the Number filter excludes every
+          prevalence and rate row.
+
+      - name: avg_confidence_interval_width
+        sql: confidence_interval_width
+        type: avg
+        description: {{ trend.column('confidence_interval_width').description }}
+
+      - name: latest_year
+        sql: year
+        type: max
+        description: "Most recent year present in the current selection."
+
+      - name: indicator_count
+        type: count
+        description: "Number of indicator rows in the current filter -- a coverage check, not a KPI."
+
+  - {{ county.as_cube() }}
+
+    dimensions:
+      {{ county.as_dimensions(skip=county_measures) }}
+
+    measures:
+      # PLACES is county-grain and model-based. Averaging prevalence across
+      # counties is unweighted -- it treats a 5,000-person county the same as Los
+      # Angeles -- which is right for "typical county" and wrong for "the state
+      # rate". No population weight is offered because PLACES does not publish a
+      # consistent denominator alongside every measure.
+      - name: avg_crude_prevalence
+        sql: prevalence_pct
+        type: avg
+        filters:
+          - sql: "{CUBE}.data_value_type = 'Crude prevalence'"
+        description: >-
+          Unweighted mean crude prevalence (%) across the selected counties.
+          Filter to one measure_id; this is a "typical county" figure, not a
+          population rate.
+
+      - name: avg_age_adjusted_prevalence
+        sql: prevalence_pct
+        type: avg
+        filters:
+          - sql: "{CUBE}.data_value_type = 'Age-adjusted prevalence'"
+        description: Unweighted mean age-adjusted prevalence (%) across the selected counties.
+
+      - name: max_crude_prevalence
+        sql: prevalence_pct
+        type: max
+        filters:
+          - sql: "{CUBE}.data_value_type = 'Crude prevalence'"
+        description: Highest county crude prevalence (%) in the selection -- the worst-affected county.
+
+      - name: min_crude_prevalence
+        sql: prevalence_pct
+        type: min
+        filters:
+          - sql: "{CUBE}.data_value_type = 'Crude prevalence'"
+        description: Lowest county crude prevalence (%) in the selection.
+
+      - name: county_count
+        sql: "{CUBE}.county_fips"
+        type: count_distinct
+        description: "Number of distinct counties in the current filter."
