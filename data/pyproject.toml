@@ -5,11 +5,11 @@ description = "Ingestion, orchestration, and ML for the Open Health Data Platfor
 requires-python = ">=3.12"
 dependencies = [
     "ohdp-shared @ file:///Users/kevinmcquate/projects/open-health-data-platform/packages/shared",
-    "dagster>=1.8",
+    "dagster>=1.13",
     "dagster-postgres>=0.24",
-    "dagster-dbt>=0.24",
+    "dagster-dbt>=0.29",
     "dagster-dlt>=0.29,<0.30",
-    "dagster-aws>=0.24",
+    "dagster-aws>=0.29",
     "dbt-duckdb>=1.9",
     "duckdb>=1.5.3",
     # filesystem+iceberg is how raw tables land in Snowflake's catalog
@@ -22,7 +22,7 @@ dependencies = [
     "pyarrow>=17.0",
     "polars>=1.7",
     "pyjwt>=2.9",
-    "openmetadata-ingestion[dagster,snowflake,dbt]==2.0.1",
+    "openmetadata-ingestion[dagster,snowflake,dbt]>=2.0.1",
 ]
 
 [tool.uv.sources]

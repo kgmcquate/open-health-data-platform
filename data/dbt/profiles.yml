@@ -46,16 +46,16 @@ ohdp:
       # `_dbt_tmp`/`_dbt_backup` table instead of nothing — the `table` macro
       # already drops those itself at the start of the next run
       # (`drop_relation_if_exists`), so that's a clean recovery either way.
-      # disable_transactions: true
+      disable_transactions: true
 
       # `iceberg` brings ATTACH ... (TYPE iceberg); `httpfs` + `aws` are what
       # let it and the data files reach S3. Writing to a REST catalog needs
       # DuckDB 1.5.4+. Pre-installed in the image (data/Dockerfile) so a run
       # pod doesn't fetch them on every start.
-      # extensions:
-      #   - httpfs
-      #   - aws
-      #   - iceberg
+      extensions:
+        - httpfs
+        - aws
+        - iceberg
 
       secrets:
         # OAuth2 client credentials for Horizon's REST catalog, shared by all
@@ -79,4 +79,42 @@ ohdp:
           oauth2_server_uri: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens"
           oauth2_scope: "session:role:{{ env_var('OHDP_SNOWFLAKE_ROLE', '') }}"
 
+      # One attachment per medallion-layer database (ADR-0013). Each Snowflake
+      # database is its own Iceberg catalog, and its schemas are that catalog's
+      # namespaces — which is why the layer does not have to be folded into the
+      # namespace name, and why these are three ATTACHes rather than one.
+      #
+      # Three rather than a single nested-namespace catalog because DuckDB's
+      # qualified names have exactly three parts (catalog.schema.table): a
+      # namespace nested any deeper has nowhere to go in the SQL.
+      #
+      # dbt-duckdb 1.11.0 does not read catalogs.yml at all for the duckdb
+      # target (no CATALOG_INTEGRATIONS registered) — that mechanism is
+      # Snowflake-adapter-only. Horizon attachment has to happen here.
+      #
+      # ACCESS_DELEGATION_MODE makes Horizon vend short-lived, scoped S3
+      # credentials for the table files, so DuckDB needs no AWS key of its own
+      # — the files live in the external volume Snowflake governs
+      # (platform/terraform/snowflake.tf).
+      #
+      # `database` above must be one of these aliases — dbt-duckdb validates
+      # that at profile-parse time.
+      attach:
+        - path: RAW
+          type: horizon
+          alias: RAW
+          secret: horizon_secret
+          options: &horizon
+            endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
+            access_delegation_mode: vended_credentials
+        - path: CLEAN
+          type: horizon
+          alias: CLEAN
+          secret: horizon_secret
+          options: *horizon
+        - path: CURATED
+          type: horizon
+          alias: CURATED
+          secret: horizon_secret
+          options: *horizon
 

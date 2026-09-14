@@ -3071,9 +3071,9 @@ ml = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.35" },
-    { name = "dagster", specifier = ">=1.8" },
-    { name = "dagster-aws", specifier = ">=0.24" },
-    { name = "dagster-dbt", specifier = ">=0.24" },
+    { name = "dagster", specifier = ">=1.13" },
+    { name = "dagster-aws", specifier = ">=0.29" },
+    { name = "dagster-dbt", specifier = ">=0.29" },
     { name = "dagster-dlt", specifier = ">=0.29,<0.30" },
     { name = "dagster-postgres", specifier = ">=0.24" },
     { name = "dbt-duckdb", specifier = ">=1.9" },
@@ -3081,7 +3081,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.5.3" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "ohdp-shared", editable = "../packages/shared" },
-    { name = "openmetadata-ingestion", extras = ["dagster", "snowflake", "dbt"], specifier = "==2.0.1" },
+    { name = "openmetadata-ingestion", extras = ["dagster", "snowflake", "dbt"], specifier = ">=2.0.1" },
     { name = "polars", specifier = ">=1.7" },
     { name = "pyarrow", specifier = ">=17.0" },
     { name = "pyjwt", specifier = ">=2.9" },
