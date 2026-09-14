@@ -16,8 +16,8 @@ clean-targets: ["target", "dbt_packages"]
 # Medallion layers (ADR-0013, kept intact by ADR-0019). One database per layer,
 # each of which is an Iceberg catalog in its own right now that Snowflake is
 # the catalog — so the names are unchanged from when these were plain Snowflake
-# tables; only what backs them is different. Every model is a
-# Snowflake-managed Iceberg table, written by dbt-duckdb through Horizon's
+# tables; only what backs them is different. Every model is an Iceberg table
+# whose files live in our S3 bucket, written by dbt-duckdb through Horizon's
 # Iceberg REST endpoint.
 #
 # Database is set per folder (generate_database_name.sql applies `+database`).

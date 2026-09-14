@@ -107,8 +107,8 @@ env:
   # platform-base's pipelineConfig. Update all three together if the account/
   # warehouse ever changes.
   #
-  # Since ADR-0019 the tables Cube queries are Snowflake-managed Iceberg
-  # tables — still ordinary Snowflake tables to this driver, still addressed as
+  # Since ADR-0019 the tables Cube queries are Iceberg tables in S3 — still
+  # ordinary Snowflake tables to this driver, still addressed as
   # `CURATED.<SCHEMA>.<TABLE>`, which is what the cube models get from the dbt
   # manifest. Nothing about this connection changed with the format. No
   # CUBEJS_DB_NAME: every sql_table is fully qualified.

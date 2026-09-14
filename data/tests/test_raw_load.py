@@ -1,4 +1,4 @@
-"""The raw loader writes Snowflake-managed Iceberg tables through Horizon in
+"""The raw loader writes Iceberg tables into S3, catalogued through Horizon, in
 prod (ADR-0019). Socrata is stubbed, and so is the *location* of the lakehouse:
 a temp directory instead of S3, and a SQLite pyiceberg catalog instead of
 Snowflake's REST endpoint. Everything between — dlt's filesystem destination,

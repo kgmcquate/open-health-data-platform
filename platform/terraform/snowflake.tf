@@ -1,13 +1,21 @@
 # Snowflake *is* the Iceberg catalog (ADR-0019, which supersedes ADR-0012's
 # native tables and ADR-0014's Snowflake-only compilation, and keeps ADR-0013's
-# per-layer databases). The medallion layers are Snowflake-managed Iceberg
-# tables; Snowflake's Horizon catalog serves their databases over the open
+# per-layer databases). Horizon serves the layer databases over the open
 # Iceberg REST protocol, so dlt and dbt-duckdb write the same tables Cube and
-# Streamlit read over SQL. The files sit in an external volume on S3 (aws.tf).
+# Streamlit read over SQL.
 #
-# This is the shape ADR-0011 wanted and ADR-0012 abandoned. What changed is
-# that writing to Snowflake-managed Iceberg tables from an external engine went
-# GA in May 2026 — before that, external engines could only read.
+# **Snowflake holds the metadata, not the bytes.** Every table's files live in
+# our own S3 bucket, reached through the external volume below — Snowflake's
+# own managed storage is never used. `CATALOG = 'SNOWFLAKE'` names who owns the
+# *catalog*, which is a separate question from where the data sits; the
+# `EXTERNAL_VOLUME` on each database is what answers the storage one, and it is
+# the single load-bearing setting for it (see the database resource).
+#
+# This is the shape ADR-0011 wanted and ADR-0012 abandoned — with the storage
+# question answered the other way round, since ADR-0011 put the files in
+# Snowflake's own storage and this does not. What also changed is that writing
+# to Snowflake-catalogued Iceberg tables from an external engine went GA in
+# May 2026; before that, external engines could only read.
 #
 #   external volume -> where the table files live (S3, aws.tf)
 #   database        -> one per medallion layer (RAW/CLEAN/CURATED, ADR-0013),
@@ -191,9 +199,11 @@ resource "snowflake_user_programmatic_access_token" "pipeline" {
 # The lakehouse itself.
 # ---------------------------------------------------------------------------
 
-# Where the table files live. ALLOW_WRITES is TRUE, unlike a read-only external
-# catalog setup: Snowflake manages these tables, so it writes the data, the
-# metadata and the compaction output.
+# Where the table files live: the S3 bucket in aws.tf, ours. ALLOW_WRITES is
+# TRUE because Snowflake does write into it — table metadata, and the
+# compaction and snapshot-expiry output for the tables it catalogues — but it
+# writes to *our* bucket under *our* IAM role, and nothing lands in
+# Snowflake-owned storage.
 resource "snowflake_execute" "external_volume" {
   execute = <<-SQL
     CREATE OR REPLACE EXTERNAL VOLUME ${local.snowflake_external_volume}
@@ -206,16 +216,23 @@ resource "snowflake_execute" "external_volume" {
         )
       )
       ALLOW_WRITES = TRUE
-      COMMENT = 'Storage for the OHDP Snowflake-managed Iceberg tables (ADR-0019).';
+      COMMENT = 'OHDP lakehouse storage: our S3 bucket, not Snowflake storage (ADR-0019).';
   SQL
 
   revert = "DROP EXTERNAL VOLUME IF EXISTS ${local.snowflake_external_volume};"
 }
 
 # The catalogs. `CATALOG = 'SNOWFLAKE'` and `EXTERNAL_VOLUME` are set as
-# *database defaults*, so every table created in one — including the ones dlt
-# and dbt create through the REST API, which pass neither — is a
-# Snowflake-managed Iceberg table in our bucket.
+# *database defaults*, and Iceberg tables inherit both through
+# table -> schema -> database, so every table created in one — including the
+# ones dlt and dbt create through the REST API, which pass neither — is an
+# Iceberg table catalogued by Snowflake with its files in our S3 bucket.
+#
+# EXTERNAL_VOLUME is the setting that keeps the data out of Snowflake's own
+# storage. Dropping it here would not fail anything loudly; it would silently
+# start putting new tables somewhere we do not control. Do not remove it, and
+# do not create an Iceberg table in these databases with an explicit
+# `EXTERNAL_VOLUME` pointing elsewhere.
 resource "snowflake_execute" "database" {
   for_each = local.snowflake_layer_databases
 

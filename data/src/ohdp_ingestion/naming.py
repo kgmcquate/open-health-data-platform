@@ -2,10 +2,11 @@
 raw loader, dbt's database/schema config and the Snowflake read side, so names
 stay in sync everywhere. Pure string logic, no catalog/warehouse dependency.
 
-Snowflake is the Iceberg catalog. A Snowflake database is a catalog, its
-schemas are that catalog's namespaces, and the tables in them are
-Snowflake-managed Iceberg tables — which means ADR-0013's layout survives
-intact, rather than being flattened into one namespace per layer+source:
+Snowflake is the Iceberg *catalog* — the table files live in our own S3 bucket
+(an external volume), not in Snowflake. A Snowflake database is a catalog and
+its schemas are that catalog's namespaces, which means ADR-0013's layout
+survives intact rather than being flattened into one namespace per
+layer+source:
 
     RAW.<SOURCE>          RAW.CDC, RAW.HEALTHDATA_GOV     written by dlt
     CLEAN.STG_<SOURCE>    CLEAN.STG_CDC                   written by dbt-duckdb

@@ -27,10 +27,10 @@ class Settings(BaseSettings):
     spaces_region: str = "nyc3"
     spaces_bucket: str = "ohdp-warehouse"
 
-    # --- The Iceberg lakehouse (ADR-0019). Snowflake is the catalog: dlt and
-    # dbt-duckdb both write Snowflake-managed Iceberg tables through Horizon's
-    # Iceberg REST endpoint, and the table files land in an external volume on
-    # S3. Snowflake reads the very same tables over SQL for Cube and Streamlit.
+    # --- The Iceberg lakehouse (ADR-0019). Snowflake is the *catalog* only:
+    # dlt and dbt-duckdb write Iceberg tables through Horizon's Iceberg REST
+    # endpoint, and the files land in our own S3 bucket via an external volume.
+    # Snowflake reads the very same tables over SQL for Cube and Streamlit.
     #
     # Two credentials, because the two protocols authenticate differently:
     # a PAT for the REST catalog (below) and the RSA key pair for the SQL

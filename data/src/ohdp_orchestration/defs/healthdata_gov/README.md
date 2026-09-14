@@ -93,8 +93,8 @@ to turn them on.
   `socrata_updated_at`.
 - The `columns` block is Socrata's *advertised* schema; dlt infers the real
   loaded types at materialization.
-- dlt commits Snowflake-managed Iceberg tables through Horizon's REST
-  catalog, configured via `OHDP_SNOWFLAKE_ACCOUNT` / `OHDP_SNOWFLAKE_PAT` plus
+- dlt commits Iceberg tables — files in S3, catalogued through Horizon's REST
+  endpoint — configured via `OHDP_SNOWFLAKE_ACCOUNT` / `OHDP_SNOWFLAKE_PAT` plus
   `OHDP_LAKEHOUSE_BUCKET` and the IAM key for its Parquet writes. See
   [ADR-0019](../../../../../docs/decisions/0019-iceberg-on-s3-duckdb-dbt.md).
 - Optional `OHDP_HEALTHDATA_APP_TOKEN` raises Socrata rate limits.

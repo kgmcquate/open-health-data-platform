@@ -63,8 +63,10 @@ State is local until the Spaces bucket exists. After the first apply, uncomment 
 
 ## The lakehouse
 
-Snowflake is the catalog. The medallion layers are Snowflake-managed Iceberg
-tables in the same RAW/CLEAN/CURATED databases they always used (ADR-0013) —
+Snowflake is the catalog; the storage is ours. The table files live in our own
+S3 bucket, reached through an external volume — Snowflake holds the metadata,
+not the bytes. The medallion layers are Iceberg tables in the same
+RAW/CLEAN/CURATED databases they always used (ADR-0013) —
 a Snowflake database is an Iceberg catalog and its schemas are that catalog's
 namespaces, so no names moved. Snowflake serves all three over the open Iceberg
 REST protocol (Horizon), so DuckDB writes and Snowflake reads the same tables:

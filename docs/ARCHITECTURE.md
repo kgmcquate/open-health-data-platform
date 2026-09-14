@@ -100,7 +100,7 @@ flowchart TB
 | Hub app | Signup, billing, chat UI, links to every tool (including Streamlit) | The only thing most users see first |
 | Dagster | Ingestion, dbt orchestration, ML inference, alert checks | Publicly visible, hardened (§5) |
 | dbt | SQL transformation and tests | dbt-duckdb, writing Iceberg (ADR-0019) |
-| Iceberg lakehouse | The medallion layers, as Snowflake-managed Iceberg tables | dlt writes `RAW.*`, dbt-duckdb writes the rest, both over Horizon's REST endpoint |
+| Iceberg lakehouse | The medallion layers, as Iceberg tables in our S3 bucket | dlt writes `RAW.*`, dbt-duckdb writes the rest, both over Horizon's REST endpoint |
 | Snowflake | **The Iceberg catalog**, and the query engine over it | Serves Cube's metrics and Streamlit's ad-hoc queries over SQL (ADR-0019) |
 | Cube Core | Semantic layer: measures, dimensions, access control, REST/SQL APIs | Single definition of every metric, queries Snowflake directly. No MCP server in Core — see §6 |
 | Streamlit | Dashboards, standalone (linked from the hub app, not embedded) | Direct Snowflake for now (M1); repoint at Cube once M2 lands |

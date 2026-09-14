@@ -4,8 +4,9 @@
 # Relax only this module.
 # mypy: disable-error-code="no-untyped-def,untyped-decorator,call-overload,no-any-return,arg-type"
 """A ``dlt`` source over one Socrata dataset — any domain (ADR-0018) — landing
-a Snowflake-managed Iceberg table in ``RAW.<SOURCE>``, through Snowflake's
-Horizon catalog (ADR-0013 for the layout, ADR-0019 for the catalog). dlt's own
+an Iceberg table in ``RAW.<SOURCE>``: files in our S3 bucket, catalogued
+through Snowflake's Horizon REST endpoint (ADR-0013 for the layout, ADR-0019
+for the catalog). dlt's own
 filesystem/Iceberg support handles schema evolution and the incremental cursor;
 there is no bespoke
 stage-then-commit step the way ADR-0010 needed. dlt keeps its pipeline state in

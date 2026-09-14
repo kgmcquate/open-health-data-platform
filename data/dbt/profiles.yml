@@ -1,7 +1,7 @@
 # dbt-duckdb is the only compute engine for the transformation layers
 # (ADR-0019, which supersedes ADR-0014's "Snowflake-only" and ADR-0012's
 # native-Snowflake-tables decisions). DuckDB is not a warehouse here: it holds
-# nothing. Every relation is a Snowflake-managed Iceberg table reached through
+# nothing. Every relation is an Iceberg table in S3, reached through
 # Snowflake's Horizon Iceberg REST catalog, so the DuckDB database itself is
 # `:memory:` and the process is disposable.
 #

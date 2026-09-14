@@ -28,11 +28,11 @@ That left a warehouse the project pays for on every build, with the transform
 layer locked to one vendor's SQL, and the tables reachable only through
 Snowflake credentials. Three things have changed since:
 
-- **External engines can now write Snowflake-managed Iceberg tables.** Writing
-  through Snowflake Horizon's Iceberg REST endpoint went to preview in March
-  2026 and GA in May 2026. When ADR-0011 and ADR-0012 were written, external
-  engines could only *read* — which is most of why that design had so little to
-  offer for the trouble it cost.
+- **External engines can now write Iceberg tables Snowflake catalogues.**
+  Writing through Snowflake Horizon's Iceberg REST endpoint went to preview in
+  March 2026 and GA in May 2026. When ADR-0011 and ADR-0012 were written,
+  external engines could only *read* — which is most of why that design had so
+  little to offer for the trouble it cost.
 - **DuckDB writes Iceberg.** Its `iceberg` extension gained REST-catalog writes
   in v1.4 and filled in the rest in v1.5.3 — `CREATE`/`DROP SCHEMA` and `TABLE`,
   `INSERT`, `UPDATE`, `DELETE`, `MERGE INTO`, and `ALTER TABLE` including
@@ -52,6 +52,21 @@ DigitalOcean.
 **Snowflake is the Iceberg catalog. DuckDB builds the tables; Snowflake serves
 them.**
 
+### Snowflake holds the metadata; S3 holds the bytes
+
+The catalog is Snowflake's. The *storage* is not, and that distinction is the
+one most easily lost: `CATALOG = 'SNOWFLAKE'` says who owns the table metadata,
+which is a separate question from where the files sit. Every layer database
+carries an `EXTERNAL_VOLUME` over our own S3 bucket, and Iceberg tables inherit
+it through table → schema → database, so every table dlt and dbt create — via
+the REST API, passing neither setting — lands there.
+
+Snowflake's own managed storage is never used. ADR-0011 did use it, and that is
+part of what went wrong then (see the open risk below). Dropping the
+`EXTERNAL_VOLUME` would not fail loudly; it would quietly start writing new
+tables somewhere we do not control, which is why `platform/terraform/snowflake.tf`
+says so at the resource.
+
 ### A Snowflake database is a catalog; its schemas are namespaces
 
 That equivalence is the whole reason this migration changes so few names.
@@ -64,8 +79,8 @@ being flattened into it:
     CURATED.CORE          conformed          written by dbt-duckdb
     CURATED.<MART>        CURATED.RESPIRATORY
 
-Each layer database is created with `CATALOG = 'SNOWFLAKE'` and an
-`EXTERNAL_VOLUME` on S3, and Horizon serves all three over the open Iceberg
+Each layer database is created with `CATALOG = 'SNOWFLAKE'` and the
+`EXTERNAL_VOLUME` above, and Horizon serves all three over the open Iceberg
 REST protocol at
 `https://<account>.snowflakecomputing.com/polaris/api/catalog`.
 
@@ -173,15 +188,17 @@ split/rebuild), `div0`, `try_to_date` (`try_cast(... as date)`),
 - **A second apply is still required.** The external volume's IAM trust policy
   names an ARN and external ID that only exist once Snowflake has created the
   volume. One round-trip, documented in the same README.
-- **Open risk: dlt passes an explicit table `location` on create.** That is the
-  exact thing ADR-0012 recorded Snowflake-managed storage rejecting. External
-  writes were read-only then and are GA now, so the behaviour may well have
-  changed — but it has not been verified against a live account, and it is the
-  first thing to check if raw loads fail on table creation. If Snowflake still
-  rejects it, the fix is to pre-create each raw table with Snowflake DDL (the
-  column set is in the dataset config) so dlt takes its `evolve_table` path,
-  which passes no location. The dbt layers do not have this exposure — DuckDB
-  lets the catalog choose.
+- **Open risk: dlt passes an explicit table `location` on create.** ADR-0012
+  recorded this being rejected — but by *Snowflake-managed storage*, which
+  ADR-0011 had opted into and this ADR does not. A location under an external
+  volume we own is a materially different case from one under a path Snowflake
+  picks for itself, and external writes have gone from unsupported to GA since.
+  So the odds are better than that note suggests. It is still unverified
+  against a live account, and still the first thing to check if raw loads fail
+  on table creation. If Snowflake rejects it anyway, the fix is to pre-create
+  each raw table with Snowflake DDL (the column set is in the dataset config)
+  so dlt takes its `evolve_table` path, which passes no location. The dbt
+  layers have no such exposure — DuckDB lets the catalog choose.
 - **The test suite got closer to production, not further.** `test_raw_load.py`
   used to stub the destination with SQLite over dlt's `sqlalchemy` destination;
   it now writes actual Iceberg tables to a temp directory through a SQLite
