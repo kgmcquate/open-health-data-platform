@@ -240,7 +240,7 @@ def write_disposition(incremental_cursor: str | None) -> WriteDisposition:
     return "append" if incremental_cursor else "replace"
 
 
-def _destination() -> Any:
+def _destination(source: str) -> Any:
     """dlt destination for the raw table (ADR-0019): the ``filesystem``
     destination, committing Iceberg tables through Snowflake's Horizon catalog.
 
@@ -260,7 +260,7 @@ def _destination() -> Any:
     # directly and writes it into the Horizon REST catalog so tables are
     # visible/registered in the catalog.
 
-    namespace =  naming.namespace("raw")
+    namespace = naming.namespace("raw", source)
 
     @dlt.destination(
         loader_file_format="parquet",
@@ -356,7 +356,7 @@ def build_pipeline(*, pipeline_name: str, source: str) -> dlt.Pipeline:
     configure_catalog()
     return dlt.pipeline(
         pipeline_name=pipeline_name,
-        destination=_destination(),
+        destination=_destination(source),
         dataset_name=naming.schema("raw", source),
         progress=None,
     )
