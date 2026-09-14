@@ -65,10 +65,12 @@ provider "snowflake" {
   organization_name = var.snowflake_organization_name
   account_name      = var.snowflake_account_name
 
-  # `snowflake_execute` (snowflake.tf) is a stable resource and needs no entry
-  # here — the external volume, catalog integration and catalog-linked database
-  # go through it precisely because the provider ships no resources for them.
+  # Preview resources have to be opted into by name. `snowflake_database`,
+  # `snowflake_schema` and the grant resources (snowflake.tf) are stable and
+  # need no entry here; the external volume is the one lakehouse object the
+  # provider still ships as preview.
   preview_features_enabled = [
-    "snowflake_network_policy_attachment_resource"
+    "snowflake_external_volume_resource",
+    "snowflake_network_policy_attachment_resource",
   ]
 }

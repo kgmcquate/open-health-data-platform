@@ -28,12 +28,10 @@
 # Iceberg catalog and its schemas are that catalog's namespaces, so nothing had
 # to be flattened together to fit the catalog's shape.
 #
-# The external volume, the database defaults and the grants go through
-# `snowflake_execute`: the provider has no resource for a catalog-enabled
-# database and its `snowflake_external_volume` is a preview resource. Changing
-# `execute` or `revert` forces a new resource, so each object carries its whole
-# definition and any rename re-creates it — hence CREATE OR REPLACE rather than
-# CREATE IF NOT EXISTS.
+# All of it is typed provider resources, no raw DDL: `snowflake_database`
+# carries CATALOG and EXTERNAL_VOLUME as first-class arguments, and
+# `snowflake_external_volume` is a preview resource opted into by name in
+# versions.tf's `preview_features_enabled`.
 
 locals {
   # <organization>-<account>, the account identifier. Also what the Horizon
@@ -82,16 +80,19 @@ locals {
   # dlt and dbt-duckdb both open a missing namespace themselves, so this is
   # about making the structure legible and grantable, not about unblocking the
   # pipeline.
+  # `layer` is the snowflake_layer_databases key, not the database name, so the
+  # schema resource can reference snowflake_database.layer[...] and inherit the
+  # dependency edge rather than declaring one.
   snowflake_namespaces = merge(
     { for s in var.lakehouse_sources : upper("raw.${s}") => {
-      database = "RAW", schema = upper(s)
+      layer = "raw", schema = upper(s)
     } },
     { for s in var.lakehouse_sources : upper("clean.stg_${s}") => {
-      database = "CLEAN", schema = upper("stg_${s}")
+      layer = "clean", schema = upper("stg_${s}")
     } },
-    { "CURATED.CORE" = { database = "CURATED", schema = "CORE" } },
+    { "CURATED.CORE" = { layer = "curated", schema = "CORE" } },
     { for m in var.lakehouse_marts : upper("curated.${m}") => {
-      database = "CURATED", schema = upper(m)
+      layer = "curated", schema = upper(m)
     } },
   )
 }
@@ -204,61 +205,58 @@ resource "snowflake_user_programmatic_access_token" "pipeline" {
 # compaction and snapshot-expiry output for the tables it catalogues — but it
 # writes to *our* bucket under *our* IAM role, and nothing lands in
 # Snowflake-owned storage.
-resource "snowflake_execute" "external_volume" {
-  execute = <<-SQL
-    CREATE OR REPLACE EXTERNAL VOLUME ${local.snowflake_external_volume}
-      STORAGE_LOCATIONS = (
-        (
-          NAME = 'lakehouse-s3'
-          STORAGE_PROVIDER = 'S3'
-          STORAGE_BASE_URL = 's3://${aws_s3_bucket.lakehouse.bucket}/'
-          STORAGE_AWS_ROLE_ARN = '${aws_iam_role.snowflake_storage.arn}'
-        )
-      )
-      ALLOW_WRITES = TRUE
-      COMMENT = 'OHDP lakehouse storage: our S3 bucket, not Snowflake storage (ADR-0019).';
-  SQL
+#
+# Still a preview resource, hence the opt-in in versions.tf. `allow_writes` is
+# a string, not a bool: the provider uses an unset-vs-"false" distinction that
+# a bool cannot carry.
+resource "snowflake_external_volume" "lakehouse" {
+  name         = local.snowflake_external_volume
+  allow_writes = "true"
+  comment      = "OHDP lakehouse storage: our S3 bucket, not Snowflake storage (ADR-0019)."
 
-  revert = "DROP EXTERNAL VOLUME IF EXISTS ${local.snowflake_external_volume};"
+  storage_location {
+    storage_location_name = "lakehouse-s3"
+    storage_provider      = "S3"
+    storage_base_url      = "s3://${aws_s3_bucket.lakehouse.bucket}/"
+    storage_aws_role_arn  = aws_iam_role.snowflake_storage.arn
+  }
 }
 
-# The catalogs. `CATALOG = 'SNOWFLAKE'` and `EXTERNAL_VOLUME` are set as
-# *database defaults*, and Iceberg tables inherit both through
-# table -> schema -> database, so every table created in one — including the
-# ones dlt and dbt create through the REST API, which pass neither — is an
-# Iceberg table catalogued by Snowflake with its files in our S3 bucket.
+# The catalogs. `catalog` and `external_volume` are *database defaults*, and
+# Iceberg tables inherit both through table -> schema -> database, so every
+# table created in one — including the ones dlt and dbt create through the REST
+# API, which pass neither — is an Iceberg table catalogued by Snowflake with
+# its files in our S3 bucket.
 #
-# EXTERNAL_VOLUME is the setting that keeps the data out of Snowflake's own
+# external_volume is the setting that keeps the data out of Snowflake's own
 # storage. Dropping it here would not fail anything loudly; it would silently
 # start putting new tables somewhere we do not control. Do not remove it, and
 # do not create an Iceberg table in these databases with an explicit
-# `EXTERNAL_VOLUME` pointing elsewhere.
-resource "snowflake_execute" "database" {
+# EXTERNAL_VOLUME pointing elsewhere.
+#
+# is_transient is set explicitly because the provider recreates — i.e. drops —
+# a database whose boolean it cannot read back as set. Leave it here.
+resource "snowflake_database" "layer" {
   for_each = local.snowflake_layer_databases
 
-  execute = <<-SQL
-    CREATE OR REPLACE DATABASE ${each.value}
-      EXTERNAL_VOLUME = '${local.snowflake_external_volume}'
-      CATALOG = 'SNOWFLAKE'
-      COMMENT = 'OHDP ${each.key} layer — an Iceberg catalog, written over Horizon (ADR-0019).';
-  SQL
-
-  revert = "DROP DATABASE IF EXISTS ${each.value};"
-
-  depends_on = [snowflake_execute.external_volume]
+  name            = each.value
+  catalog         = "SNOWFLAKE"
+  external_volume = snowflake_external_volume.lakehouse.name
+  is_transient    = false
+  comment         = "OHDP ${each.key} layer — an Iceberg catalog, written over Horizon (ADR-0019)."
 }
 
-resource "snowflake_execute" "namespace" {
+# The catalogs' namespaces. Same reason as the database for pinning
+# with_managed_access and is_transient explicitly — an unset boolean reads back
+# as a diff, and the diff is a drop.
+resource "snowflake_schema" "namespace" {
   for_each = local.snowflake_namespaces
 
-  execute = <<-SQL
-    CREATE SCHEMA IF NOT EXISTS ${each.value.database}.${each.value.schema}
-      COMMENT = 'OHDP lakehouse namespace ${each.value.database}.${each.value.schema} (ADR-0013).';
-  SQL
-
-  revert = "DROP SCHEMA IF EXISTS ${each.value.database}.${each.value.schema};"
-
-  depends_on = [snowflake_execute.database]
+  database            = snowflake_database.layer[each.value.layer].name
+  name                = each.value.schema
+  is_transient        = "false"
+  with_managed_access = "false"
+  comment             = "OHDP lakehouse namespace ${local.snowflake_layer_databases[each.value.layer]}.${each.value.schema} (ADR-0013)."
 }
 
 # Read *and* write, per layer database: the pipeline creates and rewrites
@@ -266,45 +264,85 @@ resource "snowflake_execute" "namespace" {
 # appear without a Terraform run. Cube and Streamlit share the role but only
 # ever SELECT.
 #
-# `snowflake_execute` rather than the provider's grant resources: those read
-# back through SHOW GRANTS against a database they expect to manage, and this
-# one's schemas come and go as the pipeline creates them.
-resource "snowflake_execute" "lakehouse_grants" {
+# Five grants per database, because ALL and FUTURE are different statements in
+# Snowflake and so different resources here. ALL covers what exists at apply
+# time — the schemas above; FUTURE covers everything the pipeline creates
+# afterwards, which is the whole point, since its schemas and tables come and
+# go without Terraform ever seeing them.
+resource "snowflake_grant_privileges_to_account_role" "lakehouse_database" {
   for_each = local.snowflake_layer_databases
 
-  execute = <<-SQL
-    GRANT USAGE, CREATE SCHEMA ON DATABASE ${each.value}
-      TO ROLE ${snowflake_account_role.pipeline.name};
-    GRANT USAGE, CREATE ICEBERG TABLE ON ALL SCHEMAS IN DATABASE ${each.value}
-      TO ROLE ${snowflake_account_role.pipeline.name};
-    GRANT USAGE, CREATE ICEBERG TABLE ON FUTURE SCHEMAS IN DATABASE ${each.value}
-      TO ROLE ${snowflake_account_role.pipeline.name};
-    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL ICEBERG TABLES IN DATABASE ${each.value}
-      TO ROLE ${snowflake_account_role.pipeline.name};
-    GRANT SELECT, INSERT, UPDATE, DELETE ON FUTURE ICEBERG TABLES IN DATABASE ${each.value}
-      TO ROLE ${snowflake_account_role.pipeline.name};
-  SQL
+  account_role_name = snowflake_account_role.pipeline.name
+  privileges        = ["USAGE", "CREATE SCHEMA"]
 
-  revert = <<-SQL
-    REVOKE USAGE, CREATE SCHEMA ON DATABASE ${each.value}
-      FROM ROLE ${snowflake_account_role.pipeline.name};
-  SQL
+  on_account_object {
+    object_type = "DATABASE"
+    object_name = snowflake_database.layer[each.key].name
+  }
+}
 
-  depends_on = [snowflake_execute.namespace]
+resource "snowflake_grant_privileges_to_account_role" "lakehouse_all_schemas" {
+  for_each = local.snowflake_layer_databases
+
+  account_role_name = snowflake_account_role.pipeline.name
+  privileges        = ["USAGE", "CREATE ICEBERG TABLE"]
+
+  on_schema {
+    all_schemas_in_database = snowflake_database.layer[each.key].name
+  }
+
+  depends_on = [snowflake_schema.namespace]
+}
+
+resource "snowflake_grant_privileges_to_account_role" "lakehouse_future_schemas" {
+  for_each = local.snowflake_layer_databases
+
+  account_role_name = snowflake_account_role.pipeline.name
+  privileges        = ["USAGE", "CREATE ICEBERG TABLE"]
+
+  on_schema {
+    future_schemas_in_database = snowflake_database.layer[each.key].name
+  }
+}
+
+resource "snowflake_grant_privileges_to_account_role" "lakehouse_all_tables" {
+  for_each = local.snowflake_layer_databases
+
+  account_role_name = snowflake_account_role.pipeline.name
+  privileges        = ["SELECT", "INSERT", "UPDATE", "DELETE"]
+
+  on_schema_object {
+    all {
+      object_type_plural = "ICEBERG TABLES"
+      in_database        = snowflake_database.layer[each.key].name
+    }
+  }
+
+  depends_on = [snowflake_schema.namespace]
+}
+
+resource "snowflake_grant_privileges_to_account_role" "lakehouse_future_tables" {
+  for_each = local.snowflake_layer_databases
+
+  account_role_name = snowflake_account_role.pipeline.name
+  privileges        = ["SELECT", "INSERT", "UPDATE", "DELETE"]
+
+  on_schema_object {
+    future {
+      object_type_plural = "ICEBERG TABLES"
+      in_database        = snowflake_database.layer[each.key].name
+    }
+  }
 }
 
 # A table's files are resolved through the external volume, so the role needs
 # USAGE on it too — the database grant alone is not enough.
-resource "snowflake_execute" "grant_external_volume" {
-  execute = <<-SQL
-    GRANT USAGE ON EXTERNAL VOLUME ${local.snowflake_external_volume}
-      TO ROLE ${snowflake_account_role.pipeline.name};
-  SQL
+resource "snowflake_grant_privileges_to_account_role" "external_volume" {
+  account_role_name = snowflake_account_role.pipeline.name
+  privileges        = ["USAGE"]
 
-  revert = <<-SQL
-    REVOKE USAGE ON EXTERNAL VOLUME ${local.snowflake_external_volume}
-      FROM ROLE ${snowflake_account_role.pipeline.name};
-  SQL
-
-  depends_on = [snowflake_execute.external_volume]
+  on_account_object {
+    object_type = "EXTERNAL VOLUME"
+    object_name = snowflake_external_volume.lakehouse.name
+  }
 }
