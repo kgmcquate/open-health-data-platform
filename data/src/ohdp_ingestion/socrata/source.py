@@ -260,7 +260,12 @@ def _destination(source: str) -> Any:
     # directly and writes it into the Horizon REST catalog so tables are
     # visible/registered in the catalog.
 
-    namespace = naming.namespace("raw", source)
+    # The catalog's `warehouse` is already the RAW database (see
+    # `iceberg_catalog_config`), so the identifier only needs the bare schema
+    # name here — `naming.namespace` would double up the database, giving
+    # pyiceberg a 3-part identifier ("RAW.CDC.<table>") that it splits into
+    # namespace ("RAW", "CDC") instead of just ("CDC",), 404ing against Horizon.
+    namespace = naming.schema("raw", source)
 
     @dlt.destination(
         loader_file_format="parquet",
