@@ -37,17 +37,22 @@ ohdp:
 
       secrets:
         # OAuth2 client credentials for Horizon's REST catalog, shared by all
-        # three attachments. The Snowflake user is the client id and a
-        # programmatic access token the secret; DuckDB exchanges them at
-        # Horizon's token endpoint.
+        # three attachments. The programmatic access token is the client
+        # secret; DuckDB exchanges it at Horizon's token endpoint.
         #
-        # `oauth2_scope` is not optional — Snowflake's token endpoint rejects
-        # the exchange without `session:role:<ROLE>`, which is exactly the
-        # `invalid_scope` ADR-0012 burned a round on. Keep it in sync with
-        # ohdp_shared.settings.horizon_scope.
+        # `client_id` MUST be empty. Horizon authenticates the PAT alone
+        # (like `curl -u ":<PAT>"` — no username); a non-empty client_id
+        # (e.g. OHDP_SNOWFLAKE_USER) makes the token endpoint reject the
+        # *scope* with `invalid_scope`, not the credential itself, which is
+        # what made this so easy to misdiagnose as a bad `oauth2_scope`.
+        #
+        # `oauth2_scope` is not optional either — Snowflake's token endpoint
+        # rejects the exchange without `session:role:<ROLE>`, which is
+        # exactly the `invalid_scope` ADR-0012 burned a round on. Keep it in
+        # sync with ohdp_shared.settings.horizon_scope.
         - type: iceberg
           name: ohdp_horizon
-          client_id: "{{ env_var('OHDP_SNOWFLAKE_USER', '') }}"
+          client_id: ""
           client_secret: "{{ env_var('OHDP_SNOWFLAKE_PAT', '') }}"
           oauth2_server_uri: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens"
           oauth2_scope: "session:role:{{ env_var('OHDP_SNOWFLAKE_ROLE', '') }}"
