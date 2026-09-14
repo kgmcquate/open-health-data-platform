@@ -97,11 +97,11 @@ from metadata.ingestion.ometa.ometa_api import OpenMetadata
 from metadata.ingestion.ometa.utils import build_entity_reference
 from metadata.utils import fqn
 
+from ohdp_orchestration.assets.lakehouse_dbt import _project as _dbt_project
 from ohdp_orchestration.assets.openmetadata_sync import (
     _SNOWFLAKE_SERVICE_NAME,
     _openmetadata_server_config,
 )
-from ohdp_orchestration.assets.snowflake_dbt import _project as _dbt_project
 from ohdp_shared import get_logger
 from ohdp_shared.settings import settings
 

@@ -1,6 +1,11 @@
 # Nightly pg_dump output (ARCHITECTURE.md §11) and the mirrored Snowflake
-# pipeline private key below. The publish-and-replicate DuckDB snapshot
-# mechanism this bucket originally also held (ADR-0002) was retired in ADR-0012.
+# private key below. The publish-and-replicate DuckDB snapshot mechanism this
+# bucket originally also held (ADR-0002) was retired in ADR-0012. The lakehouse
+# itself lives on AWS S3 (aws.tf, ADR-0019) because Snowflake cannot keep
+# Iceberg files on Spaces — but nothing else moved: compute logs are still
+# here, since the pipeline authenticates to Snowflake's catalog with a token
+# rather than with AWS credentials, so the two object stores never contend for
+# boto3's environment variables.
 resource "digitalocean_spaces_bucket" "warehouse" {
   name   = var.snapshot_bucket
   region = var.location
@@ -36,13 +41,13 @@ resource "digitalocean_spaces_bucket" "compute_logs" {
   }
 }
 
-# The Snowflake pipeline private key (snowflake.tf, ADR-0012), mirrored into
-# the warehouse bucket as a private object. This is in addition to the
+# The Snowflake query role's private key (snowflake.tf, ADR-0019), mirrored
+# into the warehouse bucket as a private object. This is in addition to the
 # snowflake_private_key output/repo-secret path, not a replacement for it — it
 # exists for anything that can pull a Spaces object directly instead of going
 # through gh secret + the deploy workflow. The bucket is private and this
 # object carries no separate ACL override, but note it is still plaintext at
-# rest: anyone with read access to the bucket can read the pipeline's key.
+# rest: anyone with read access to the bucket can read the key.
 resource "digitalocean_spaces_bucket_object" "snowflake_pipeline_private_key" {
   region       = var.location
   bucket       = digitalocean_spaces_bucket.warehouse.name

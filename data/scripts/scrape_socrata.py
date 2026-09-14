@@ -142,7 +142,7 @@ def _dump_dataset(cfg: DatasetConfig, target: _Target) -> str:
 
 
 def _write_dbt_sources(configs: list[DatasetConfig], target: _Target) -> None:
-    """Raw tables, one schema per domain (ADR-0013)."""
+    """Raw tables, one namespace per domain in the RAW catalog (ADR-0013)."""
     source = target.socrata.source
     raw_database = ns_database("raw")
     raw_schema = ns_schema("raw", source)
@@ -160,7 +160,12 @@ def _write_dbt_sources(configs: list[DatasetConfig], target: _Target) -> None:
                 "schema": raw_schema,
                 "tables": [
                     {
+                        # `name` is the key models reference through `source()`
+                        # and stays lower case; `identifier` is the physical
+                        # table, which dlt creates upper case because Snowflake
+                        # is the catalog (ADR-0019, ohdp_ingestion.sql_upper).
                         "name": c.raw_table,
+                        "identifier": c.raw_table.upper(),
                         "description": f"{c.name} ({c.publisher}). {c.source_url}",
                         "columns": [
                             {"name": col.name, "description": col.description}

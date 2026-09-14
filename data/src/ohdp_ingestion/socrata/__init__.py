@@ -29,7 +29,13 @@ from ohdp_ingestion.socrata.config import (
     table_name,
 )
 from ohdp_ingestion.socrata.domain import SocrataDomain
-from ohdp_ingestion.socrata.source import build_pipeline, socrata_source, write_disposition
+from ohdp_ingestion.socrata.source import (
+    build_pipeline,
+    configure_catalog,
+    iceberg_catalog_config,
+    socrata_source,
+    write_disposition,
+)
 
 __all__ = [
     "CADENCES",
@@ -39,6 +45,8 @@ __all__ = [
     "DatasetConfig",
     "SocrataDomain",
     "build_pipeline",
+    "configure_catalog",
+    "iceberg_catalog_config",
     "iter_catalog",
     "slugify",
     "table_name",

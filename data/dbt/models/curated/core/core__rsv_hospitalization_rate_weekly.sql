@@ -20,7 +20,7 @@ select
     rate_type,
     estimate_type,
     date_type,
-    try_to_date(date)                           as period_end,
+    {{ try_to_date('date') }}                           as period_end,
     age_category,
     case when sex   in ('All', 'All Sexes')            then 'All' else sex  end as sex,
     case when race  in ('All', 'All Race/Ethnicities') then 'All' else race end as race_ethnicity,
@@ -33,4 +33,4 @@ select
                                                 as percent_of_patients,
     ingest_ts
 from {{ ref('stg_cdc__rsv_net') }}
-where try_to_date(date) is not null
+where {{ try_to_date('date') }} is not null

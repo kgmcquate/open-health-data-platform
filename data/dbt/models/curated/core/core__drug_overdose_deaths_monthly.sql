@@ -22,7 +22,7 @@ select
     -- CDC publishes the month as a full English name ('February'). Mapped
     -- explicitly rather than through a to_date format model, so the parse can
     -- neither depend on session locale nor fail silently to null.
-    date_from_parts(
+    make_date(
         try_cast(year as int),
         case month
             when 'January' then 1 when 'February' then 2 when 'March'     then 3

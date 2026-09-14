@@ -1,8 +1,11 @@
 """Cached Snowflake connection shared by every dashboard page.
 
-Reuses the pipeline's `OHDP_PIPELINE` Snowflake role/key (`ohdp_shared.settings`
-— the same credential dlt/dbt-snowflake authenticate with) rather than a
-dedicated read-only role. That is a deliberate, temporary privilege trade-off
+Queries the CURATED database, which since ADR-0019 *is* an Iceberg catalog —
+the same tables dbt-duckdb builds through Horizon's REST endpoint, under the
+same names they have always had.
+
+Uses the shared `OHDP_PIPELINE` role/key (`ohdp_shared.settings`) rather than a
+dedicated read-only one. That is a deliberate, temporary privilege trade-off
 made when Streamlit replaced Superset; see
 docs/decisions/0015-streamlit-over-superset.md.
 """

@@ -17,7 +17,7 @@
 
 select
     label                                       as disease,
-    initcap(states)                             as reporting_area,
+    {{ initcap('states') }}                     as reporting_area,
     states                                      as reporting_area_raw,
     try_cast(year as int)                       as mmwr_year,
     try_cast(week as int)                       as mmwr_week,

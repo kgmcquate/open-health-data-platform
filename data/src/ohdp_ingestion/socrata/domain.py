@@ -18,8 +18,8 @@ class SocrataDomain:
     """One Socrata-hosted open-data catalog.
 
     ``source`` is the identity that shows up everywhere downstream and must
-    never change once data has landed: it is the ``RAW`` schema
-    (``RAW.<source>``, ADR-0013), the middle segment of every asset key, the
+    never change once data has landed: it is the raw namespace
+    (``raw_<source>``, ADR-0019), the middle segment of every asset key, the
     dbt source name, the ``domain`` tag the cadence jobs select on, and the
     ``dlt`` schema name recorded in the destination's pipeline state.
     """

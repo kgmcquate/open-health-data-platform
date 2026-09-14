@@ -1,22 +1,37 @@
 {#
-    dbt's default macro concatenates <target_schema>_<custom_schema>
-    (e.g. "CLEAN_healthdata_gov"). Instead, a model named per the dbt-labs
-    staging convention `stg_<source>__<table>` gets its schema inferred
-    straight from that name (`stg_<source>`) — the layer already lives in the
-    database (generate_database_name.sql), so the schema only needs to carry
-    the source. This lets clean/healthdata_gov/stg_healthdata_gov__foo.sql
-    land in CLEAN.stg_healthdata_gov without a `+schema` config and without
-    renaming the file (which would break its unique dbt model ID / ref()s).
-    Anything not following that convention (core, marts) falls back to the
+    The namespace within a layer's catalog. The layer itself lives in the
+    database (generate_database_name.sql), so the schema only has to carry the
+    source or mart — ADR-0013's scheme, which ADR-0019 keeps: a Snowflake
+    database is an Iceberg catalog and its schemas are that catalog's
+    namespaces, so nothing has to be flattened together.
+
+    Derived from the model name rather than configured per folder, so a model
+    following the dbt-labs `stg_<source>__<table>` convention lands in the
+    right namespace without a `+schema` config and without renaming the file
+    (which would break its unique dbt model ID / ref()s):
+
+      stg_<source>__<table>  ->  STG_<SOURCE>   (in CLEAN)
+      core__<table>          ->  CORE           (in CURATED)
+      <mart>__<table>        ->  <MART>         (in CURATED)
+
+    So clean/stg_cdc/stg_cdc__nndss_weekly.sql lands in CLEAN.STG_CDC.
+
+    **Upper case, deliberately.** Snowflake requires an external engine
+    reaching it through the Horizon REST catalog to address namespaces and
+    tables in all capitals, and unquoted SQL identifiers fold to upper case
+    anyway — so this is the one casing that resolves from DuckDB, from Cube and
+    from Streamlit without quoting.
+
+    Anything not following the `<prefix>__<name>` convention falls back to the
     explicit `+schema` config, then target.schema, same as dbt's default.
 #}
 {% macro generate_schema_name(custom_schema_name, node) -%}
     {%- set parts = node.name.split('__', 1) -%}
     {%- if parts | length == 2 -%}
-        {{ parts[0] }}
+        {{ parts[0] | upper }}
     {%- elif custom_schema_name is none -%}
         {{ target.schema }}
     {%- else -%}
-        {{ custom_schema_name | trim }}
+        {{ custom_schema_name | trim | upper }}
     {%- endif -%}
 {%- endmacro %}

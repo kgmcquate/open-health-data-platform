@@ -23,12 +23,12 @@ from dagster.components import load_defs
 
 from ohdp_orchestration import defs as _defs_module
 from ohdp_orchestration.assets.cube_metrics_sync import openmetadata_cube_metrics_sync
+from ohdp_orchestration.assets.lakehouse_dbt import DBT_RESOURCE, lakehouse_dbt_assets
 from ohdp_orchestration.assets.openmetadata_dagster_sync import openmetadata_dagster_sync
 from ohdp_orchestration.assets.openmetadata_sync import (
     openmetadata_dbt_sync,
     openmetadata_snowflake_sync,
 )
-from ohdp_orchestration.assets.snowflake_dbt import DBT_RESOURCE, snowflake_dbt_assets
 from ohdp_orchestration.jobs.cdc import (
     cdc_daily_ingest_job,
     cdc_monthly_ingest_job,
@@ -63,7 +63,7 @@ from ohdp_orchestration.schedules.openmetadata_sync import (
     openmetadata_dbt_sync_schedule,
     openmetadata_snowflake_sync_schedule,
 )
-from ohdp_orchestration.sensors.snowflake_dbt import snowflake_dbt_automation_sensor
+from ohdp_orchestration.sensors.lakehouse_dbt import lakehouse_dbt_automation_sensor
 
 # `load_defs` (not `load_from_defs_folder`) on purpose: the Docker image installs
 # this package `--no-editable` (ADR-0004), so at runtime this file lives in
@@ -81,7 +81,7 @@ defs = Definitions.merge(
             openmetadata_dagster_sync,
             openmetadata_dbt_sync,
             openmetadata_snowflake_sync,
-            snowflake_dbt_assets,
+            lakehouse_dbt_assets,
         ],
         resources={"dbt": DBT_RESOURCE},
         jobs=[
@@ -108,6 +108,6 @@ defs = Definitions.merge(
             openmetadata_dbt_sync_schedule,
             openmetadata_snowflake_sync_schedule,
         ],
-        sensors=[snowflake_dbt_automation_sensor],
+        sensors=[lakehouse_dbt_automation_sensor],
     ),
 )

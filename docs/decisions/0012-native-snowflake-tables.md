@@ -1,6 +1,10 @@
 # 0012 — Native Snowflake tables replace the Iceberg lake
 
-**Status:** Accepted
+**Status:** **Superseded by [ADR-0019](0019-iceberg-on-s3-duckdb-dbt.md)** — the lakehouse is back,
+and so is Snowflake's own Iceberg catalog, with dbt-duckdb writing through it.
+Read this one for why the *first* attempt failed; ADR-0019 names what changed
+since — chiefly that external engines can now write Snowflake-managed Iceberg
+tables, which they could not when this was written.
 **Relates to:** supersedes [ADR-0010](0010-iceberg-medallion-lakehouse.md) and
 [ADR-0011](0011-snowflake-horizon-catalog.md) in full, and retires the
 publish-and-replicate mechanism from [ADR-0002](0002-publish-and-replicate-duckdb.md)

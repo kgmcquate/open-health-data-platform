@@ -19,7 +19,7 @@ select
     grantee_code::varchar as grantee_code,
     latitude::float as latitude,
     longitude::float as longitude,
-    to_date(last_report_date) as last_report_date,
+    cast(last_report_date as date) as last_report_date,
 
     is_covid::boolean as treats_covid,
     is_flu::boolean as treats_flu,

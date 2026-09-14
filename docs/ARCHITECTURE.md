@@ -47,8 +47,8 @@ flowchart TB
         BUILD["dbt build pod<br/>ephemeral"]
     end
 
-    subgraph storage["Snowflake data warehouse"]
-        SNOW["RAW / CLEAN / CURATED databases<br/>schema per source or mart"]
+    subgraph storage["Iceberg lakehouse — Snowflake catalog, S3 volume"]
+        LAKE["RAW / CLEAN / CURATED<br/>one catalog per layer"]
     end
 
     subgraph serving["Serving"]
@@ -69,9 +69,12 @@ flowchart TB
     IDP["Hosted IdP<br/>OIDC"]
     PG[("Postgres<br/>4 databases")]
 
+    SNOW["Snowflake<br/>catalog + query engine"]
+
     S1 & S2 & S3 & S4 & S5 --> BUILD
     DAG -->|launches| BUILD
-    BUILD -->|dlt loads, dbt-snowflake builds| SNOW
+    BUILD -->|dlt loads, dbt-duckdb builds<br/>Iceberg REST| LAKE
+    LAKE --- SNOW
     SNOW --> CUBE
     CUBE --> DASH
     CUBE --> BOT
@@ -96,36 +99,39 @@ flowchart TB
 |---|---|---|
 | Hub app | Signup, billing, chat UI, links to every tool (including Streamlit) | The only thing most users see first |
 | Dagster | Ingestion, dbt orchestration, ML inference, alert checks | Publicly visible, hardened (§5) |
-| dbt | SQL transformation and tests | Snowflake only (ADR-0014) |
-| Snowflake | Compute and storage for the medallion warehouse | dlt loads, dbt-snowflake builds |
+| dbt | SQL transformation and tests | dbt-duckdb, writing Iceberg (ADR-0019) |
+| Iceberg lakehouse | The medallion layers, as Iceberg tables in our S3 bucket | dlt writes `RAW.*`, dbt-duckdb writes the rest, both over Horizon's REST endpoint |
+| Snowflake | **The Iceberg catalog**, and the query engine over it | Serves Cube's metrics and Streamlit's ad-hoc queries over SQL (ADR-0019) |
 | Cube Core | Semantic layer: measures, dimensions, access control, REST/SQL APIs | Single definition of every metric, queries Snowflake directly. No MCP server in Core — see §6 |
 | Streamlit | Dashboards, standalone (linked from the hub app, not embedded) | Direct Snowflake for now (M1); repoint at Cube once M2 lands |
 | OpenMetadata | Catalog, lineage, glossary, metric directory, discovery MCP | Human-browsable surface |
 | Postgres | App metadata for Dagster, OpenMetadata, hub app | One instance, three databases |
 | Spaces | Postgres backups | S3-compatible, zero egress fees |
+| AWS S3 | The external volume behind the lakehouse's tables | On AWS because Snowflake's external volumes can't use Spaces (ADR-0019) |
 
 ---
 
 ## 3. Data lifecycle
 
-The core pattern (ADR-0012). dlt and dbt-snowflake write straight to Snowflake;
-there is no separate publish/replicate step, and no snapshot file to keep two
-processes from sharing.
+The core pattern (ADR-0019). dlt and dbt-duckdb commit Iceberg tables through
+one catalog — Snowflake's own, over the Iceberg REST protocol; there is no
+separate publish/replicate step, and no snapshot file to keep two processes from
+sharing. Snowflake then serves the very same tables over SQL.
 
 ```mermaid
 sequenceDiagram
     participant Sched as Dagster schedule
     participant Build as pipeline pod
-    participant Snow as Snowflake
+    participant Lake as Snowflake (Horizon)
     participant OM as OpenMetadata
 
     Sched->>Build: launch run (concurrency 1)
-    Build->>Snow: dlt loads (raw tables)
+    Build->>Lake: dlt loads (RAW.* tables, REST)
     Build->>Build: dbt build (models + tests)
     alt tests fail
         Build-->>Sched: fail run, models roll back per-model
     else tests pass
-        Build->>Snow: dbt-snowflake writes clean/core/marts
+        Build->>Lake: dbt-duckdb commits CLEAN.*/CURATED.*
         Build->>OM: upsert lineage, metrics, freshness
     end
 ```
@@ -249,7 +255,7 @@ Steady state ~14.5 GB, burst ~16 GB during a build.
 | mcp-cube | 0.25 GB | Cube's tool surface over MCP; the hub-api image with a different command |
 | ingress, cert-manager, oauth2-proxy, graphql-proxy | 0.5 GB | graphql-proxy alone idles at ~105 MiB for 2 gunicorn workers and buffers whole upstream responses; 192Mi OOMKilled it in a crash loop |
 | k3s system | 1 GB | |
-| pipeline pod | 1.5 GB | Burst only, concurrency capped at 1; compute is Snowflake, not this pod |
+| pipeline pod | 1.5 GB | Burst only, concurrency capped at 1. **Compute is this pod now** (DuckDB, ADR-0019) — raise it if a dbt build starts spilling |
 
 Set memory **limits** on every pod. An unbounded in-pod query (opensearch,
 cube, ...) will otherwise take down the node.
@@ -259,6 +265,8 @@ cube, ...) will otherwise take down the node.
 | Item | Monthly |
 |---|---|
 | Hetzner CX52 + IPv4 | ~$35 (EUR 32.40 + IPv4) |
+| AWS S3 (the external volume) | ~$1 — storage at this data volume |
+| Snowflake | Query credits only; no warehouse runs during a build any more (ADR-0019) |
 | R2 (10 GB free tier), Cloudflare, hosted IdP, Grafana Cloud, Resend | $0 |
 | Domain amortized | ~$1 |
 | LLM inference | Variable — quota-gated |
@@ -435,10 +443,10 @@ Each milestone should be independently demoable. Do not start the next until the
 previous is green for a week.
 
 **M0 — Pipeline spine**
-Two sources (OpenAQ, one CDC surveillance dataset). dbt against Snowflake
-(ADR-0012, later made the only target by ADR-0014). Dagster running the build.
-No auth, no UI, no catalog. Goal: prove dlt loads + dbt-snowflake builds stay
-green.
+Two sources (OpenAQ, one CDC surveillance dataset). dbt-duckdb building Iceberg
+tables through Snowflake's catalog (ADR-0019, after a detour through native
+Snowflake tables in ADR-0012/0014). Dagster running the build. No auth, no UI,
+no data catalog. Goal: prove dlt loads + dbt builds stay green.
 
 **M1 — Platform on k3s**
 Provision the VM, k3s, Postgres, ingress, TLS. Deploy Dagster with oauth2-proxy and
@@ -477,8 +485,12 @@ Things that will look like reasonable improvements and are not:
   [ADR-0005](decisions/0005-hetzner-k3s-over-managed-kubernetes.md) has the numbers.
 - **DuckDB's Quack client-server protocol is moot for serving.** It would have
   solved DuckDB's single-writer constraint for the publish-and-replicate path,
-  which ADR-0012 retired — serving reads Snowflake (directly, or via Cube)
-  instead.
+  which ADR-0012 retired. DuckDB is back as of ADR-0019, but only as the
+  *build* engine — it holds nothing, and serving still reads Snowflake
+  (directly, or via Cube).
+- **Do not write to the lakehouse from Snowflake SQL.** dlt and dbt-duckdb own
+  these tables, through the REST catalog; a third writer against the same
+  catalog is a real conflict, not extra flexibility (ADR-0019).
 - **Do not use the dbt Semantic Layer's serving APIs.** They require dbt Cloud at
   roughly $100/user/month. MetricFlow itself is open source; the serving tier is not.
 - **Do not give the agent a raw SQL tool** on the grounds that it would be more flexible.
@@ -506,7 +518,9 @@ Flag these rather than deciding unilaterally:
 
 ## 11. Backups
 
-The warehouse is fully reproducible from public sources plus git, so it is not backed up.
+The lakehouse is fully reproducible from public sources plus git, so it is not
+backed up — neither the S3 files nor the catalog. (Iceberg keeps snapshot
+history per table, which covers rollback but is not a backup.)
 
 Backed up: nightly `pg_dump` of the single Postgres instance to R2, covering Dagster run
 history, OpenMetadata annotations, and user records. Streamlit has no metastore — its

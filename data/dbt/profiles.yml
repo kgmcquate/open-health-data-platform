@@ -1,28 +1,85 @@
-# dbt-snowflake is the only compute engine (ADR-0014, which supersedes
-# ADR-0012's local/CI DuckDB targets — see that ADR's superseding note for
-# why; ADR-0013's per-layer-database split still applies via `+database`/
-# `+schema`, generate_database_name.sql / generate_schema_name.sql).
+# dbt-duckdb is the only compute engine for the transformation layers
+# (ADR-0019, which supersedes ADR-0014's "Snowflake-only" and ADR-0012's
+# native-Snowflake-tables decisions). DuckDB is not a warehouse here: it holds
+# nothing. Every relation is an Iceberg table in S3, reached through
+# Snowflake's Horizon Iceberg REST catalog, so the DuckDB database itself is
+# `:memory:` and the process is disposable.
 #
 # `dbt parse` (CI, the image, `data/tests/conftest.py`) only needs the profile
 # to render, not a live connection, so every env var below defaults to empty
 # when unset rather than erroring — `dbt build`/`dbt run` still fail loudly if
-# it's actually missing when Snowflake is queried.
+# one is actually missing when a catalog is attached.
 #
 # Requires the project venv: `cd data && uv run dbt ...`
 ohdp:
   target: prod
   outputs:
     prod:
-      type: snowflake
-      account: "{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}"
-      user: "{{ env_var('OHDP_SNOWFLAKE_USER', '') }}"
-      # Snowflake SERVICE users don't accept password auth — key-pair is the
-      # supported mechanism. PKCS#8 PEM, read straight from the env var.
-      private_key: "{{ env_var('OHDP_SNOWFLAKE_PRIVATE_KEY', '') }}"
-      role: "{{ env_var('OHDP_SNOWFLAKE_ROLE', '') }}"
-      # Required fallback; every model overrides both via `+database`/`+schema`
+      type: duckdb
+      # Nothing is persisted locally: models are committed to Iceberg through
+      # the attached catalogs, and intermediate state is scratch.
+      path: ":memory:"
+      # Required fallback; every model overrides this via `+database`
       # (generate_database_name.sql / generate_schema_name.sql, ADR-0013).
-      database: "CLEAN"
-      warehouse: "{{ env_var('OHDP_SNOWFLAKE_WAREHOUSE', '') }}"
-      schema: "core"
+      # Must be one of the `attach` aliases below — dbt-duckdb validates that.
+      database: CURATED
+      schema: CORE
       threads: 4
+
+      # `iceberg` brings ATTACH ... (TYPE iceberg); `httpfs` + `aws` are what
+      # let it and the data files reach S3. Writing to a REST catalog needs
+      # DuckDB 1.5.4+. Pre-installed in the image (data/Dockerfile) so a run
+      # pod doesn't fetch them on every start.
+      extensions:
+        - httpfs
+        - aws
+        - iceberg
+
+      secrets:
+        # OAuth2 client credentials for Horizon's REST catalog, shared by all
+        # three attachments. The Snowflake user is the client id and a
+        # programmatic access token the secret; DuckDB exchanges them at
+        # Horizon's token endpoint.
+        #
+        # `oauth2_scope` is not optional — Snowflake's token endpoint rejects
+        # the exchange without `session:role:<ROLE>`, which is exactly the
+        # `invalid_scope` ADR-0012 burned a round on. Keep it in sync with
+        # ohdp_shared.settings.horizon_scope.
+        - type: iceberg
+          name: ohdp_horizon
+          client_id: "{{ env_var('OHDP_SNOWFLAKE_USER', '') }}"
+          client_secret: "{{ env_var('OHDP_SNOWFLAKE_PAT', '') }}"
+          oauth2_server_uri: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens"
+          oauth2_scope: "session:role:{{ env_var('OHDP_SNOWFLAKE_ROLE', '') }}"
+
+      # One attachment per medallion-layer database (ADR-0013). Each Snowflake
+      # database is its own Iceberg catalog, and its schemas are that catalog's
+      # namespaces — which is why the layer does not have to be folded into the
+      # namespace name, and why these are three ATTACHes rather than one.
+      #
+      # Three rather than a single nested-namespace catalog because DuckDB's
+      # qualified names have exactly three parts (catalog.schema.table): a
+      # namespace nested any deeper has nowhere to go in the SQL.
+      #
+      # ACCESS_DELEGATION_MODE makes Horizon vend short-lived, scoped S3
+      # credentials for the table files, so DuckDB needs no AWS key of its own
+      # — the files live in the external volume Snowflake governs
+      # (platform/terraform/snowflake.tf).
+      attach:
+        - path: RAW
+          type: iceberg
+          alias: RAW
+          secret: ohdp_horizon
+          options: &horizon
+            endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
+            access_delegation_mode: vended_credentials
+        - path: CLEAN
+          type: iceberg
+          alias: CLEAN
+          secret: ohdp_horizon
+          options: *horizon
+        - path: CURATED
+          type: iceberg
+          alias: CURATED
+          secret: ohdp_horizon
+          options: *horizon

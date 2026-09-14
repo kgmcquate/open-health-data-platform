@@ -63,14 +63,14 @@ Three assets per dataset, so lineage is explicit:
 | | key | group | kinds | materialized | built when |
 |---|---|---|---|---|---|
 | **source asset** | `sources/healthdata_gov/<raw_table>` | `sources_healthdata_gov` | `socrata` | never | always |
-| **table asset** | `ingestion/healthdata_gov/<raw_table>` | `ingestion_healthdata_gov` | `dlt`, `snowflake` | yes | `enabled: true` |
-| **raw-layer asset** | `snowflake/raw/healthdata_gov/<raw_table>` | `snowflake_raw` | `snowflake` | runless event | `enabled: true` |
+| **table asset** | `ingestion/healthdata_gov/<raw_table>` | `ingestion_healthdata_gov` | `dlt`, `filesystem` | yes | `enabled: true` |
+| **raw-layer asset** | `lakehouse/raw/healthdata_gov/<raw_table>` | `lakehouse_raw` | `iceberg` | runless event | `enabled: true` |
 
-`source -> ingestion -> snowflake/raw -> (dbt clean → core → marts)`. The
+`source -> ingestion -> lakehouse/raw/* -> (dbt clean → core → marts)`. The
 raw-layer asset never runs an op of its own; the ingestion op reports a runless
 materialization against it for every table the load actually touched, including
 the `<raw_table>__<nested>` children dlt splits out of nested JSON.
-dlt **appends** to `RAW.healthdata_gov.<raw_table>`
+dlt **appends** to `RAW.HEALTHDATA_GOV.<raw_table>`
 (ADR-0013) — full history, schema auto-evolves; `incremental_cursor: null`
 datasets `replace` instead. The catalog asset carries the Socrata column
 schema + publisher / URL / keywords / cadence / page-views metadata for the
@@ -101,9 +101,9 @@ to turn them on.
   `socrata_updated_at`.
 - The `columns` block is Socrata's *advertised* schema; dlt infers the real
   loaded types at materialization.
-- dlt writes to Snowflake directly, set via `OHDP_SNOWFLAKE_ACCOUNT` and
-  friends. See
-  [ADR-0012](../../../../../docs/decisions/0012-native-snowflake-tables.md)
-  and [ADR-0014](../../../../../docs/decisions/0014-snowflake-only-compilation.md).
+- dlt commits Iceberg tables — files in S3, catalogued through Horizon's REST
+  endpoint — configured via `OHDP_SNOWFLAKE_ACCOUNT` / `OHDP_SNOWFLAKE_PAT` plus
+  `OHDP_LAKEHOUSE_BUCKET` and the IAM key for its Parquet writes. See
+  [ADR-0019](../../../../../docs/decisions/0019-iceberg-on-s3-duckdb-dbt.md).
 - Optional `OHDP_HEALTHDATA_APP_TOKEN` raises Socrata rate limits.
 - Schedules fire at 07:00 UTC, before the 08:00 dbt build.

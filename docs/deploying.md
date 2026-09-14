@@ -5,7 +5,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 | Workflow | Does | Needs a cluster? |
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api`, `ohdp-streamlit`, and `ohdp-pipeline`, pushes to GHCR | no |
-| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces bucket, Cloudflare DNS records | no |
+| [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces buckets, Cloudflare DNS records, and the Iceberg lakehouse — Snowflake as the catalog, S3 as its external volume | no |
 | [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Cube, Streamlit, oauth2-proxy-streamlit, hub-api, oauth2-proxy-app | when `deploy` ticked |
 
 ## Setup
@@ -37,6 +37,24 @@ Order matters, and two steps are deliberately manual.
    act workflow_dispatch -W .github/workflows/deploy-infra.yml --input action=apply
    ```
    `plan` is the default; `apply` creates billed resources.
+
+   This also creates the Iceberg lakehouse (ADR-0019). Snowflake is the
+   catalog, so most of it is Snowflake resources; the AWS half is just the
+   external volume's bucket, and needs AWS admin credentials in `.env` as
+   `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — which the workflow passes as
+   `TF_VAR_aws_*`, *not* under those names, since the Spaces state backend
+   already claims them.
+
+   Two follow-ups the apply prints and does not do for you:
+
+   - publish the pipeline's credentials into `SNOWFLAKE_PIPELINE_PAT`,
+     `AWS_PIPELINE_ACCESS_KEY_ID` and `AWS_PIPELINE_SECRET_ACCESS_KEY` (repo
+     secrets, read by `deploy-platform.yml`);
+   - finish the external volume's AWS trust policy — a **second apply** with
+     two values only Snowflake can generate. See
+     [`platform/terraform/README.md`](../platform/terraform/README.md),
+     "The second apply". Until it is done Snowflake cannot reach the bucket, so
+     nothing can write a table.
 
 3. **Capture the kubeconfig** into `KUBECONFIG_B64` in `.env`:
    ```bash

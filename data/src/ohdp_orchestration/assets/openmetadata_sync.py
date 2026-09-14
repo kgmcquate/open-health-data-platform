@@ -15,23 +15,23 @@ to Dagster and OpenMetadata directly rather than through
 module's docstring for why.
 
 * ``openmetadata_snowflake_sync`` — database/schema/table/column metadata,
-  authenticating the same key-pair way dlt and dbt-snowflake already do
-  (``ohdp_shared.settings.snowflake_*``). No ``database``/filter patterns: the
-  ``OHDP_PIPELINE`` role only has grants on the medallion-layer databases
-  (RAW/CLEAN/CURATED, ADR-0013) in the first place, so there is nothing else
-  for it to see. Its service name is what
-  ``openmetadata_dagster_sync``'s lineage edges resolve Snowflake tables
-  against, so that sync's asset-graph lineage links up with the table
-  lineage dbt/dlt publish under ``snowflake/``.
+  authenticating with the read-only query role's key pair
+  (``ohdp_shared.settings.snowflake_*``). Snowflake is still the ingestion
+  surface (ADR-0019): the medallion-layer databases *are* the Iceberg
+  catalogs, so crawling them over SQL sees every namespace and table the
+  pipeline wrote through the REST endpoint. Its service name
+  is what ``openmetadata_dagster_sync``'s lineage edges resolve tables
+  against, so that sync's asset-graph lineage links up with the table lineage
+  dbt/dlt publish under ``lakehouse/``.
 * ``openmetadata_dbt_sync`` — model descriptions/tags/tests and source/ref
   lineage from the dbt project, run the "external" way (`run-dbt-workflow-
   externally`): a ``dbt`` source pointed at a manifest, not a CLI wrapper.
   Reads ``target/manifest.json`` baked into this image at build time
   (``Dockerfile``'s ``dbt parse`` step — same file
-  ``ohdp_orchestration.assets.snowflake_dbt`` builds ``snowflake_dbt_assets``
+  ``ohdp_orchestration.assets.lakehouse_dbt`` builds ``lakehouse_dbt_assets``
   from), not a live ``dbt build``'s output: each Dagster *run* gets its own
   ephemeral pod (``K8sRunLauncher``), so this asset's pod never sees the
-  ``run_results.json``/``catalog.json`` a same-day ``snowflake_dbt_assets``
+  ``run_results.json``/``catalog.json`` a same-day ``lakehouse_dbt_assets``
   run produced in its own pod. ``dbt parse``'s manifest already carries
   model/test/lineage/tag metadata, which is what this ingestion is for;
   column types/descriptions still come from ``openmetadata_snowflake_sync``.
@@ -57,11 +57,17 @@ from typing import Any
 from dagster import asset
 from metadata.workflow.metadata import MetadataWorkflow
 
-from ohdp_orchestration.assets.snowflake_dbt import _project as _dbt_project
+from ohdp_ingestion import naming
+from ohdp_orchestration.assets.lakehouse_dbt import _project as _dbt_project
 from ohdp_shared import get_logger
 from ohdp_shared.settings import settings
 
 log = get_logger(__name__)
+
+# The three medallion-layer databases, which are also the three Iceberg
+# catalogs the pipeline writes through (ADR-0013, ADR-0019).
+_LAYERS: tuple[naming.Layer, ...] = ("raw", "clean", "curated")
+_LAYER_DATABASES = [naming.database(layer) for layer in _LAYERS]
 
 _SNOWFLAKE_SERVICE_NAME = "snowflake"
 
@@ -109,7 +115,10 @@ def _snowflake_workflow_config() -> dict[str, Any]:
                         "lookbackDays": 7,
                         "safetyMarginDays": 1,
                     },
-                    "databaseFilterPattern": {"includes": ["RAW", "CLEAN", "CURATED"]},
+                    # One database per medallion layer (ADR-0013), each its
+                    # own Iceberg catalog since ADR-0019. Already upper case —
+                    # see ohdp_ingestion.naming.
+                    "databaseFilterPattern": {"includes": _LAYER_DATABASES},
                     "schemaFilterPattern": {
                         "excludes": ["INFORMATION_SCHEMA", "PUBLIC", "DBT_TEST__AUDIT"]
                     },
@@ -140,7 +149,7 @@ def _dbt_workflow_config() -> dict[str, Any]:
                     "dbtUpdateDescriptions": True,
                     "includeTags": True,
                     "databaseFilterPattern": {
-                        "includes": ["RAW", "CLEAN", "CURATED"],
+                        "includes": _LAYER_DATABASES,
                     },
                 }
             },

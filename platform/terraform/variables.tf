@@ -31,7 +31,7 @@ variable "node_count" {
 }
 
 variable "snapshot_bucket" {
-  description = "DigitalOcean Spaces bucket for versioned DuckDB snapshots and Postgres backups."
+  description = "DigitalOcean Spaces bucket for Postgres backups (ARCHITECTURE.md §11)."
   type        = string
   default     = "ohdp-warehouse"
 }
@@ -56,8 +56,8 @@ variable "dns_base" {
 variable "dns_hostnames" {
   description = "Service hostnames (left-most label) fronted by the Traefik ingress."
   type        = list(string)
-  # "catalog" is OpenMetadata, not Snowflake — the warehouse (ADR-0012) is a
-  # Snowflake-hosted endpoint, nothing of ours is served for it.
+  # "catalog" is OpenMetadata, not the Iceberg catalog — that is Snowflake
+  # (ADR-0019), reached at its own hostname; nothing of ours is served for it.
   # "chat" is Open WebUI (ADR-0017), a second chat surface alongside "app"
   # (hub-api's own UI); "app" is not being retired by it.
   default = ["app", "chat", "dagster", "catalog", "cube", "streamlit"]
@@ -79,13 +79,94 @@ variable "loadbalancer_ip" {
 }
 
 # ---------------------------------------------------------------------------
-# Snowflake data warehouse (ADR-0012)
+# The Iceberg lakehouse: Snowflake is the catalog, S3 is the storage (ADR-0019)
+# ---------------------------------------------------------------------------
+
+variable "aws_region" {
+  description = <<-EOT
+    AWS region for the external volume's bucket. Unrelated to `location`
+    (DigitalOcean) — the cluster stays where it is; only the table files live
+    here, because Snowflake's external volumes cannot use Spaces.
+  EOT
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "aws_access_key_id" {
+  description = <<-EOT
+    Admin AWS access key Terraform itself uses. Supplied as
+    TF_VAR_aws_access_key_id — deliberately not AWS_ACCESS_KEY_ID, which the
+    Spaces state backend reads (see versions.tf).
+  EOT
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_access_key" {
+  description = "Admin AWS secret key Terraform itself uses. TF_VAR_aws_secret_access_key."
+  type        = string
+  sensitive   = true
+}
+
+variable "lakehouse_bucket" {
+  description = "S3 bucket behind the external volume, holding every Iceberg table's files."
+  type        = string
+  default     = "ohdp-lakehouse"
+}
+
+variable "lakehouse_sources" {
+  description = <<-EOT
+    Ingestion sources. Each gets a namespace in the RAW catalog (`RAW.<SOURCE>`)
+    and one in CLEAN (`CLEAN.STG_<SOURCE>`), matching
+    ohdp_ingestion.naming.schema() and dbt's generate_schema_name.sql.
+  EOT
+  type        = list(string)
+  default     = ["healthdata_gov", "cdc"]
+}
+
+variable "lakehouse_marts" {
+  description = <<-EOT
+    Presentation-layer marts. Each gets a `CURATED.<MART>` namespace alongside
+    the always-present `CURATED.CORE`. dlt and dbt-duckdb can also open a
+    namespace on their own; list one here to bring it under Terraform.
+  EOT
+  type        = list(string)
+  default = [
+    "access",
+    "behavioral_health",
+    "child_welfare",
+    "chronic_disease",
+    "education",
+    "immunization",
+    "infectious_disease",
+    "respiratory",
+  ]
+}
+
+variable "snowflake_storage_aws_iam_user_arn" {
+  description = <<-EOT
+    STORAGE_AWS_IAM_USER_ARN from `DESC EXTERNAL VOLUME` — the IAM user
+    Snowflake assumes the storage role as. Empty on a first apply (the volume
+    doesn't exist yet); set it and apply again. See README.md.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "snowflake_storage_aws_external_id" {
+  description = "STORAGE_AWS_EXTERNAL_ID from `DESC EXTERNAL VOLUME`. Second apply; see README.md."
+  type        = string
+  default     = ""
+}
+
+# ---------------------------------------------------------------------------
+# Snowflake — the read side of the lakehouse (ADR-0019)
 # ---------------------------------------------------------------------------
 
 variable "snowflake_organization_name" {
   description = <<-EOT
     Snowflake organization name. With `snowflake_account_name` it forms the
-    account identifier `<org>-<account>` dlt and dbt-snowflake connect to.
+    account identifier `<org>-<account>` Cube and Streamlit connect to.
     Find both with `SELECT CURRENT_ORGANIZATION_NAME(), CURRENT_ACCOUNT_NAME()`.
   EOT
   type        = string
@@ -97,53 +178,49 @@ variable "snowflake_account_name" {
 }
 
 variable "snowflake_warehouse" {
-  description = "Virtual warehouse (compute) for the pipeline's dlt loads and dbt-snowflake builds."
+  description = "Virtual warehouse (compute) for Cube's and Streamlit's queries over the lakehouse."
   type        = string
   default     = "OHDP_WH"
 }
 
-variable "snowflake_sources" {
-  description = <<-EOT
-    Ingestion sources. Each gets a same-named schema in both the RAW and CLEAN
-    databases (ADR-0013), matching ohdp_ingestion.naming.schema() and
-    dbt_project.yml's per-folder `+schema`.
-  EOT
-  type        = list(string)
-  default     = ["healthdata_gov"]
-}
-
-variable "snowflake_marts" {
-  description = <<-EOT
-    Presentation-layer marts. Each gets a same-named schema in the CURATED
-    database, alongside the always-present "core" schema (ADR-0013). A mart
-    can also appear on its own via dbt-snowflake's `CREATE SCHEMA IF NOT
-    EXISTS`; list one here to bring it under Terraform.
-  EOT
-  type        = list(string)
-  default     = ["respiratory"]
-}
-
-variable "snowflake_data_retention_days" {
-  description = "Time Travel window on the database."
-  type        = number
-  default     = 1
-}
-
 variable "snowflake_pipeline_role" {
-  description = "Account role the pipeline authenticates as."
+  description = <<-EOT
+    Account role everything runs as. It reads and writes the lakehouse, and
+    Horizon's OAuth2 scope names it (`session:role:<this>`) — see
+    ohdp_shared.settings.horizon_scope, which must agree.
+  EOT
   type        = string
   default     = "OHDP_PIPELINE"
 }
 
 variable "snowflake_pipeline_user" {
-  description = "SERVICE user the pipeline authenticates as, via its RSA key pair."
+  description = <<-EOT
+    SERVICE user everything authenticates as: the pipeline with a programmatic
+    access token over Horizon's Iceberg REST API, Cube and Streamlit with the
+    RSA key pair over SQL.
+  EOT
   type        = string
   default     = "OHDP_PIPELINE"
 }
 
+variable "snowflake_pat_days_to_expiry" {
+  description = <<-EOT
+    Lifetime of the pipeline's programmatic access token, in days. Snowflake
+    caps this at 365 — unlike the RSA key pair, this credential expires, so put
+    a reminder somewhere. Rotation is in README.md.
+  EOT
+  type        = number
+  default     = 365
+
+  validation {
+    condition     = var.snowflake_pat_days_to_expiry > 0 && var.snowflake_pat_days_to_expiry <= 365
+    error_message = "snowflake_pat_days_to_expiry must be between 1 and 365."
+  }
+}
+
 variable "snowflake_allowed_ips" {
   description = <<-EOT
-    CIDRs allowed to authenticate as the pipeline user. Account-wide network
+    CIDRs allowed to authenticate as the query user. Account-wide network
     policy — see snowflake.tf for why it stays even though key-pair auth
     doesn't strictly require one.
 

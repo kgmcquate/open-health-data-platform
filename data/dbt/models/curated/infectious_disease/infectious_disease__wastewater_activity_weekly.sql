@@ -16,10 +16,8 @@ select
     count(distinct site_id)                     as sites_reporting,
     sum(population_served)                      as population_covered,
     avg(viral_activity_level)                   as avg_activity_level,
-    div0(
-        sum(viral_activity_level * population_served),
-        sum(population_served)
-    )                                           as pop_weighted_activity_level,
+    {{ div0('sum(viral_activity_level * population_served)',
+            'sum(population_served)') }}        as pop_weighted_activity_level,
     avg(activity_rank)                          as avg_activity_rank,
     max(activity_rank)                          as max_activity_rank
 from {{ ref('core__wastewater_viral_activity_weekly') }}

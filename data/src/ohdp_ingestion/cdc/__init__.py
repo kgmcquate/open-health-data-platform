@@ -8,7 +8,7 @@ the constant below.
 
 The catalog is roughly 1,000 datasets — NNDSS weekly notifiable disease tables,
 NCHS mortality and natality, BRFSS/PLACES, wastewater surveillance,
-vaccination coverage, and so on. Raw tables land in ``RAW.cdc``.
+vaccination coverage, and so on. Raw tables land in ``RAW.CDC``.
 """
 
 from ohdp_ingestion.socrata import SocrataDomain

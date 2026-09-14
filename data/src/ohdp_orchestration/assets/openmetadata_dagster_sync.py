@@ -57,13 +57,13 @@ define (an upstream dataset id, say), so a non-HealthData.gov ``sources/``
 domain that doesn't happen to set any of those still gets a valid (if
 sparser) APIEndpoint rather than being skipped. For datasets that are
 enabled, a direct
-``APIEndpoint -> Table`` lineage edge is drawn into the Snowflake RAW table
+``APIEndpoint -> Table`` lineage edge is drawn into the raw-layer table
 ``openmetadata_snowflake_sync`` already created — skipping the intermediate
 ``ingestion/<domain>/<raw_table>`` dlt asset, since it's plumbing with no
 natural OM entity type, not something a business user needs to see. No
 ``Pipeline``/``Task`` entities are created by this asset at all. dbt's own
-RAW→CLEAN→CURATED lineage (``openmetadata_dbt_sync``) is untouched — this
-asset only fills the gap upstream of RAW.
+raw→clean→core/mart lineage (``openmetadata_dbt_sync``) is untouched — this
+asset only fills the gap upstream of the raw layer.
 
 The job/schedule for this asset live in ``ohdp_orchestration.jobs``/
 ``.schedules``, not here — this module is asset bodies only
@@ -237,7 +237,7 @@ def _bootstrap_tags(metadata: OpenMetadata[Any, Any]) -> dict[str, TagLabel]:
 
     tags: dict[str, TagLabel] = {}
     for classification, tag, description in [
-        (_INGESTION_CLASSIFICATION, "Ingested", "Already landing in the Snowflake RAW layer."),
+        (_INGESTION_CLASSIFICATION, "Ingested", "Already landing in the lakehouse raw layer."),
         (
             _INGESTION_CLASSIFICATION,
             "Available",
@@ -372,7 +372,7 @@ def openmetadata_dagster_sync(context) -> None:
     """Publishes the Dagster asset graph's ``sources/<domain>/*`` catalog —
     every scraped HealthData.gov dataset, ingested or not — into OpenMetadata
     as APIEndpoints under a per-domain APIService, and draws direct
-    APIEndpoint -> Table lineage into the Snowflake RAW layer for datasets
+    APIEndpoint -> Table lineage into the lakehouse raw layer for datasets
     that are actually enabled. See this module's docstring for why this
     reads Dagster's GraphQL API and writes via OpenMetadata's SDK directly
     rather than going through ``MetadataWorkflow``."""
@@ -425,5 +425,5 @@ def openmetadata_dagster_sync(context) -> None:
 
     context.log.info(
         f"Synced {len(source_nodes)} HealthData.gov catalog datasets "
-        f"({linked} linked to Snowflake RAW tables)"
+        f"({linked} linked to raw-layer tables)"
     )

@@ -30,16 +30,28 @@ generatedSecrets:
 pipelineConfig:
   OHDP_ENVIRONMENT: "prod"
   OHDP_LOG_JSON: "true"
+  # Spaces holds Postgres backups and Dagster's compute logs; only the
+  # lakehouse's table files are on AWS S3 (ADR-0019).
   OHDP_SPACES_BUCKET: "ohdp-warehouse"
   OHDP_SPACES_ENDPOINT_URL: "https://nyc3.digitaloceanspaces.com"
   OHDP_SPACES_REGION: "nyc3"
-  # Snowflake data warehouse (ADR-0012). These come from `terraform output` in
-  # platform/terraform; the matching private key (OHDP_SNOWFLAKE_PRIVATE_KEY —
-  # SERVICE users don't accept password auth) is the one secret half and
-  # arrives in `ohdp-pipeline-secrets` from deploy-platform.yml. No
-  # OHDP_SNOWFLAKE_DATABASE: the medallion layer databases (RAW/CLEAN/CURATED,
-  # ADR-0013) are fixed names read directly from ohdp_ingestion.naming and
-  # dbt_project.yml, not passed through the environment.
+  # The Iceberg lakehouse (ADR-0019). Snowflake is the catalog, so the only
+  # AWS config is where the external volume's files live — dlt writes its
+  # Parquet there directly and needs the bucket and an IAM key
+  # (OHDP_AWS_ACCESS_KEY_ID / OHDP_AWS_SECRET_ACCESS_KEY, in
+  # `ohdp-pipeline-secrets`). DuckDB takes catalog-vended credentials instead
+  # and has no AWS key at all.
+  #
+  # No catalog endpoint here: it is derived from OHDP_SNOWFLAKE_ACCOUNT
+  # (ohdp_shared.settings.horizon_catalog_uri). No namespace names either:
+  # those are derived per medallion layer by ohdp_ingestion.naming and dbt's
+  # generate_schema_name.sql.
+  OHDP_AWS_REGION: "us-east-1"
+  OHDP_LAKEHOUSE_BUCKET: "ohdp-lakehouse"
+  # The Snowflake account is now load-bearing for the *pipeline* too, not just
+  # for Cube and Streamlit: it is what the Horizon REST endpoint is addressed
+  # by. OHDP_SNOWFLAKE_ROLE likewise — it is half of the OAuth2 scope.
+  # The token itself (OHDP_SNOWFLAKE_PAT) is in `ohdp-pipeline-secrets`.
   OHDP_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
   OHDP_SNOWFLAKE_USER: "OHDP_PIPELINE"
   OHDP_SNOWFLAKE_ROLE: "OHDP_PIPELINE"

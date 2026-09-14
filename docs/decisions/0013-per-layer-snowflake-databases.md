@@ -1,6 +1,9 @@
 # 0013 — One Snowflake database per medallion layer
 
-**Status:** Accepted
+**Status:** Accepted. [ADR-0019](0019-iceberg-on-s3-duckdb-dbt.md) moved these
+databases onto Iceberg with Snowflake as the catalog, and kept this layout
+intact: a Snowflake database *is* an Iceberg catalog and its schemas are that
+catalog's namespaces, so nothing had to be flattened.
 **Relates to:** amends the naming scheme [ADR-0012](0012-native-snowflake-tables.md)
 carried forward from [ADR-0010](0010-iceberg-medallion-lakehouse.md) —
 ADR-0012 explicitly kept `raw_<source>` / `clean_<source>` / `core` /

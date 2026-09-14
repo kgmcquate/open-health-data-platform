@@ -19,34 +19,72 @@ class Settings(BaseSettings):
     log_json: bool = True
     log_level: str = "INFO"
 
-    # Object storage (DigitalOcean Spaces, S3-compatible)
+    # Object storage (DigitalOcean Spaces, S3-compatible). Postgres backups
+    # only — the lakehouse and Dagster's compute logs are on AWS S3 (ADR-0019).
     spaces_endpoint_url: str = ""
     spaces_access_key_id: str = ""
     spaces_secret_access_key: str = ""
     spaces_region: str = "nyc3"
     spaces_bucket: str = "ohdp-warehouse"
 
-    # Snowflake data warehouse (ADR-0012/0014). Plain tables, no REST catalog.
+    # --- The Iceberg lakehouse (ADR-0019). Snowflake is the *catalog* only:
+    # dlt and dbt-duckdb write Iceberg tables through Horizon's Iceberg REST
+    # endpoint, and the files land in our own S3 bucket via an external volume.
+    # Snowflake reads the very same tables over SQL for Cube and Streamlit.
+    #
+    # Two credentials, because the two protocols authenticate differently:
+    # a PAT for the REST catalog (below) and the RSA key pair for the SQL
+    # connector (further down).
     snowflake_account: str = Field(
         default="",
         description=(
-            "<organization>-<account> identifier dlt/dbt-snowflake connect to as host/account."
+            "<organization>-<account> identifier. Also what the Horizon REST "
+            "endpoint is addressed by — see horizon_catalog_uri."
         ),
     )
+    snowflake_pat: str = Field(
+        default="",
+        description=(
+            "Programmatic access token for the Horizon Iceberg REST catalog. This "
+            "is the pipeline's *write* credential — dlt (pyiceberg) and dbt "
+            "(DuckDB) both exchange it for an OAuth2 access token. Terraform's "
+            "snowflake_pipeline_pat output. PATs require the user to carry a "
+            "network policy, which snowflake.tf attaches."
+        ),
+    )
+    aws_region: str = "us-east-1"
+    lakehouse_bucket: str = Field(
+        default="ohdp-lakehouse",
+        description=(
+            "S3 bucket behind the external volume. Snowflake decides where inside "
+            "it each table's files go; this is only needed by dlt, which writes "
+            "its Parquet there directly."
+        ),
+    )
+    aws_access_key_id: str = Field(
+        default="",
+        description=(
+            "Pipeline IAM user's access key, for writing data files into the "
+            "external volume's bucket. Terraform's aws_pipeline_access_key_id "
+            "output. DuckDB can instead take catalog-vended credentials; dlt's "
+            "fsspec writer cannot, so this stays."
+        ),
+    )
+    aws_secret_access_key: str = ""
+    # Namespace names are derived per medallion layer (ohdp_ingestion.naming,
+    # ADR-0019), not configured here.
+
     snowflake_user: str = "OHDP_PIPELINE"
     snowflake_private_key: str = Field(
         default="",
         description=(
-            "The pipeline's RSA private key (PKCS#8 PEM) — Snowflake SERVICE users "
-            "don't accept password auth, so this is what both dlt's Snowflake "
-            "destination and dbt-snowflake authenticate with. Terraform's "
-            "snowflake_private_key output."
+            "RSA private key (PKCS#8 PEM) for the SQL connector — Snowflake SERVICE "
+            "users don't accept password auth. What Cube and Streamlit authenticate "
+            "with. Terraform's snowflake_private_key output."
         ),
     )
     snowflake_role: str = "OHDP_PIPELINE"
     snowflake_warehouse: str = "OHDP_WH"
-    # Database names are fixed per medallion layer (ohdp_ingestion.naming,
-    # ADR-0013), not configured here — RAW is what dlt's raw loader connects to.
 
     # Postgres (single instance, 4 logical databases)
     postgres_host: str = "localhost"
@@ -79,6 +117,34 @@ class Settings(BaseSettings):
     # Chat quotas (ARCHITECTURE.md §10 open decision 3 — provisional)
     free_monthly_questions: int = 20
     paid_monthly_questions: int = 500
+
+    @property
+    def horizon_catalog_uri(self) -> str:
+        """Snowflake Horizon's Iceberg REST endpoint — the one URI both dlt
+        (pyiceberg) and DuckDB's `ATTACH` point at. Apache Polaris is what
+        serves it inside Horizon, hence the path."""
+        return f"https://{self.snowflake_account}.snowflakecomputing.com/polaris/api/catalog"
+
+    @property
+    def horizon_oauth_uri(self) -> str:
+        """Token endpoint the PAT is exchanged at, for the OAuth2
+        client-credentials flow both clients use."""
+        return f"{self.horizon_catalog_uri}/v1/oauth/tokens"
+
+    @property
+    def horizon_scope(self) -> str:
+        """OAuth2 scope Snowflake's token endpoint requires: the role the
+        resulting session runs as.
+
+        Getting this wrong is not a quiet failure — it is the `invalid_scope`
+        that ADR-0012 spent a round on before abandoning the catalog.
+        """
+        return f"session:role:{self.snowflake_role}"
+
+    @property
+    def lakehouse_url(self) -> str:
+        """`s3://` root of the external volume's bucket."""
+        return f"s3://{self.lakehouse_bucket}"
 
 
 @lru_cache

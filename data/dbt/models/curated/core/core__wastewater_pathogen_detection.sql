@@ -47,7 +47,7 @@ select
     counties_served,
     county_fips,
     try_cast(population_served as bigint)       as population_served,
-    try_to_date(sample_collect_date)            as sample_collect_date,
+    {{ try_to_date('sample_collect_date') }}            as sample_collect_date,
     sample_location,
     sample_matrix,
     pcr_target                                  as pcr_assay,
@@ -57,4 +57,4 @@ select
     try_cast(lod_sewage as double)              as limit_of_detection,
     ingest_ts
 from unioned
-where try_to_date(sample_collect_date) is not null
+where {{ try_to_date('sample_collect_date') }} is not null
