@@ -43,6 +43,8 @@ WriteDisposition = Literal["append", "replace"]
 _SYSTEM_SELECT = "*,:id AS socrata_id,:updated_at AS socrata_updated_at"
 _EPOCH = "1900-01-01T00:00:00.000"
 _MAX_PAGE = 50_000  # Socrata hard ceiling on $limit
+_INT64_MIN = -(2**63)  # widest integer any destination (or dlt's JSON writer) accepts
+_INT64_MAX = 2**63 - 1
 
 # Socrata's SODA API serializes every field as a JSON string, numbers included
 # (https://dev.socrata.com/docs/datatypes/ — done to dodge client float-precision
@@ -90,11 +92,20 @@ def _column_hints(columns: Sequence[ColumnSpec] | None) -> dict[str, TColumnSche
 
 def _parse_number(value: str) -> int | float:
     """A bare integer literal becomes `int` (dlt: bigint); anything else
-    (decimal point, exponent, ...) becomes `float` (dlt: double)."""
+    (decimal point, exponent, ...) becomes `float` (dlt: double).
+
+    Python ints are unbounded but no destination's integer type is: dlt's JSON
+    writer (orjson) rejects anything outside signed 64-bit with "Integer
+    exceeds 64-bit range", and `bigint` could not hold it regardless. A Socrata
+    `number` that large is always a magnitude, never an identifier — CDC
+    `atcp-73re` carries a few ~2.7e21 `site_wval` outliers — so widen it to
+    `float`/double and keep the load moving rather than failing extract.
+    """
     try:
-        return int(value)
+        parsed = int(value)
     except ValueError:
         return float(value)
+    return parsed if _INT64_MIN <= parsed <= _INT64_MAX else float(parsed)
 
 
 def _parse_number_columns(batch: list[dict[str, Any]], number_columns: frozenset[str]) -> None:

@@ -193,6 +193,39 @@ def test_fractional_number_columns_are_cast_to_float(
     assert isinstance(rows["v"][0], float)
 
 
+def test_whole_numbers_too_big_for_bigint_widen_to_float(
+    lake: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A whole-number literal wider than signed 64-bit cannot be an int here:
+    Python's is unbounded, but dlt's JSON writer raises "Integer exceeds 64-bit
+    range" on extract and no destination's `bigint` could store it anyway. CDC
+    `atcp-73re` really does publish `site_wval` values around 2.7e21, so this
+    widens to a float rather than failing the whole load.
+    """
+    _stub_socrata(
+        monkeypatch,
+        [
+            [
+                {
+                    "socrata_id": "a",
+                    "socrata_updated_at": "2026-01-01",
+                    "v": "2663522980776885000000",
+                }
+            ]
+        ],
+    )
+    result = _load(
+        resource_id="abcd-1234",
+        table_name="huge",
+        columns=[ColumnSpec(name="v", type="number")],
+    )
+    assert result.success
+
+    rows = _rows(lake, "healthdata_gov", "huge")
+    assert rows["v"] == [2663522980776885000000.0]
+    assert isinstance(rows["v"][0], float)
+
+
 def test_new_columns_evolve_the_schema(lake: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_socrata(monkeypatch, [[{"socrata_id": "a", "socrata_updated_at": "2026-01-01", "v": 1}]])
     assert _load(resource_id="abcd-1234", table_name="drift").success
