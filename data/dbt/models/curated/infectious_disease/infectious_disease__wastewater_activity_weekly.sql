@@ -19,7 +19,8 @@ select
     {{ div0('sum(viral_activity_level * population_served)',
             'sum(population_served)') }}        as pop_weighted_activity_level,
     avg(activity_rank)                          as avg_activity_rank,
-    max(activity_rank)                          as max_activity_rank
+    max(activity_rank)                          as max_activity_rank,
+    max(ingest_ts)                              as ingest_ts
 from {{ ref('core__wastewater_viral_activity_weekly') }}
 where state_abbr is not null
 group by 1, 2, 3

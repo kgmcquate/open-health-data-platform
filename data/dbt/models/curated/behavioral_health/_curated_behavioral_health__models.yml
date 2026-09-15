@@ -55,6 +55,14 @@ models:
       - name: percent_pending_investigation
         description: Share of deaths still pending investigation; a completeness caveat on the reported count.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
 
   - name: behavioral_health__mental_health_ed_monthly
     description: >
@@ -95,3 +103,11 @@ models:
           Visits for the condition per 100,000 emergency department visits. A
           ratio -- average it, never sum it.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

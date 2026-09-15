@@ -24,7 +24,8 @@ select
     is_rolling_12_month,
     deaths                                      as deaths_12_month_ending,
     predicted_deaths                            as predicted_deaths_12_month_ending,
-    percent_pending_investigation
+    percent_pending_investigation,
+    ingest_ts
 from {{ ref('core__drug_overdose_deaths_monthly') }}
 where state_abbr <> 'US'
   and month_start is not null

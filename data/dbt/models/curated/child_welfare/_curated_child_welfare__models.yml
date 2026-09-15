@@ -59,6 +59,14 @@ models:
           counts, so average it or recompute it from summed counts; summing it
           across states is meaningless.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
 
   - name: child_welfare__maltreatment_profile
     description: >
@@ -95,6 +103,14 @@ models:
           NCANDS's own percentage of the state's victims with this type,
           computed against the unique victim count. A percentage, not a count.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
 
   - name: child_welfare__cps_funnel
     description: >
@@ -179,3 +195,12 @@ models:
           Substantiated children divided by children reaching a disposition,
           recomputed from this state's counts. A ratio, not a count.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          Freshest dlt load timestamp between the funnel and the joined
+          maltreatment-type victim counts -- the signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

@@ -35,7 +35,8 @@ unpivoted as (
         '{{ label }}' as maltreatment_type_label,
         {{ count_col }}::int as victims,
         {{ pct_col }}::float as pct_of_victims,
-        total_victims::int as total_victims
+        total_victims::int as total_victims,
+        ingest_ts
     from source
     {% if not loop.last %}union all{% endif %}
     {% endfor %}
@@ -48,6 +49,7 @@ select
     maltreatment_type_label::varchar as maltreatment_type_label,
     victims,
     pct_of_victims,
-    total_victims
+    total_victims,
+    ingest_ts
 from unpivoted
 where state is not null

@@ -55,6 +55,14 @@ models:
       - name: cumulative_ytd_flag
         description: CDC's suppression or footnote marker for the year-to-date count, if any.
         data_type: varchar
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
 
   - name: infectious_disease__wastewater_activity_weekly
     description: >
@@ -101,6 +109,14 @@ models:
       - name: max_activity_rank
         description: Highest activity band reached by any site in the state that week, 1-5.
         data_type: integer
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
 
   - name: infectious_disease__wastewater_detection_weekly
     description: >
@@ -139,3 +155,11 @@ models:
       - name: population_with_detection
         description: Population served by sewersheds that recorded at least one detection.
         data_type: integer
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

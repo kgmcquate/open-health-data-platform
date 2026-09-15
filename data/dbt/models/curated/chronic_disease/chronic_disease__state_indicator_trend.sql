@@ -33,7 +33,8 @@ select
     data_value,
     low_confidence_limit,
     high_confidence_limit,
-    high_confidence_limit - low_confidence_limit as confidence_interval_width
+    high_confidence_limit - low_confidence_limit as confidence_interval_width,
+    ingest_ts
 from {{ ref('core__health_indicator') }}
 where location_level in ('state', 'national')
   and data_value is not null

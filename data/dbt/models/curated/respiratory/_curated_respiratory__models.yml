@@ -30,6 +30,15 @@ models:
           staffed) for the state, averaged over the week.
         data_type: double
 
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
   - name: respiratory__ed_visit_share_weekly
     description: >
       NSSP share of emergency department visits attributed to each respiratory
@@ -64,6 +73,14 @@ models:
       - name: percent_of_ed_visits_smoothed
         description: CDC's smoothed version of the same percentage; preferred for trend lines.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
 
   - name: respiratory__rsv_hospitalization_weekly
     description: >
@@ -91,6 +108,14 @@ models:
           Laboratory-confirmed RSV hospitalisations per 100,000 population for the
           week. A rate -- average it, never sum it.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
 
   - name: respiratory__hospital_burden_weekly
     description: >
@@ -151,3 +176,11 @@ models:
           became voluntary in May 2024, so a drop in admissions after that date
           may be a drop in reporting -- read this column alongside any trend.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

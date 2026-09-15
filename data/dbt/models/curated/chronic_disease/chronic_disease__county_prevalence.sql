@@ -35,7 +35,8 @@ select
     p.data_value_type,
     p.data_value                                as prevalence_pct,
     p.low_confidence_limit                      as prevalence_ci_low,
-    p.high_confidence_limit                     as prevalence_ci_high
+    p.high_confidence_limit                     as prevalence_ci_high,
+    p.ingest_ts
 from places p
 join latest_year ly
   on p.measure_id = ly.measure_id

@@ -17,7 +17,8 @@ with victims as (
         state,
         {{ y }} as fiscal_year,
         _{{ y }}::int as victims,
-        _{{ y }}_rate_per_1000_children::float as victim_rate_per_1000
+        _{{ y }}_rate_per_1000_children::float as victim_rate_per_1000,
+        ingest_ts
     from {{ ref('stg_healthdata_gov__child_victims_trend') }}
     {% if not loop.last %}union all{% endif %}
     {% endfor %}
@@ -25,7 +26,7 @@ with victims as (
 
 fatalities as (
     {% for y in years %}
-    select state, {{ y }} as fiscal_year, _{{ y }}::int as fatalities
+    select state, {{ y }} as fiscal_year, _{{ y }}::int as fatalities, ingest_ts
     from {{ ref('stg_healthdata_gov__child_fatalities_trend') }}
     {% if not loop.last %}union all{% endif %}
     {% endfor %}
@@ -33,7 +34,7 @@ fatalities as (
 
 perpetrators as (
     {% for y in years %}
-    select state, {{ y }} as fiscal_year, _{{ y }}::int as perpetrators
+    select state, {{ y }} as fiscal_year, _{{ y }}::int as perpetrators, ingest_ts
     from {{ ref('stg_healthdata_gov__perpetrators_trend') }}
     {% if not loop.last %}union all{% endif %}
     {% endfor %}
@@ -45,7 +46,8 @@ investigated as (
         state,
         {{ y }} as fiscal_year,
         _{{ y }}::int as children_investigated,
-        _{{ y }}_rate_per_1_000_children::float as children_investigated_rate_per_1000
+        _{{ y }}_rate_per_1_000_children::float as children_investigated_rate_per_1000,
+        ingest_ts
     from {{ ref('stg_healthdata_gov__children_investigated_trend') }}
     {% if not loop.last %}union all{% endif %}
     {% endfor %}
@@ -78,7 +80,8 @@ select
     f.fatalities,
     p.perpetrators,
     i.children_investigated,
-    i.children_investigated_rate_per_1000
+    i.children_investigated_rate_per_1000,
+    greatest(v.ingest_ts, f.ingest_ts, p.ingest_ts, i.ingest_ts) as ingest_ts
 from spine s
 left join victims v on s.state = v.state and s.fiscal_year = v.fiscal_year
 left join fatalities f on s.state = f.state and s.fiscal_year = f.fiscal_year

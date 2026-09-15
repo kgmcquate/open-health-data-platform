@@ -14,15 +14,15 @@
 {% set trend_measures = [
     'victims', 'victim_rate_per_1000', 'fatalities', 'perpetrators',
     'children_investigated', 'children_investigated_rate_per_1000',
-    'victim_substantiation_ratio',
+    'victim_substantiation_ratio', 'ingest_ts',
 ] %}
-{% set profile_measures = ['victims', 'pct_of_victims'] %}
+{% set profile_measures = ['victims', 'pct_of_victims', 'ingest_ts'] %}
 {% set funnel_measures = [
     'total_referrals', 'referral_rate_per_100k', 'screened_in_referrals',
     'screened_out_referrals', 'screened_in_pct', 'children_with_disposition',
     'substantiated', 'indicated', 'alternative_response', 'unsubstantiated',
     'total_victims', 'total_child_fatalities', 'fatality_rate_per_100k',
-    'screen_in_rate', 'substantiation_rate',
+    'screen_in_rate', 'substantiation_rate', 'ingest_ts',
 ] %}
 
 cubes:
@@ -30,6 +30,9 @@ cubes:
 
     dimensions:
       {{ trend.as_dimensions(skip=trend_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ trend.sql_table }}'
 
     measures:
       - name: total_victims
@@ -92,6 +95,9 @@ cubes:
     dimensions:
       {{ profile.as_dimensions(skip=profile_measures) }}
 
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ profile.sql_table }}'
+
     measures:
       - name: victims_with_type
         sql: victims
@@ -107,6 +113,9 @@ cubes:
 
     dimensions:
       {{ funnel.as_dimensions(skip=funnel_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ funnel.sql_table }}'
 
     measures:
       - name: total_referrals

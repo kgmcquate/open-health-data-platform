@@ -84,3 +84,11 @@ models:
       - name: has_any_flu_therapeutic
         description: Site reports at least one influenza antiviral in stock.
         data_type: boolean
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

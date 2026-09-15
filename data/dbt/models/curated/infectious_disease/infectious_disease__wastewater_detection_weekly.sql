@@ -17,7 +17,8 @@ select
     count(*)                                    as samples_tested,
     count_if(is_detected)                       as samples_detected,
     count(distinct site_id)                     as sites_reporting,
-    sum(case when is_detected then population_served end) as population_with_detection
+    sum(case when is_detected then population_served end) as population_with_detection,
+    max(ingest_ts)                              as ingest_ts
 from {{ ref('core__wastewater_pathogen_detection') }}
 where state_abbr is not null
 group by 1, 2, 3

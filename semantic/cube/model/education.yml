@@ -9,7 +9,7 @@
 
 {% set measure_cols = [
     'student_count', 'operational_schools',
-    'students_in_person', 'students_hybrid', 'students_remote',
+    'students_in_person', 'students_hybrid', 'students_remote', 'ingest_ts',
 ] %}
 
 cubes:
@@ -17,6 +17,9 @@ cubes:
 
     dimensions:
       {{ model.as_dimensions(skip=measure_cols) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ model.sql_table }}'
 
     measures:
       - name: total_students

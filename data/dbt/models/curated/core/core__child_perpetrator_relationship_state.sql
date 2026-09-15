@@ -32,7 +32,8 @@ unpivoted as (
         '{{ code }}' as relationship,
         '{{ label }}' as relationship_label,
         {{ code }}::int as perpetrators,
-        total_perpetrators::int as total_perpetrators
+        total_perpetrators::int as total_perpetrators,
+        ingest_ts
     from source
     {% if not loop.last %}union all{% endif %}
     {% endfor %}
@@ -44,6 +45,7 @@ select
     relationship::varchar as relationship,
     relationship_label::varchar as relationship_label,
     perpetrators,
-    total_perpetrators
+    total_perpetrators,
+    ingest_ts
 from unpivoted
 where state is not null

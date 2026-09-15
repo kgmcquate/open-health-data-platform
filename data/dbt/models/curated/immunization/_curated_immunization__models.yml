@@ -70,3 +70,11 @@ models:
       - name: sample_size
         description: Survey sample size behind the estimate, where CDC publishes it.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

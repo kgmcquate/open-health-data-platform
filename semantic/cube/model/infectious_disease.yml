@@ -13,15 +13,16 @@
 
 {% set nndss_measures = [
     'current_week_cases', 'previous_52_week_max', 'cumulative_ytd_cases',
-    'cumulative_ytd_cases_prior_year', 'cumulative_ytd_change',
+    'cumulative_ytd_cases_prior_year', 'cumulative_ytd_change', 'ingest_ts',
 ] %}
 {% set activity_measures = [
     'sites_reporting', 'population_covered', 'avg_activity_level',
     'pop_weighted_activity_level', 'avg_activity_rank', 'max_activity_rank',
+    'ingest_ts',
 ] %}
 {% set detection_measures = [
     'samples_tested', 'samples_detected', 'sites_reporting',
-    'population_with_detection',
+    'population_with_detection', 'ingest_ts',
 ] %}
 
 cubes:
@@ -29,6 +30,9 @@ cubes:
 
     dimensions:
       {{ nndss.as_dimensions(skip=nndss_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ nndss.sql_table }}'
 
     measures:
       - name: total_cases
@@ -71,6 +75,9 @@ cubes:
 
     dimensions:
       {{ activity.as_dimensions(skip=activity_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ activity.sql_table }}'
 
     measures:
       # Activity level is a normalised index, so every measure here is an average
@@ -115,6 +122,9 @@ cubes:
 
     dimensions:
       {{ detection.as_dimensions(skip=detection_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ detection.sql_table }}'
 
     measures:
       - name: samples_tested

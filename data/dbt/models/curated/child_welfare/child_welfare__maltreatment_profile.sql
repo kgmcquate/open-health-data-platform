@@ -13,6 +13,7 @@ select
     maltreatment_type,
     maltreatment_type_label,
     victims,
-    pct_of_victims
+    pct_of_victims,
+    ingest_ts
 from {{ ref('core__child_maltreatment_type_state') }}
 where not is_national

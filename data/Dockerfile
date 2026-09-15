@@ -16,6 +16,12 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
+# Ensure tools needed by the install script are present (curl for download,
+# ca-certificates so HTTPS works). Keep apt lists small.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 # Keep the ../packages/shared layout that data/pyproject.toml's path source
 # expects. Resolve deps first so a source-only change does not re-resolve.
 COPY packages/shared/ packages/shared/
@@ -24,6 +30,10 @@ COPY data/pyproject.toml data/uv.lock data/
 WORKDIR /app/data
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-editable
+
+# Ensure a real venv exists so the install script can symlink the `dbt`
+# console script into `/app/.venv/bin/dbt`.
+RUN python -m venv /app/.venv
 
 # dbt v2 (Fusion) is a standalone binary, installed outside site-packages —
 # see the script for why it can't be a pip dependency here (dbt-core, needed

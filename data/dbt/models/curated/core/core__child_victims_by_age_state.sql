@@ -22,7 +22,8 @@ unpivoted as (
         null::int as age_years,
         _unborn::int as victims,
         null::float as rate_per_1000_children,
-        _total_victims::int as total_victims
+        _total_victims::int as total_victims,
+        ingest_ts
     from source
 
     union all
@@ -33,7 +34,8 @@ unpivoted as (
         0::int as age_years,
         _1_1::int as victims,
         _less_than_1_rate_per_1000_children::float as rate_per_1000_children,
-        _total_victims::int as total_victims
+        _total_victims::int as total_victims,
+        ingest_ts
     from source
 
     {% for age in ages %}
@@ -45,7 +47,8 @@ unpivoted as (
         {{ age }}::int as age_years,
         _{{ age }}::int as victims,
         _{{ age }}_rate_per_1000_children::float as rate_per_1000_children,
-        _total_victims::int as total_victims
+        _total_victims::int as total_victims,
+        ingest_ts
     from source
     {% endfor %}
 )
@@ -57,6 +60,7 @@ select
     age_years,
     victims,
     rate_per_1000_children,
-    total_victims
+    total_victims,
+    ingest_ts
 from unpivoted
 where state is not null

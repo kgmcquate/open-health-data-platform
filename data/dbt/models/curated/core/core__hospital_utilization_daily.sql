@@ -8,6 +8,7 @@ select
     cast(date as date) as report_date,
     inpatient_beds::int as inpatient_beds,
     inpatient_beds_used::int as inpatient_beds_used,
-    inpatient_beds_used_covid::int as inpatient_beds_used_covid
+    inpatient_beds_used_covid::int as inpatient_beds_used_covid,
+    ingest_ts
 from {{ ref('stg_healthdata_gov__hospital_capacity_by_state') }}
 where state is not null

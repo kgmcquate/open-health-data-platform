@@ -9,15 +9,18 @@
 
 {% set overdose_measures = [
     'deaths_12_month_ending', 'predicted_deaths_12_month_ending',
-    'percent_pending_investigation',
+    'percent_pending_investigation', 'ingest_ts',
 ] %}
-{% set mental_health_measures = ['rate_per_100k_visits'] %}
+{% set mental_health_measures = ['rate_per_100k_visits', 'ingest_ts'] %}
 
 cubes:
   - {{ overdose.as_cube() }}
 
     dimensions:
       {{ overdose.as_dimensions(skip=overdose_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ overdose.sql_table }}'
 
     measures:
       # VSRR publishes 12-month-ending rolling totals, so there is deliberately
@@ -56,6 +59,9 @@ cubes:
 
     dimensions:
       {{ mental_health.as_dimensions(skip=mental_health_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ mental_health.sql_table }}'
 
     measures:
       # The rate is per 100,000 ED visits -- a ratio, so averaged, never summed.

@@ -19,6 +19,7 @@ select
     stratification_category,
     stratification,
     is_total,
-    rate_per_100k_visits
+    rate_per_100k_visits,
+    ingest_ts
 from {{ ref('core__ed_visits_mental_health_monthly') }}
 where rate_per_100k_visits is not null

@@ -12,7 +12,10 @@ cubes:
   - {{ model.as_cube() }}
 
     dimensions:
-      {{ model.as_dimensions(skip=['days_since_report']) }}
+      {{ model.as_dimensions(skip=['days_since_report', 'ingest_ts']) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ model.sql_table }}'
 
     measures:
       - name: site_count

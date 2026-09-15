@@ -10,22 +10,25 @@
 {% set rsv = dbt_model('respiratory__rsv_hospitalization_weekly') %}
 {% set burden = dbt_model('respiratory__hospital_burden_weekly') %}
 
-{% set ed_measures = ['percent_of_ed_visits', 'percent_of_ed_visits_smoothed'] %}
-{% set rsv_measures = ['hospitalization_rate_per_100k'] %}
+{% set ed_measures = ['percent_of_ed_visits', 'percent_of_ed_visits_smoothed', 'ingest_ts'] %}
+{% set rsv_measures = ['hospitalization_rate_per_100k', 'ingest_ts'] %}
 {% set burden_measures = [
     'admissions_covid', 'admissions_covid_adult', 'admissions_covid_pediatric',
     'admissions_influenza', 'avg_daily_admissions_covid',
     'avg_daily_admissions_influenza', 'pct_inpatient_beds_covid',
     'pct_icu_beds_covid', 'pct_inpatient_beds_influenza',
     'pct_icu_beds_influenza', 'pct_inpatient_beds_occupied',
-    'pct_icu_beds_occupied', 'pct_days_reporting',
+    'pct_icu_beds_occupied', 'pct_days_reporting', 'ingest_ts',
 ] %}
 
 cubes:
   - {{ model.as_cube() }}
 
     dimensions:
-      {{ model.as_dimensions(skip=['avg_covid_inpatients', 'avg_occupancy']) }}
+      {{ model.as_dimensions(skip=['avg_covid_inpatients', 'avg_occupancy', 'ingest_ts']) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ model.sql_table }}'
 
     measures:
       # mart_respiratory_hospital_load pre-aggregates to one row per
@@ -52,6 +55,9 @@ cubes:
 
     dimensions:
       {{ ed.as_dimensions(skip=ed_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ ed.sql_table }}'
 
     measures:
       # Percentages of all ED visits, so averaged never summed. The four
@@ -96,6 +102,9 @@ cubes:
     dimensions:
       {{ rsv.as_dimensions(skip=rsv_measures) }}
 
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ rsv.sql_table }}'
+
     measures:
       - name: avg_hospitalization_rate_per_100k
         sql: hospitalization_rate_per_100k
@@ -117,6 +126,9 @@ cubes:
 
     dimensions:
       {{ burden.as_dimensions(skip=burden_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ burden.sql_table }}'
 
     measures:
       # Admissions are counts (additive); bed percentages are ratios (averaged).

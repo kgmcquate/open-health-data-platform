@@ -16,6 +16,7 @@ select
     week_end,
     pathogen,
     percent_of_ed_visits,
-    percent_of_ed_visits_smoothed
+    percent_of_ed_visits_smoothed,
+    ingest_ts
 from {{ ref('core__ed_visit_share_weekly') }}
 where geography_level = 'state'

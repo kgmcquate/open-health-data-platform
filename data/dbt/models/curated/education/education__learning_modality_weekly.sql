@@ -19,5 +19,6 @@ select
     operational_schools,
     case when learning_modality = 'In Person' then student_count else 0 end as students_in_person,
     case when learning_modality = 'Hybrid' then student_count else 0 end as students_hybrid,
-    case when learning_modality = 'Remote' then student_count else 0 end as students_remote
+    case when learning_modality = 'Remote' then student_count else 0 end as students_remote,
+    ingest_ts
 from {{ ref('core__school_learning_modality_weekly') }}

@@ -25,6 +25,7 @@ select
     -- comparison for a notifiable disease.
     cumulative_ytd_cases - cumulative_ytd_cases_prior_year as cumulative_ytd_change,
     current_week_flag,
-    cumulative_ytd_flag
+    cumulative_ytd_flag,
+    ingest_ts
 from {{ ref('core__nndss_weekly_case_counts') }}
 where is_jurisdiction

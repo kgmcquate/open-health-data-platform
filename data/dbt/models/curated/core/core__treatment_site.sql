@@ -49,6 +49,8 @@ select
         or coalesce(has_oseltamivir_suspension, false)
         or coalesce(has_baloxavir, false)
         or coalesce(has_zanamivir, false)
-        or coalesce(has_peramivir, false) as has_any_flu_therapeutic
+        or coalesce(has_peramivir, false) as has_any_flu_therapeutic,
+
+    ingest_ts
 from {{ ref('stg_healthdata_gov__treatments_locator') }}
 where state is not null

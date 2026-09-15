@@ -18,10 +18,10 @@
 
 {% set trend_measures = [
     'data_value', 'low_confidence_limit', 'high_confidence_limit',
-    'confidence_interval_width',
+    'confidence_interval_width', 'ingest_ts',
 ] %}
 {% set county_measures = [
-    'prevalence_pct', 'prevalence_ci_low', 'prevalence_ci_high',
+    'prevalence_pct', 'prevalence_ci_low', 'prevalence_ci_high', 'ingest_ts',
 ] %}
 
 cubes:
@@ -29,6 +29,9 @@ cubes:
 
     dimensions:
       {{ trend.as_dimensions(skip=trend_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ trend.sql_table }}'
 
     measures:
       # Crude and age-adjusted are separate measures, never one AVG: they are
@@ -95,6 +98,9 @@ cubes:
 
     dimensions:
       {{ county.as_dimensions(skip=county_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ county.sql_table }}'
 
     measures:
       # PLACES is county-grain and model-based. Averaging prevalence across

@@ -30,6 +30,9 @@ models:
       - name: inpatient_beds_used_covid
         description: Inpatient beds occupied by confirmed COVID-19 patients that day.
         data_type: integer
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+        data_type: timestamp
 
   - name: core__child_maltreatment_state_year
     description: >
@@ -87,6 +90,11 @@ models:
       - name: children_investigated_rate_per_1000
         description: Children investigated per 1,000 children younger than 18 in the state population.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          Latest dlt load timestamp across the four unioned NCANDS trend
+          sources for this row.
+        data_type: timestamp
 
   - name: core__child_maltreatment_type_state
     description: >
@@ -127,6 +135,9 @@ models:
       - name: total_victims
         description: Total victims for the state (unique count), repeated on every type row.
         data_type: integer
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+        data_type: timestamp
 
   - name: core__child_perpetrator_relationship_state
     description: >
@@ -162,6 +173,9 @@ models:
       - name: total_perpetrators
         description: Total perpetrators for the state, repeated on every relationship row.
         data_type: integer
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+        data_type: timestamp
 
   - name: core__child_victims_by_age_state
     description: >
@@ -204,6 +218,9 @@ models:
       - name: total_victims
         description: Total victims of all ages for the state, repeated on every age row.
         data_type: integer
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+        data_type: timestamp
 
   - name: core__cps_referral_funnel_state
     description: >
@@ -287,6 +304,11 @@ models:
       - name: fatality_rate_per_100k
         description: Child fatalities per 100,000 children in the state population.
         data_type: double
+      - name: ingest_ts
+        description: >-
+          Latest dlt load timestamp across the three joined NCANDS
+          cross-sections for this row.
+        data_type: timestamp
 
   - name: core__treatment_site
     description: >
@@ -395,6 +417,9 @@ models:
       - name: has_any_flu_therapeutic
         description: Site reports at least one influenza antiviral in stock.
         data_type: boolean
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+        data_type: timestamp
 
   - name: core__school_learning_modality_weekly
     description: >
@@ -446,6 +471,9 @@ models:
       - name: operational_schools
         description: Schools in the district operating that week.
         data_type: integer
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+        data_type: timestamp
 
   # --- CDC (data.cdc.gov, ADR-0018) ------------------------------------------
   # These carry light column docs: `core` is an internal conformance layer, and

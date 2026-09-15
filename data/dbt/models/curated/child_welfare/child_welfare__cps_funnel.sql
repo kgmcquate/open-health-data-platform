@@ -25,10 +25,14 @@ select
     -- counts rather than taken from the source's rounded percentages, so the
     -- two ratios are consistent with each other and with the counts beside them.
     screened_in_referrals / nullif(total_referrals, 0) as screen_in_rate,
-    substantiated / nullif(children_with_disposition, 0) as substantiation_rate
+    substantiated / nullif(children_with_disposition, 0) as substantiation_rate,
+    greatest(f.ingest_ts, v.ingest_ts) as ingest_ts
 from {{ ref('core__cps_referral_funnel_state') }} f
 left join (
-    select state as victim_state, max(total_victims) as total_victims
+    select
+        state as victim_state,
+        max(total_victims) as total_victims,
+        max(ingest_ts) as ingest_ts
     from {{ ref('core__child_maltreatment_type_state') }}
     where not is_national
     group by 1

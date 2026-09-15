@@ -33,5 +33,6 @@ select
     has_oseltamivir_generic,
     has_baloxavir,
     has_any_covid_therapeutic,
-    has_any_flu_therapeutic
+    has_any_flu_therapeutic,
+    ingest_ts
 from {{ ref('core__treatment_site') }}

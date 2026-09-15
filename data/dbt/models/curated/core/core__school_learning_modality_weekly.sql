@@ -15,6 +15,7 @@
 {% set cols = [
     'district_nces_id', 'district_name', 'city', 'state', 'zip_code',
     'week', 'learning_modality', 'student_count', 'operational_schools',
+    'ingest_ts',
 ] %}
 
 with unioned as (
@@ -37,7 +38,8 @@ select
     cast(week as date) as week,
     {{ initcap('trim(learning_modality)') }}::varchar as learning_modality,
     student_count::int as student_count,
-    operational_schools::int as operational_schools
+    operational_schools::int as operational_schools,
+    ingest_ts
 from unioned
 where district_nces_id is not null
   and week is not null

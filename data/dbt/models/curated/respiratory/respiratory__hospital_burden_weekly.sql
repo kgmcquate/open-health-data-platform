@@ -25,6 +25,7 @@ select
     pct_icu_beds_influenza,
     pct_inpatient_beds_occupied,
     pct_icu_beds_occupied,
-    pct_days_reporting
+    pct_days_reporting,
+    ingest_ts
 from {{ ref('core__hospital_respiratory_weekly') }}
 where not is_national

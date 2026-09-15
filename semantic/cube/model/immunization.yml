@@ -8,7 +8,7 @@
 
 {% set coverage_measures = [
     'coverage_pct', 'coverage_ci_low', 'coverage_ci_high', 'coverage_ci_width',
-    'sample_size',
+    'sample_size', 'ingest_ts',
 ] %}
 
 cubes:
@@ -16,6 +16,9 @@ cubes:
 
     dimensions:
       {{ coverage.as_dimensions(skip=coverage_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX(ingest_ts) FROM {{ coverage.sql_table }}'
 
     measures:
       # Coverage is a percentage of a population, so nothing here is a SUM.

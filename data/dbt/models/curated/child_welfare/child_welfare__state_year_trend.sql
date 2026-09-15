@@ -19,6 +19,7 @@ select
     children_investigated_rate_per_1000,
     -- Share of investigated children who were found to be victims: the one
     -- ratio here that neither source table publishes directly.
-    victims / nullif(children_investigated, 0) as victim_substantiation_ratio
+    victims / nullif(children_investigated, 0) as victim_substantiation_ratio,
+    ingest_ts
 from {{ ref('core__child_maltreatment_state_year') }}
 where not is_national

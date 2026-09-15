@@ -55,3 +55,11 @@ models:
       - name: students_remote
         description: student_count when the week's modality was Remote, else 0.
         data_type: integer
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

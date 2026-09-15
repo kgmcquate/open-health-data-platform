@@ -15,7 +15,8 @@ with referrals as (
         screened_in_referrals_reports::int as screened_in_referrals,
         screened_in_referrals_reports_1::float as screened_in_pct,
         screened_out_referrals::int as screened_out_referrals,
-        screened_out_referrals_percent::float as screened_out_pct
+        screened_out_referrals_percent::float as screened_out_pct,
+        ingest_ts
     from {{ ref('stg_healthdata_gov__screened_referrals') }}
 ),
 
@@ -32,7 +33,8 @@ dispositions as (
         no_alleged_maltreatment::int as no_alleged_maltreatment,
         closed_with_no_finding::int as closed_with_no_finding,
         other::int as other_disposition,
-        unknown::int as unknown_disposition
+        unknown::int as unknown_disposition,
+        ingest_ts
     from {{ ref('stg_healthdata_gov__children_by_disposition') }}
 ),
 
@@ -42,7 +44,8 @@ fatalities as (
         total_child_fatalities::int as total_child_fatalities,
         child_fatalities_reported::int as fatalities_reported_child_file,
         child_fatalities_reported_agency::int as fatalities_reported_agency_file,
-        child_fatality_rates_per::float as fatality_rate_per_100k
+        child_fatality_rates_per::float as fatality_rate_per_100k,
+        ingest_ts
     from {{ ref('stg_healthdata_gov__child_fatalities_by_submission_type') }}
 ),
 
@@ -81,7 +84,8 @@ select
     f.total_child_fatalities,
     f.fatalities_reported_child_file,
     f.fatalities_reported_agency_file,
-    f.fatality_rate_per_100k
+    f.fatality_rate_per_100k,
+    greatest(r.ingest_ts, d.ingest_ts, f.ingest_ts) as ingest_ts
 from spine s
 left join referrals r on s.state = r.state
 left join dispositions d on s.state = d.state

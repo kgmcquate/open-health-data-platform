@@ -25,6 +25,7 @@ select
     coverage_ci_low,
     coverage_ci_high,
     coverage_ci_high - coverage_ci_low          as coverage_ci_width,
-    sample_size
+    sample_size,
+    ingest_ts
 from {{ ref('core__vaccination_coverage') }}
 where coverage_pct is not null

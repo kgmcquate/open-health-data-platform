@@ -14,7 +14,8 @@ select
     state_abbr,
     season,
     period_end                                  as week_end,
-    rate_per_100k                               as hospitalization_rate_per_100k
+    rate_per_100k                               as hospitalization_rate_per_100k,
+    ingest_ts
 from {{ ref('core__rsv_hospitalization_rate_weekly') }}
 where measure = 'Weekly Rate'
   and rate_type = 'Observed'
