@@ -1,4 +1,4 @@
-<svg width="1200" height="400" viewBox="0 0 1200 400" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+<svg width="157" height="64" viewBox="0 0 157 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">Open Health Data Platform logo</title>
   <desc id="desc">A modern healthcare and data platform logo with a circular three-bar chart icon and updated typography.</desc>
 
@@ -22,6 +22,7 @@
     </linearGradient>
   </defs>
 
+  <g transform="translate(0 5.833) scale(0.130833)">
   <g transform="translate(32 20)">
     <circle cx="160" cy="180" r="116" fill="#F2F9FF"/>
 
@@ -50,5 +51,6 @@
     <text x="160" y="208" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="66" font-weight="700" letter-spacing="-1.6" fill="#14B8A6">Platform</text>
 
     <rect x="2" y="242" width="390" height="10" rx="5" fill="url(#ringGradient)" opacity="0.92"/>
+  </g>
   </g>
 </svg>
