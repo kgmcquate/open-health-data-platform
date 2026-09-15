@@ -101,19 +101,19 @@ ohdp:
       # that at profile-parse time.
       attach:
         - path: RAW
-          type: horizon
+          type: iceberg
           alias: RAW
           secret: horizon_secret
           options: &horizon
             endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
             access_delegation_mode: vended_credentials
         - path: CLEAN
-          type: horizon
+          type: iceberg
           alias: CLEAN
           secret: horizon_secret
           options: *horizon
         - path: CURATED
-          type: horizon
+          type: iceberg
           alias: CURATED
           secret: horizon_secret
           options: *horizon

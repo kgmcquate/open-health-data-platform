@@ -1,0 +1,7 @@
+# This project does not use dbt's `catalogs.yml` mechanism for the DuckDB
+# target. The Iceberg catalogs are attached in `profiles.yml` instead, and the
+# dbt-duckdb adapter for this version does not read write integrations here.
+# Keep the file valid but empty so `dbt parse` does not fail on an obsolete
+# Horizon-style schema.
+catalogs: []
+
