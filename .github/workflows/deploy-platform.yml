@@ -177,6 +177,16 @@ jobs:
           # Settings -> Bots in the OM UI (no API for it), then:
           #   gh secret set OPENWEBUI_OPENMETADATA_MCP_TOKEN
           OPENWEBUI_OPENMETADATA_MCP_TOKEN: ${{ secrets.OPENWEBUI_OPENMETADATA_MCP_TOKEN }}
+          # Fine-grained PAT, issues:write on OHDP_GITHUB_ISSUES_REPO and nothing
+          # else. It backs a tool a chat user can trigger (hub_api.issues), so
+          # its scope is the blast radius — never a classic PAT, never `repo`.
+          # Create at github.com/settings/personal-access-tokens, then:
+          #   gh secret set HUB_GITHUB_ISSUES_TOKEN
+          HUB_GITHUB_ISSUES_TOKEN: ${{ secrets.HUB_GITHUB_ISSUES_TOKEN }}
+          # Shared bearer between hub-api's /tools app and Open WebUI, which
+          # reaches it by cluster DNS with no wall in between. Any random string;
+          # rotate by re-running this job after `gh secret set`.
+          TOOLS_AUTH_TOKEN: ${{ secrets.TOOLS_AUTH_TOKEN }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
@@ -211,11 +221,16 @@ jobs:
           # OHDP_ANTHROPIC_API_KEY is what the chat agent bills against
           # (docs/chatbot.md §4). Without it /api/chat answers 503 and the rest
           # of the app still works, which is the intended degradation.
+          # OHDP_GITHUB_TOKEN/OHDP_TOOLS_AUTH_TOKEN back /tools/report_issue.
+          # Same intended degradation as the Anthropic key: unset, that one
+          # endpoint answers 503 and nothing else changes.
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET" \
-            --from-literal=OHDP_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+            --from-literal=OHDP_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+            --from-literal=OHDP_GITHUB_TOKEN="$HUB_GITHUB_ISSUES_TOKEN" \
+            --from-literal=OHDP_TOOLS_AUTH_TOKEN="$TOOLS_AUTH_TOKEN"
           # Open WebUI's externally-issued half. OPENAI_API_KEY is the Anthropic
           # key: Open WebUI has no native Anthropic client and talks to
           # https://api.anthropic.com/v1 through its OpenAI-compatible surface

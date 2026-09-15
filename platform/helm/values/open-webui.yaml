@@ -219,9 +219,41 @@ extraEnvVars:
   # 8585 per values/openmetadata.yaml) rather than through the public
   # catalog.open-health-data-platform.org ingress — cluster-internal traffic
   # has no reason to leave the cluster and come back through Cloudflare/Traefik.
+  # Shared bearer for hub-api's /tools app (the third connection below). Lives
+  # in hub-api-secrets because hub-api is the service that issues it; reading a
+  # sibling's Secret by name is the same arrangement as MCP_CUBE_TOKEN above,
+  # and works because both Deployments are in `app`.
+  - name: TOOLS_AUTH_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: hub-api-secrets
+        key: OHDP_TOOLS_AUTH_TOKEN
+  # The third entry is type "openapi", not "mcp" — issue reporting is a plain
+  # REST endpoint on hub-api so that the hub's own chat page can call the exact
+  # same route, with one set of guardrails behind both surfaces.
+  #
+  # Its `url` ends at /tools, the *mount point*, and `path` is the spec file.
+  # This is the case the mcp note below is contrasted against: for "openapi"
+  # Open WebUI joins url + path to fetch the spec, then resolves each operation
+  # against `url`. Pointing it at hub-api's root /openapi.json instead would
+  # register every hub-api route as a tool — including POST /api/chat, a chat
+  # endpoint the chat model could then invoke on itself. The narrow spec is the
+  # access control; there is no per-operation allowlist on this side.
   - name: TOOL_SERVER_CONNECTIONS
     value: >-
       [
+        {
+          "url":"http://hub-api.app.svc.cluster.local:8000/tools",
+          "path":"openapi.json",
+          "type":"openapi",
+          "auth_type":"bearer",
+          "key":"$(TOOLS_AUTH_TOKEN)",
+          "config":{"enable":true},
+          "info":{
+            "id":"ohdp-tools",
+            "name":"Report an Issue"
+          }
+        },
         {
           "url":"http://mcp-cube.app.svc.cluster.local:8000/mcp",
           "path":"/mcp",

@@ -118,6 +118,22 @@ class Settings(BaseSettings):
     free_monthly_questions: int = 20
     paid_monthly_questions: int = 500
 
+    # Issue reporting (hub_api.issues). The token is a fine-grained PAT with
+    # issues:write on `github_issues_repo` and nothing else — it is handed to a
+    # tool a chat user can trigger, so its scope *is* the blast radius. Both
+    # empty by default: the endpoint answers 503 rather than half-working, so a
+    # deployment that has not been given a token fails visibly.
+    github_token: str = ""
+    github_issues_repo: str = Field(
+        default="",
+        description="owner/name of the repository issues are filed in.",
+    )
+    # Bearer token Open WebUI presents to /tools. Distinct from the browser path,
+    # which is identified by oauth2-proxy's X-Forwarded-Email instead — see
+    # hub_api.issues.get_reporter for why those are two different identities and
+    # not one.
+    tools_auth_token: str = ""
+
     @property
     def horizon_catalog_uri(self) -> str:
         """Snowflake Horizon's Iceberg REST endpoint — the one URI both dlt

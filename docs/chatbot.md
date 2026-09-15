@@ -268,12 +268,49 @@ this product's characteristic failure, and prose quality will not reveal it.
 
 ---
 
-## 8. Requesting new data (M4)
+## 8. Reporting issues
 
-When the answer is "we don't have that," the agent offers to file a modelling request:
-embed the request, similarity-search open GitHub Projects issues, upvote a duplicate rather
-than filing a new one, rate limit per user per month, label by tier (§6). This is what closes
-P1's loop — the researcher's unanswerable question becomes the backlog.
+When something is wrong with the platform — a number that looks off, a stale dataset, a
+broken page — either chat surface can file a GitHub issue. This is what closes P1's loop:
+the researcher's unanswerable question becomes the backlog.
+
+It is **one REST endpoint**, `POST /tools/report_issue` in `hub_api/issues.py`, not a second
+MCP tool. The hub's own page calls it directly; Open WebUI calls the same route because it is
+pointed at the narrow OpenAPI spec that module mounts. One implementation, one set of
+guardrails, two callers.
+
+Two things are worth knowing before changing it:
+
+**The spec is deliberately narrow.** `/tools` is a *mounted sub-app*, so its `/openapi.json`
+lists exactly one operation. Open WebUI turns every operation in the spec it reads into a
+callable tool — pointing it at hub-api's root spec would hand the chat model `POST /api/chat`,
+a chat endpoint able to invoke itself. There is no per-operation allowlist on the Open WebUI
+side, so that narrowing *is* the access control, and `test_issues.py` asserts it.
+
+**There are two identities, and only one of them is a person.** A browser arrives through
+oauth2-proxy carrying `X-Forwarded-Email` and its issues are attributed to that address. Open
+WebUI arrives by cluster DNS carrying a shared bearer token, which proves the caller is Open
+WebUI and nothing about who is typing — so those issues are filed anonymously rather than
+against an identity we would be inventing. The cost is that the rate limit puts every chatbot
+report in one bucket: a global ceiling on how fast chat can fill the tracker, at the price
+that one abuser locks out the rest for the hour.
+
+This is the first **write** tool in the platform; everything else a chat user can reach is
+read-only. Hence: every issue labelled `user-reported` plus its source, so the tracker can be
+filtered or drained in one query; exact-title dedupe against open issues, because a model's
+characteristic failure is filing the same report on every retry; credential-shaped strings
+redacted before publication, because transcripts contain whatever the user pasted; and a
+fine-grained PAT scoped to issues:write on one repo, so the worst case is recoverable noise.
+
+Deviations from the M4 sketch this replaces, all deliberate: dedupe is exact normalized title
+rather than embedding similarity (one API call, no model, no index — revisit when the tracker
+is large enough that near-misses actually slip through); the rate limit is per hour rather
+than per month, since it is a spam ceiling and not a quota; and issues are labelled by source
+rather than by tier, because everyone past both walls is tier `free` today.
+
+**Not configured by default.** `OHDP_GITHUB_TOKEN` and `OHDP_GITHUB_ISSUES_REPO` unset means
+this one endpoint answers 503 and nothing else changes — the same intended degradation as the
+Anthropic key. Set `GITHUB_ISSUES_TOKEN` and `TOOLS_AUTH_TOKEN` as repo secrets to turn it on.
 
 ---
 
@@ -289,7 +326,7 @@ Each step should be demoable and independently reviewable.
 | **M3.3** | **Not done.** Personas and Context Center seed content in `catalog/openmetadata/seed/`. Until this lands, `get_persona_context` 404s and the agent uses its built-in system prompt. |
 | **M3.4** | **Partly done.** A chat UI exists — one static page served by hub-api, not hub-web (see `hub_api/main.py` for why). Vega-Lite specs are **not** implemented; results render as a table plus the compiled SQL. |
 | **M3.5** | **Not done.** Every turn is logged to `chat_turns` in the shape §7 wants, so the eval set is accumulating; there is no harness and no seed question set. |
-| **M4** | Streamlit dashboard generation via PR; ticket flow with dedup; news retrieval. |
+| **M4** | Streamlit dashboard generation via PR; news retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces. |
 
 **Deployed as:** `app.open-health-data-platform.org`, behind an `oauth2-proxy` Google wall
 (`platform/helm/values/oauth2-proxy-app.yaml`) that owns the hostname; `charts/hub-api` has

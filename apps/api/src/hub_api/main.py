@@ -31,6 +31,7 @@ from fastapi.responses import FileResponse
 
 from hub_api import db
 from hub_api.chat import router as chat_router
+from hub_api.issues import tools_app
 from ohdp_shared import configure_logging, get_logger, settings
 
 configure_logging(json=settings.log_json, level=settings.log_level)
@@ -62,6 +63,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Open Health Data Platform — Hub API", version="0.0.0", lifespan=lifespan)
 app.include_router(chat_router)
+
+# Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
+# its own routes. That narrow spec is what Open WebUI is pointed at, and it is
+# the reason the chat model cannot see `/api/chat` as a callable tool
+# (hub_api.issues). The hub's own page calls the same route through the same
+# oauth2-proxy wall, so there is one implementation behind both surfaces.
+app.mount("/tools", tools_app)
 
 
 @app.get("/healthz")
