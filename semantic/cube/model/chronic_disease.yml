@@ -39,7 +39,7 @@ cubes:
       # one to compare across states; crude is the one that describes who
       # actually has the condition.
       - name: avg_crude_prevalence
-        sql: '"data_value"'
+        sql: '{CUBE}."data_value"'
         type: avg
         filters:
           - sql: "{CUBE}.\"data_value_type\" in ('Crude Prevalence', 'Crude prevalence')"
@@ -48,7 +48,7 @@ cubes:
           measures. Filter to a single measure_id for a meaningful number.
 
       - name: avg_age_adjusted_prevalence
-        sql: '"data_value"'
+        sql: '{CUBE}."data_value"'
         type: avg
         filters:
           - sql: "{CUBE}.\"data_value_type\" in ('Age-adjusted Prevalence', 'Age-adjusted prevalence')"
@@ -57,21 +57,21 @@ cubes:
           figure when comparing states or periods with different age structures.
 
       - name: avg_crude_rate
-        sql: '"data_value"'
+        sql: '{CUBE}."data_value"'
         type: avg
         filters:
           - sql: "{CUBE}.\"data_value_type\" = 'Crude Rate'"
         description: Mean crude rate for rate-typed indicators, in the measure's own unit.
 
       - name: avg_age_adjusted_rate
-        sql: '"data_value"'
+        sql: '{CUBE}."data_value"'
         type: avg
         filters:
           - sql: "{CUBE}.\"data_value_type\" = 'Age-adjusted Rate'"
         description: Mean age-adjusted rate for rate-typed indicators, in the measure's own unit.
 
       - name: total_count
-        sql: '"data_value"'
+        sql: '{CUBE}."data_value"'
         type: sum
         filters:
           - sql: "{CUBE}.\"data_value_type\" = 'Number'"
@@ -81,12 +81,12 @@ cubes:
           prevalence and rate row.
 
       - name: avg_confidence_interval_width
-        sql: '"confidence_interval_width"'
+        sql: '{CUBE}."confidence_interval_width"'
         type: avg
         description: {{ trend.column('confidence_interval_width').description }}
 
       - name: latest_year
-        sql: '"year"'
+        sql: '{CUBE}."year"'
         type: max
         description: "Most recent year present in the current selection."
 
@@ -109,7 +109,7 @@ cubes:
       # rate". No population weight is offered because PLACES does not publish a
       # consistent denominator alongside every measure.
       - name: avg_crude_prevalence
-        sql: '"prevalence_pct"'
+        sql: '{CUBE}."prevalence_pct"'
         type: avg
         filters:
           - sql: "{CUBE}.\"data_value_type\" = 'Crude prevalence'"
@@ -119,21 +119,21 @@ cubes:
           population rate.
 
       - name: avg_age_adjusted_prevalence
-        sql: '"prevalence_pct"'
+        sql: '{CUBE}."prevalence_pct"'
         type: avg
         filters:
           - sql: "{CUBE}.\"data_value_type\" = 'Age-adjusted prevalence'"
         description: Unweighted mean age-adjusted prevalence (%) across the selected counties.
 
       - name: max_crude_prevalence
-        sql: '"prevalence_pct"'
+        sql: '{CUBE}."prevalence_pct"'
         type: max
         filters:
           - sql: "{CUBE}.\"data_value_type\" = 'Crude prevalence'"
         description: Highest county crude prevalence (%) in the selection -- the worst-affected county.
 
       - name: min_crude_prevalence
-        sql: '"prevalence_pct"'
+        sql: '{CUBE}."prevalence_pct"'
         type: min
         filters:
           - sql: "{CUBE}.\"data_value_type\" = 'Crude prevalence'"

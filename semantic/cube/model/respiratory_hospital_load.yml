@@ -36,12 +36,12 @@ cubes:
       # values — an avg-of-an-avg. Fine for this stub; revisit against
       # core_hospital_utilization_daily's daily grain if a real KPI needs it.
       - name: avg_covid_inpatients
-        sql: '"avg_covid_inpatients"'
+        sql: '{CUBE}."avg_covid_inpatients"'
         type: avg
         description: {{ model.column('avg_covid_inpatients').description }}
 
       - name: avg_occupancy
-        sql: '"avg_occupancy"'
+        sql: '{CUBE}."avg_occupancy"'
         type: avg
         description: {{ model.column('avg_occupancy').description }}
 
@@ -65,35 +65,35 @@ cubes:
       # three -- so the per-pathogen measures filter explicitly rather than
       # letting a query sum across them.
       - name: avg_percent_of_ed_visits
-        sql: '"percent_of_ed_visits_smoothed"'
+        sql: '{CUBE}."percent_of_ed_visits_smoothed"'
         type: avg
         description: >-
           Mean smoothed share of ED visits across the selection. Filter to one
           pathogen: the categories are not mutually exclusive.
 
       - name: avg_percent_covid
-        sql: '"percent_of_ed_visits_smoothed"'
+        sql: '{CUBE}."percent_of_ed_visits_smoothed"'
         type: avg
         filters:
           - sql: "{CUBE}.\"pathogen\" = 'COVID-19'"
         description: Mean share of ED visits attributed to COVID-19.
 
       - name: avg_percent_influenza
-        sql: '"percent_of_ed_visits_smoothed"'
+        sql: '{CUBE}."percent_of_ed_visits_smoothed"'
         type: avg
         filters:
           - sql: "{CUBE}.\"pathogen\" = 'Influenza'"
         description: Mean share of ED visits attributed to influenza.
 
       - name: avg_percent_rsv
-        sql: '"percent_of_ed_visits_smoothed"'
+        sql: '{CUBE}."percent_of_ed_visits_smoothed"'
         type: avg
         filters:
           - sql: "{CUBE}.\"pathogen\" = 'RSV'"
         description: Mean share of ED visits attributed to RSV.
 
       - name: peak_percent_of_ed_visits
-        sql: '"percent_of_ed_visits_smoothed"'
+        sql: '{CUBE}."percent_of_ed_visits_smoothed"'
         type: max
         description: Highest weekly share of ED visits reached in the selection.
 
@@ -107,14 +107,14 @@ cubes:
 
     measures:
       - name: avg_hospitalization_rate_per_100k
-        sql: '"hospitalization_rate_per_100k"'
+        sql: '{CUBE}."hospitalization_rate_per_100k"'
         type: avg
         description: >-
           Mean weekly RSV hospitalisation rate per 100,000 across the selection.
           A rate -- never summed.
 
       - name: peak_hospitalization_rate_per_100k
-        sql: '"hospitalization_rate_per_100k"'
+        sql: '{CUBE}."hospitalization_rate_per_100k"'
         type: max
         description: Highest weekly RSV hospitalisation rate reached in the selection.
 
@@ -133,37 +133,37 @@ cubes:
     measures:
       # Admissions are counts (additive); bed percentages are ratios (averaged).
       - name: total_admissions_covid
-        sql: '"admissions_covid"'
+        sql: '{CUBE}."admissions_covid"'
         type: sum
         description: {{ burden.column('admissions_covid').description }}
 
       - name: total_admissions_influenza
-        sql: '"admissions_influenza"'
+        sql: '{CUBE}."admissions_influenza"'
         type: sum
         description: {{ burden.column('admissions_influenza').description }}
 
       - name: total_admissions_covid_pediatric
-        sql: '"admissions_covid_pediatric"'
+        sql: '{CUBE}."admissions_covid_pediatric"'
         type: sum
         description: {{ burden.column('admissions_covid_pediatric').description }}
 
       - name: avg_pct_inpatient_beds_covid
-        sql: '"pct_inpatient_beds_covid"'
+        sql: '{CUBE}."pct_inpatient_beds_covid"'
         type: avg
         description: {{ burden.column('pct_inpatient_beds_covid').description }}
 
       - name: avg_pct_icu_beds_covid
-        sql: '"pct_icu_beds_covid"'
+        sql: '{CUBE}."pct_icu_beds_covid"'
         type: avg
         description: {{ burden.column('pct_icu_beds_covid').description }}
 
       - name: avg_pct_inpatient_beds_occupied
-        sql: '"pct_inpatient_beds_occupied"'
+        sql: '{CUBE}."pct_inpatient_beds_occupied"'
         type: avg
         description: {{ burden.column('pct_inpatient_beds_occupied').description }}
 
       - name: avg_pct_days_reporting
-        sql: '"pct_days_reporting"'
+        sql: '{CUBE}."pct_days_reporting"'
         type: avg
         description: >-
           Mean reporting completeness. Read any admissions trend against this:

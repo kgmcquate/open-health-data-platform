@@ -54,11 +54,11 @@ cubes:
           denominator for any availability share.
 
       - name: avg_days_since_report
-        sql: '"days_since_report"'
+        sql: '{CUBE}."days_since_report"'
         type: avg
         description: {{ model.column('days_since_report').description }}
 
       - name: states_covered
-        sql: '"state"'
+        sql: '{CUBE}."state"'
         type: count_distinct
         description: "Distinct states or territories with a matching site."

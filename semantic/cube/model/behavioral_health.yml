@@ -28,24 +28,24 @@ cubes:
       # count the same deaths twelve times. Every measure is a max or an
       # average, and cross-state totals are only valid within a single month.
       - name: latest_deaths_12_month_ending
-        sql: '"deaths_12_month_ending"'
+        sql: '{CUBE}."deaths_12_month_ending"'
         type: max
         description: >-
           Deaths in the 12 months ending at the latest month in the selection.
           A MAX, not a SUM -- consecutive months overlap almost entirely.
 
       - name: peak_deaths_12_month_ending
-        sql: '"deaths_12_month_ending"'
+        sql: '{CUBE}."deaths_12_month_ending"'
         type: max
         description: Highest 12-month-ending death count reached in the selection.
 
       - name: latest_predicted_deaths
-        sql: '"predicted_deaths_12_month_ending"'
+        sql: '{CUBE}."predicted_deaths_12_month_ending"'
         type: max
         description: {{ overdose.column('predicted_deaths_12_month_ending').description }}
 
       - name: avg_percent_pending_investigation
-        sql: '"percent_pending_investigation"'
+        sql: '{CUBE}."percent_pending_investigation"'
         type: avg
         description: >-
           Mean share of deaths still pending investigation -- a completeness
@@ -69,14 +69,14 @@ cubes:
       # so the headline measure filters to that single condition rather than
       # aggregating across them.
       - name: avg_rate_per_100k_visits
-        sql: '"rate_per_100k_visits"'
+        sql: '{CUBE}."rate_per_100k_visits"'
         type: avg
         description: >-
           Mean mental health-related ED visits per 100,000 ED visits. Filter to
           one condition -- the categories overlap.
 
       - name: avg_any_mental_health_rate
-        sql: '"rate_per_100k_visits"'
+        sql: '{CUBE}."rate_per_100k_visits"'
         type: avg
         filters:
           - sql: "{CUBE}.\"condition\" = 'Any Mental Health'"
@@ -86,7 +86,7 @@ cubes:
           visits, unstratified. Safe to read without further filtering.
 
       - name: avg_suicide_attempt_rate
-        sql: '"rate_per_100k_visits"'
+        sql: '{CUBE}."rate_per_100k_visits"'
         type: avg
         filters:
           - sql: "{CUBE}.\"condition\" = 'Suspected Suicide Attempts'"
@@ -94,6 +94,6 @@ cubes:
         description: Suspected suicide attempt ED visits per 100,000 visits, unstratified.
 
       - name: peak_rate_per_100k_visits
-        sql: '"rate_per_100k_visits"'
+        sql: '{CUBE}."rate_per_100k_visits"'
         type: max
         description: Highest monthly rate reached in the current selection.

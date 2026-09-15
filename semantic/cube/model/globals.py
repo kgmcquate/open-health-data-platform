@@ -29,15 +29,22 @@
 # unquoted reference to uppercase. cube_dbt's Column.sql returns the bare
 # column name, so Cube's generated SQL ends up as an unquoted `.category` /
 # `.measure` / etc., which Snowflake fails to resolve ("invalid identifier").
-# Patch Column.sql to always emit a quoted identifier so every dimension
-# as_dimensions() generates across every cube matches the physical column.
+# Patch Column.sql to always emit a quoted, {CUBE}-qualified identifier so
+# every dimension as_dimensions() generates across every cube matches the
+# physical column. The explicit {CUBE} prefix matters, not just the quoting:
+# Cube's SQL compiler only auto-qualifies a dimension's sql with the cube's
+# table alias when the value is a bare identifier; a quoted string like
+# '"geography_type"' doesn't match that pattern, so Cube emits it verbatim
+# with no table alias at all, which Snowflake then rejects as unresolvable
+# ("invalid identifier '"geography_type"'", no cube prefix in the error).
 # Hand-written `sql:` fields in cube yml files (measures, filters, joins,
-# refresh_key) are outside cube_dbt and must quote their own column refs.
+# refresh_key) are outside cube_dbt and must {CUBE}-qualify + quote their own
+# column refs the same way.
 from cube import TemplateContext
 from cube_dbt import Dbt
 from cube_dbt.column import Column
 
-Column.sql = property(lambda self: f'"{self._column_dict["name"]}"')
+Column.sql = property(lambda self: f'{{CUBE}}."{self._column_dict["name"]}"')
 
 dbt = Dbt.from_file("dbt/manifest.json").filter(paths=["curated/"])
 

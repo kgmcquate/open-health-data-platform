@@ -36,22 +36,22 @@ cubes:
 
     measures:
       - name: total_victims
-        sql: '"victims"'
+        sql: '{CUBE}."victims"'
         type: sum
         description: {{ trend.column('victims').description }}
 
       - name: total_fatalities
-        sql: '"fatalities"'
+        sql: '{CUBE}."fatalities"'
         type: sum
         description: {{ trend.column('fatalities').description }}
 
       - name: total_perpetrators
-        sql: '"perpetrators"'
+        sql: '{CUBE}."perpetrators"'
         type: sum
         description: {{ trend.column('perpetrators').description }}
 
       - name: total_children_investigated
-        sql: '"children_investigated"'
+        sql: '{CUBE}."children_investigated"'
         type: sum
         description: {{ trend.column('children_investigated').description }}
 
@@ -61,12 +61,12 @@ cubes:
       # total_victims by the matching population; NCANDS's own National row
       # (excluded from this mart) is the published alternative.
       - name: avg_victim_rate_per_1000
-        sql: '"victim_rate_per_1000"'
+        sql: '{CUBE}."victim_rate_per_1000"'
         type: avg
         description: {{ trend.column('victim_rate_per_1000').description }}
 
       - name: avg_children_investigated_rate_per_1000
-        sql: '"children_investigated_rate_per_1000"'
+        sql: '{CUBE}."children_investigated_rate_per_1000"'
         type: avg
         description: {{ trend.column('children_investigated_rate_per_1000').description }}
 
@@ -81,7 +81,7 @@ cubes:
           so it holds at any grain — nationally, per state, or per year.
 
       - name: states_reporting
-        sql: '"state"'
+        sql: '{CUBE}."state"'
         type: count_distinct
         description: "Distinct states in the current filter — a coverage check, not a KPI."
 
@@ -100,12 +100,12 @@ cubes:
 
     measures:
       - name: victims_with_type
-        sql: '"victims"'
+        sql: '{CUBE}."victims"'
         type: sum
         description: {{ profile.column('victims').description }}
 
       - name: avg_pct_of_victims
-        sql: '"pct_of_victims"'
+        sql: '{CUBE}."pct_of_victims"'
         type: avg
         description: {{ profile.column('pct_of_victims').description }}
 
@@ -119,37 +119,37 @@ cubes:
 
     measures:
       - name: total_referrals
-        sql: '"total_referrals"'
+        sql: '{CUBE}."total_referrals"'
         type: sum
         description: {{ funnel.column('total_referrals').description }}
 
       - name: screened_in_referrals
-        sql: '"screened_in_referrals"'
+        sql: '{CUBE}."screened_in_referrals"'
         type: sum
         description: {{ funnel.column('screened_in_referrals').description }}
 
       - name: screened_out_referrals
-        sql: '"screened_out_referrals"'
+        sql: '{CUBE}."screened_out_referrals"'
         type: sum
         description: {{ funnel.column('screened_out_referrals').description }}
 
       - name: children_with_disposition
-        sql: '"children_with_disposition"'
+        sql: '{CUBE}."children_with_disposition"'
         type: sum
         description: {{ funnel.column('children_with_disposition').description }}
 
       - name: substantiated_children
-        sql: '"substantiated"'
+        sql: '{CUBE}."substantiated"'
         type: sum
         description: {{ funnel.column('substantiated').description }}
 
       - name: total_victims
-        sql: '"total_victims"'
+        sql: '{CUBE}."total_victims"'
         type: sum
         description: {{ funnel.column('total_victims').description }}
 
       - name: total_child_fatalities
-        sql: '"total_child_fatalities"'
+        sql: '{CUBE}."total_child_fatalities"'
         type: sum
         description: {{ funnel.column('total_child_fatalities').description }}
 
@@ -171,11 +171,11 @@ cubes:
           substantiated, computed from summed counts so it holds at any grain.
 
       - name: avg_fatality_rate_per_100k
-        sql: '"fatality_rate_per_100k"'
+        sql: '{CUBE}."fatality_rate_per_100k"'
         type: avg
         description: {{ funnel.column('fatality_rate_per_100k').description }}
 
       - name: avg_referral_rate_per_100k
-        sql: '"referral_rate_per_100k"'
+        sql: '{CUBE}."referral_rate_per_100k"'
         type: avg
         description: {{ funnel.column('referral_rate_per_100k').description }}

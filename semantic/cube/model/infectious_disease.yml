@@ -36,7 +36,7 @@ cubes:
 
     measures:
       - name: total_cases
-        sql: '"current_week_cases"'
+        sql: '{CUBE}."current_week_cases"'
         type: sum
         description: >-
           Reported cases in the selected weeks. The weekly count is additive
@@ -44,12 +44,12 @@ cubes:
           for "how many cases".
 
       - name: peak_weekly_cases
-        sql: '"current_week_cases"'
+        sql: '{CUBE}."current_week_cases"'
         type: max
         description: "Highest single weekly case count in the current selection."
 
       - name: latest_cumulative_ytd
-        sql: '"cumulative_ytd_cases"'
+        sql: '{CUBE}."cumulative_ytd_cases"'
         type: max
         description: >-
           Year-to-date cases at the latest week in the selection. A MAX, not a
@@ -57,12 +57,12 @@ cubes:
           multiplies the same cases many times over.
 
       - name: latest_cumulative_ytd_prior_year
-        sql: '"cumulative_ytd_cases_prior_year"'
+        sql: '{CUBE}."cumulative_ytd_cases_prior_year"'
         type: max
         description: The same year-to-date figure at the equivalent point of the previous MMWR year.
 
       - name: max_previous_52_week
-        sql: '"previous_52_week_max"'
+        sql: '{CUBE}."previous_52_week_max"'
         type: max
         description: {{ nndss.column('previous_52_week_max').description }}
 
@@ -83,31 +83,31 @@ cubes:
       # Activity level is a normalised index, so every measure here is an average
       # or a max -- summing an index across states or weeks means nothing.
       - name: avg_activity_level
-        sql: '"avg_activity_level"'
+        sql: '{CUBE}."avg_activity_level"'
         type: avg
         description: >-
           Mean wastewater viral activity level across the selection. An index, not
           a concentration; filter to one pathogen to read it.
 
       - name: avg_pop_weighted_activity_level
-        sql: '"pop_weighted_activity_level"'
+        sql: '{CUBE}."pop_weighted_activity_level"'
         type: avg
         description: {{ activity.column('pop_weighted_activity_level').description }}
 
       - name: peak_activity_rank
-        sql: '"max_activity_rank"'
+        sql: '{CUBE}."max_activity_rank"'
         type: max
         description: >-
           Highest CDC activity band reached in the selection, 1 (Very Low) to 5
           (Very High).
 
       - name: avg_activity_rank
-        sql: '"avg_activity_rank"'
+        sql: '{CUBE}."avg_activity_rank"'
         type: avg
         description: {{ activity.column('avg_activity_rank').description }}
 
       - name: population_covered
-        sql: '"population_covered"'
+        sql: '{CUBE}."population_covered"'
         type: sum
         description: >-
           Population served by reporting sewersheds. Additive across sites within
@@ -128,12 +128,12 @@ cubes:
 
     measures:
       - name: samples_tested
-        sql: '"samples_tested"'
+        sql: '{CUBE}."samples_tested"'
         type: sum
         description: {{ detection.column('samples_tested').description }}
 
       - name: samples_detected
-        sql: '"samples_detected"'
+        sql: '{CUBE}."samples_detected"'
         type: sum
         description: {{ detection.column('samples_detected').description }}
 
@@ -147,6 +147,6 @@ cubes:
           per-row rates, so it stays correct at every level of rollup.
 
       - name: sites_with_detection
-        sql: '"sites_reporting"'
+        sql: '{CUBE}."sites_reporting"'
         type: sum
         description: Sewershed sites contributing samples. Additive within a week.

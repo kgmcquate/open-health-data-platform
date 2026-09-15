@@ -150,8 +150,8 @@ extraEnvVars:
           "content": "Compare a key health outcome (e.g. obesity, diabetes, or life expectancy) across US regions using the latest available data."
         },
         {
-          "title": ["Summarize", "A recent dataset"],
-          "content": "Give me a summary of the most recently ingested HealthData.gov dataset, including what it covers and its time range."
+          "title": ["Summarize", "Available data and metrics"],
+          "content": "Give me a summary of the available data and metrics."
         },
         {
           "title": ["Find", "Vaccination coverage data"],
