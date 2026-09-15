@@ -273,6 +273,15 @@ def openmetadata_cube_metrics_sync(context) -> None:
     metadata = _om_client()
     synced = 0
     linked = 0
+    # Two passes: OM resolves each `relatedMetrics` FQN against an existing
+    # Metric entity at create time, so a same-cube sibling that hasn't been
+    # created yet 404s ("metric instance for <fqn> not found") instead of
+    # just being skipped. Pass 1 creates every measure's Metric with
+    # relatedMetrics left unset; pass 2 re-upserts each one now that every
+    # measure in every cube exists, so every FQN it references resolves.
+    pending: list[
+        tuple[dict[str, Any], list[MetricDimension], EntityReferenceList | None, list[str]]
+    ] = []
     for cube in cubes:
         dimensions = [_metric_dimension(d) for d in cube.get("dimensions", [])]
         table_entity = _resolve_table(cube["name"], dbt_table_index, metadata)
@@ -284,11 +293,9 @@ def openmetadata_cube_metrics_sync(context) -> None:
         measure_names = [_metric_entity_name(m) for m in measures]
         for measure in measures:
             entity_name = _metric_entity_name(measure)
-            related_metrics = [
-                FullyQualifiedEntityName(name) for name in measure_names if name != entity_name
-            ]
+            related_names = [name for name in measure_names if name != entity_name]
             metric_entity = metadata.create_or_update(
-                _metric_request(measure, dimensions, assets, related_metrics)
+                _metric_request(measure, dimensions, assets, related_metrics=None)
             )
             synced += 1
             if table_entity:
@@ -300,6 +307,12 @@ def openmetadata_cube_metrics_sync(context) -> None:
                         )
                     )
                 )
+            if related_names:
+                pending.append((measure, dimensions, assets, related_names))
+
+    for measure, dimensions, assets, related_names in pending:
+        related_metrics = [FullyQualifiedEntityName(name) for name in related_names]
+        metadata.create_or_update(_metric_request(measure, dimensions, assets, related_metrics))
 
     context.log.info(
         f"Synced {synced} Cube measures into OpenMetadata Metric entities "

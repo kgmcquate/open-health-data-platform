@@ -318,7 +318,10 @@ def _endpoint_request(
     if table_schema:
         schema_fields = [
             FieldModel(
-                name=FieldName(column["name"]),
+                # Some CDC source columns (e.g. NNDSS's vibriosis tables) carry
+                # auto-generated Socrata field names past OM's 128-char FieldName
+                # cap — truncate for the catalog only, not the ingested data.
+                name=FieldName(column["name"][:128]),
                 dataType=_COLUMN_TYPE_TO_OM_TYPE.get(
                     str(column["type"]).lower(), DataTypeTopic.STRING
                 ),
