@@ -17,6 +17,13 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [source_dataset, state_abbr, year, measure_id, data_value_type, stratification_category, stratification]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_dataset, state_abbr, year, measure_id, data_value_type, stratification_category, stratification]
     columns:
       - name: source_dataset
         description: Which CDC dataset the row came from.
@@ -26,6 +33,8 @@ models:
           - accepted_values:
               arguments:
                 values: [chronic_disease_indicators, nutrition_activity_obesity, alzheimers_healthy_aging]
+        config:
+          tags: [primary_key]
       - name: location_level
         description: Geographic level of the row -- state, or the national rollup CDC publishes alongside.
         data_type: varchar
@@ -37,6 +46,8 @@ models:
         description: Two-letter state or territory postal code; "US" for the national row.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: state_name
         description: Full state, territory or jurisdiction name.
         data_type: varchar
@@ -44,6 +55,8 @@ models:
         description: Year the indicator was measured (the start year where CDC reports a range).
         data_type: integer
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: category
         description: >
           Topic grouping -- CDI's topic (e.g. Diabetes, Cardiovascular Disease,
@@ -55,12 +68,18 @@ models:
       - name: measure_id
         description: CDC's stable short code for the measure; use this, not the wording, to filter.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: data_value_type
         description: >-
           How the value was computed -- Crude Prevalence, Age-adjusted
           Prevalence, Number, Crude Rate, Mean, and so on. Never average across
           different types.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: data_value_unit
         description: Unit of data_value -- "%", "cases per 100,000", "Number", "Years".
         data_type: varchar
@@ -69,9 +88,15 @@ models:
           Demographic dimension the row is broken down by (Race/Ethnicity, Sex,
           Age, Grade, Age Group), or "Overall" for the unstratified row.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: stratification
         description: The specific stratum within stratification_category.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: data_value
         description: >-
           The indicator value, in data_value_unit. A prevalence or rate -- average
@@ -104,6 +129,13 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [county_fips, measure_id, data_value_type]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [county_fips, measure_id, data_value_type]
     columns:
       - name: state_abbr
         description: Two-letter state postal code the county sits in.
@@ -115,6 +147,9 @@ models:
       - name: county_fips
         description: County FIPS code.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: year
         description: PLACES release year the estimate belongs to.
         data_type: integer
@@ -129,9 +164,15 @@ models:
       - name: measure_id
         description: PLACES short measure code (e.g. DIABETES, BPHIGH, OBESITY, CSMOKING).
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: data_value_type
         description: Crude prevalence or age-adjusted prevalence. Never average across both.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: prevalence_pct
         description: >-
           Modelled prevalence for the county, as a percentage of the relevant

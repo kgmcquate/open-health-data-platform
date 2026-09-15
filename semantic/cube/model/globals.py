@@ -12,6 +12,15 @@
 # "curated/" is both the dbt folder and the database: models under it land in
 # CURATED.CORE and CURATED.<MART> (ADR-0013), the presentation layer dashboards
 # and Cube read. RAW and CLEAN are staging.
+#
+# Primary keys, for as_dimensions() to mark primary_key: true (required by
+# Cube whenever a cube defines a join): cube_dbt<0.7 (pinned in
+# requirements.txt) only reads a column's own tags/tests when rendering a
+# dimension -- model-level `constraints: [{type: primary_key, ...}]` populates
+# dbt's manifest and Model.primary_key, but as_dimensions() never consults it.
+# So every natural-key column in the curated *_models.yml docs also carries
+# `config: {tags: [primary_key]}` (single-column keys instead just use
+# `data_tests: [unique, not_null]`, which cube_dbt does check per-column).
 from cube import TemplateContext
 from cube_dbt import Dbt
 

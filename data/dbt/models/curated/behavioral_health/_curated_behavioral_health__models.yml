@@ -15,11 +15,20 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [state_abbr, month_start, indicator]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state_abbr, month_start, indicator]
     columns:
       - name: state_abbr
         description: Two-letter state postal code (the national "US" row is excluded).
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: state_name
         description: Full state name.
         data_type: varchar
@@ -27,6 +36,8 @@ models:
         description: First day of the month the 12-month-ending window closes in.
         data_type: date
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: year
         description: Calendar year the window closes in.
         data_type: integer
@@ -36,6 +47,9 @@ models:
           or a drug class keyed by ICD-10 T-code ("Opioids (T40.0-T40.4,T40.6)").
           Classes overlap each other and roll up into the total.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: is_drug_class
         description: True for per-drug-class rows, false for the overall counts. Never add the two together.
         data_type: boolean
@@ -73,6 +87,13 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [condition, month_start, stratification_category, stratification]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [condition, month_start, stratification_category, stratification]
     columns:
       - name: condition
         description: >-
@@ -82,19 +103,29 @@ models:
           Suicide Attempts.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: month_start
         description: First day of the reporting month.
         data_type: date
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: month_end
         description: Last day of the reporting month.
         data_type: date
       - name: stratification_category
         description: Demographic dimension the row breaks down by -- Age, Sex, RaceEthnicity, or Total.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: stratification
         description: The specific stratum within stratification_category ("All" for the total row).
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: is_total
         description: True for the unstratified total row; use it to exclude the total from a demographic breakdown.
         data_type: boolean

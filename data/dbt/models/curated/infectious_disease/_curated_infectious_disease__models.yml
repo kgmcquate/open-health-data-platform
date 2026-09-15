@@ -15,21 +15,38 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [disease, reporting_area, mmwr_year, mmwr_week]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [disease, reporting_area, mmwr_year, mmwr_week]
     columns:
       - name: disease
         description: Notifiable condition as NNDSS labels it (e.g. "Measles, Total", "Chlamydia trachomatis infection").
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: reporting_area
         description: Reporting jurisdiction -- a state, territory, or New York City.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: mmwr_year
         description: MMWR (CDC epidemiological) year.
         data_type: integer
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: mmwr_week
         description: MMWR week number, 1-53. A week number, not a date -- CDC does not publish the week's calendar date in this table.
         data_type: integer
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: current_week_cases
         description: >-
           Cases reported for this MMWR week. Additive across diseases and
@@ -71,22 +88,36 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [state_abbr, pathogen, week_end]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state_abbr, pathogen, week_end]
     columns:
       - name: state_abbr
         description: Two-letter state or territory postal code.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: pathogen
         description: Pathogen monitored -- SARS-CoV-2, Influenza A virus, or RSV.
         data_type: varchar
         data_tests:
+          - not_null
           - accepted_values:
               arguments:
                 values: ["SARS-CoV-2", "Influenza A virus", "RSV"]
+        config:
+          tags: [primary_key]
       - name: week_end
         description: Last day of the reporting week.
         data_type: date
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: sites_reporting
         description: Number of distinct sewershed sites reporting in the state that week.
         data_type: integer
@@ -127,22 +158,36 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [pathogen, state_abbr, week_start]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [pathogen, state_abbr, week_start]
     columns:
       - name: pathogen
         description: Pathogen assayed -- Measles or Influenza A(H5).
         data_type: varchar
         data_tests:
+          - not_null
           - accepted_values:
               arguments:
                 values: ["Measles", "Influenza A(H5)"]
+        config:
+          tags: [primary_key]
       - name: state_abbr
         description: Two-letter state or territory postal code.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: week_start
         description: Monday of the week the samples were collected in.
         data_type: date
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: samples_tested
         description: Wastewater samples assayed for the pathogen that week. The denominator of the detection rate.
         data_type: integer

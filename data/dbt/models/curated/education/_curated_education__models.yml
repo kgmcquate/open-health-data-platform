@@ -10,6 +10,9 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [district_nces_id, week]
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -22,6 +25,8 @@ models:
         description: NCES local education agency identifier; the district key.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: district_name
         description: Name of the school district.
         data_type: varchar
@@ -35,6 +40,8 @@ models:
         description: Monday starting the reported week. The time dimension for this mart.
         data_type: date
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: learning_modality
         description: Reported instruction mode for the week -- In Person, Hybrid or Remote.
         data_type: varchar

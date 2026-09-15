@@ -10,14 +10,27 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [state, week]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state, week]
     columns:
       - name: state
         description: US state postal code.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
 
       - name: week
         description: Week start (Monday), truncated from report_date.
         data_type: date
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
 
       - name: avg_covid_inpatients
         description: >-
@@ -49,24 +62,38 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [state, week_end, pathogen]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state, week_end, pathogen]
     columns:
       - name: state
         description: State or territory name as NSSP publishes it.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: week_end
         description: Last day of the reporting week.
         data_type: date
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: pathogen
         description: >-
           Respiratory pathogen -- COVID-19, Influenza, RSV, or Combined (CDC's
           union of the three; summing across pathogen double-counts).
         data_type: varchar
         data_tests:
+          - not_null
           - accepted_values:
               arguments:
                 values: ["COVID-19", "Influenza", "RSV", "Combined"]
+        config:
+          tags: [primary_key]
       - name: percent_of_ed_visits
         description: Percentage of the week's emergency department visits attributed to the pathogen.
         data_type: double
@@ -91,18 +118,32 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [state_abbr, season, week_end]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [state_abbr, season, week_end]
     columns:
       - name: state_abbr
         description: Two-letter postal code of the RSV-NET surveillance site's state.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: season
         description: RSV surveillance season (e.g. "2025-26").
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: week_end
         description: Last day of the reporting week.
         data_type: date
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: hospitalization_rate_per_100k
         description: >-
           Laboratory-confirmed RSV hospitalisations per 100,000 population for the
@@ -125,15 +166,26 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [jurisdiction, week_end]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [jurisdiction, week_end]
     columns:
       - name: jurisdiction
         description: Two-letter state or territory code (the national "USA" row is excluded).
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: week_end
         description: Last day of the reporting week.
         data_type: date
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: admissions_covid
         description: Confirmed COVID-19 hospital admissions during the week, all ages. Additive.
         data_type: double

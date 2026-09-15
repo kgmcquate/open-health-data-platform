@@ -13,6 +13,9 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [state, fiscal_year]
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -22,10 +25,14 @@ models:
         description: US state, DC or Puerto Rico, as NCANDS reports it.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: fiscal_year
         description: Federal fiscal year the counts were reported for.
         data_type: integer
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: victims
         description: Children determined to be victims of maltreatment (unique count).
         data_type: integer
@@ -76,6 +83,9 @@ models:
     config:
       contract:
         enforced: false
+    constraints:
+      - type: primary_key
+        columns: [state, maltreatment_type]
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -85,10 +95,14 @@ models:
         description: US state, DC or Puerto Rico, as NCANDS reports it.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: maltreatment_type
         description: Maltreatment category code, stable across publications.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
       - name: maltreatment_type_label
         description: Human-readable maltreatment category, for display.
         data_type: varchar
