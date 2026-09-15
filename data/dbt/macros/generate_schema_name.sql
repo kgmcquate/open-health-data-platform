@@ -1,9 +1,10 @@
 {#
     The namespace within a layer's catalog. The layer itself lives in the
-    database (generate_database_name.sql), so the schema only has to carry the
-    source or mart — ADR-0013's scheme, which ADR-0019 keeps: a Snowflake
-    database is an Iceberg catalog and its schemas are that catalog's
-    namespaces, so nothing has to be flattened together.
+    database, which comes from `+catalog_name` resolving against
+    data/dbt/catalogs.yml, so the schema only has to carry the source or
+    mart — ADR-0013's scheme, which ADR-0019 keeps: a Snowflake database is
+    an Iceberg catalog and its schemas are that catalog's namespaces, so
+    nothing has to be flattened together.
 
     Derived from the model name rather than configured per folder, so a model
     following the dbt-labs `stg_<source>__<table>` convention lands in the
@@ -28,8 +29,8 @@
     **This macro is the only definition of the namespace layout** (ADR-0020).
     Whatever it returns, dbt creates: before building, dbt issues
     `CREATE SCHEMA IF NOT EXISTS <database>.<schema>` for every schema in the
-    run, which dbt-duckdb sends to Horizon as a CREATE NAMESPACE on the attached
-    Iceberg catalog. So a new mart needs no Terraform run — the folder and the
+    run, which the duckdb adapter sends to Horizon as a CREATE NAMESPACE on the
+    attached Iceberg catalog. So a new mart needs no Terraform run — the folder and the
     model name are the whole change. Terraform grants `CREATE SCHEMA` on each
     layer database (platform/terraform/snowflake.tf) and stops there.
 

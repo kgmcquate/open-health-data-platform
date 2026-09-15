@@ -33,6 +33,9 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups --frozen
+      - name: Install dbt v2 (Fusion)
+        if: matrix.project == 'data'
+        run: ./scripts/install_dbt_fusion.sh .venv
       - name: Types
         run: uv run mypy .
       - name: Tests
@@ -50,6 +53,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups --frozen
+      - run: ./scripts/install_dbt_fusion.sh .venv
       - name: dbt parse (offline — compiles without attaching the catalog)
         run: |
           uv run dbt deps --project-dir dbt
