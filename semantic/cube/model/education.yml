@@ -19,56 +19,56 @@ cubes:
       {{ model.as_dimensions(skip=measure_cols) }}
 
     refresh_key:
-      sql: 'SELECT MAX(ingest_ts) FROM {{ model.sql_table }}'
+      sql: 'SELECT MAX("ingest_ts") FROM {{ model.sql_table }}'
 
     measures:
       - name: total_students
-        sql: student_count
+        sql: '"student_count"'
         type: sum
         description: {{ model.column('student_count').description }}
 
       - name: total_operational_schools
-        sql: operational_schools
+        sql: '"operational_schools"'
         type: sum
         description: {{ model.column('operational_schools').description }}
 
       - name: students_in_person
-        sql: students_in_person
+        sql: '"students_in_person"'
         type: sum
         description: {{ model.column('students_in_person').description }}
 
       - name: students_hybrid
-        sql: students_hybrid
+        sql: '"students_hybrid"'
         type: sum
         description: {{ model.column('students_hybrid').description }}
 
       - name: students_remote
-        sql: students_remote
+        sql: '"students_remote"'
         type: sum
         description: {{ model.column('students_remote').description }}
 
       - name: pct_students_in_person
-        sql: "SUM({CUBE}.students_in_person) / NULLIF(SUM({CUBE}.student_count), 0)"
+        sql: "SUM({CUBE}.\"students_in_person\") / NULLIF(SUM({CUBE}.\"student_count\"), 0)"
         type: number
         description: >-
           Share of students in fully in-person instruction, computed from summed
           counts so it holds at any grain.
 
       - name: pct_students_remote
-        sql: "SUM({CUBE}.students_remote) / NULLIF(SUM({CUBE}.student_count), 0)"
+        sql: "SUM({CUBE}.\"students_remote\") / NULLIF(SUM({CUBE}.\"student_count\"), 0)"
         type: number
         description: >-
           Share of students in fully remote instruction, computed from summed
           counts so it holds at any grain.
 
       - name: pct_students_hybrid
-        sql: "SUM({CUBE}.students_hybrid) / NULLIF(SUM({CUBE}.student_count), 0)"
+        sql: "SUM({CUBE}.\"students_hybrid\") / NULLIF(SUM({CUBE}.\"student_count\"), 0)"
         type: number
         description: >-
           Share of students in hybrid instruction, computed from summed counts
           so it holds at any grain.
 
       - name: districts_reporting
-        sql: district_nces_id
+        sql: '"district_nces_id"'
         type: count_distinct
         description: "Distinct districts reporting in the current filter — a coverage check."

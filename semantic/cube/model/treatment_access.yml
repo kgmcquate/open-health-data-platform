@@ -15,7 +15,7 @@ cubes:
       {{ model.as_dimensions(skip=['days_since_report', 'ingest_ts']) }}
 
     refresh_key:
-      sql: 'SELECT MAX(ingest_ts) FROM {{ model.sql_table }}'
+      sql: 'SELECT MAX("ingest_ts") FROM {{ model.sql_table }}'
 
     measures:
       - name: site_count
@@ -25,7 +25,7 @@ cubes:
       - name: sites_with_covid_therapeutic
         type: count
         filters:
-          - sql: "{CUBE}.has_any_covid_therapeutic"
+          - sql: "{CUBE}.\"has_any_covid_therapeutic\""
         description: >-
           Sites reporting at least one COVID-19 therapeutic in stock. Counts a
           site's LAST REPORTED inventory — filter on is_stale_report to exclude
@@ -34,7 +34,7 @@ cubes:
       - name: sites_with_flu_therapeutic
         type: count
         filters:
-          - sql: "{CUBE}.has_any_flu_therapeutic"
+          - sql: "{CUBE}.\"has_any_flu_therapeutic\""
         description: >-
           Sites reporting at least one influenza antiviral in stock, on the same
           last-reported basis as sites_with_covid_therapeutic.
@@ -42,23 +42,23 @@ cubes:
       - name: sites_with_paxlovid
         type: count
         filters:
-          - sql: "{CUBE}.has_paxlovid"
+          - sql: "{CUBE}.\"has_paxlovid\""
         description: "Sites reporting Paxlovid in stock as of their last report."
 
       - name: fresh_site_count
         type: count
         filters:
-          - sql: "NOT {CUBE}.is_stale_report"
+          - sql: "NOT {CUBE}.\"is_stale_report\""
         description: >-
           Sites that reported inventory within the last 14 days — the honest
           denominator for any availability share.
 
       - name: avg_days_since_report
-        sql: days_since_report
+        sql: '"days_since_report"'
         type: avg
         description: {{ model.column('days_since_report').description }}
 
       - name: states_covered
-        sql: state
+        sql: '"state"'
         type: count_distinct
         description: "Distinct states or territories with a matching site."

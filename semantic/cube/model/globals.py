@@ -21,8 +21,23 @@
 # So every natural-key column in the curated *_models.yml docs also carries
 # `config: {tags: [primary_key]}` (single-column keys instead just use
 # `data_tests: [unique, not_null]`, which cube_dbt does check per-column).
+#
+# Column quoting (ADR-0019 fallout): curated models now land in Snowflake as
+# Iceberg tables via the Horizon/Polaris catalog (catalogs.yml), and unlike
+# native Snowflake tables, Iceberg tables preserve column names exactly as
+# dbt wrote them -- lowercase, case-sensitive -- instead of folding an
+# unquoted reference to uppercase. cube_dbt's Column.sql returns the bare
+# column name, so Cube's generated SQL ends up as an unquoted `.category` /
+# `.measure` / etc., which Snowflake fails to resolve ("invalid identifier").
+# Patch Column.sql to always emit a quoted identifier so every dimension
+# as_dimensions() generates across every cube matches the physical column.
+# Hand-written `sql:` fields in cube yml files (measures, filters, joins,
+# refresh_key) are outside cube_dbt and must quote their own column refs.
 from cube import TemplateContext
 from cube_dbt import Dbt
+from cube_dbt.column import Column
+
+Column.sql = property(lambda self: f'"{self._column_dict["name"]}"')
 
 dbt = Dbt.from_file("dbt/manifest.json").filter(paths=["curated/"])
 

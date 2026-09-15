@@ -18,7 +18,7 @@ cubes:
       {{ coverage.as_dimensions(skip=coverage_measures) }}
 
     refresh_key:
-      sql: 'SELECT MAX(ingest_ts) FROM {{ coverage.sql_table }}'
+      sql: 'SELECT MAX("ingest_ts") FROM {{ coverage.sql_table }}'
 
     measures:
       # Coverage is a percentage of a population, so nothing here is a SUM.
@@ -27,7 +27,7 @@ cubes:
       # geography_level to national_or_region, where CDC publishes the number
       # directly.
       - name: avg_coverage_pct
-        sql: coverage_pct
+        sql: '"coverage_pct"'
         type: avg
         description: >-
           Mean vaccination coverage (%) across the selection. Unweighted -- filter
@@ -35,12 +35,12 @@ cubes:
           rather than averaging states.
 
       - name: min_coverage_pct
-        sql: coverage_pct
+        sql: '"coverage_pct"'
         type: min
         description: Lowest coverage (%) in the selection -- the least-vaccinated group or area.
 
       - name: max_coverage_pct
-        sql: coverage_pct
+        sql: '"coverage_pct"'
         type: max
         description: Highest coverage (%) in the selection.
 
@@ -53,12 +53,12 @@ cubes:
           places.
 
       - name: avg_coverage_ci_width
-        sql: coverage_ci_width
+        sql: '"coverage_ci_width"'
         type: avg
         description: {{ coverage.column('coverage_ci_width').description }}
 
       - name: total_sample_size
-        sql: sample_size
+        sql: '"sample_size"'
         type: sum
         description: >-
           Combined survey sample behind the selected estimates. Additive across

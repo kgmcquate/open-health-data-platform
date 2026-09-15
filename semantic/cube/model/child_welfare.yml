@@ -32,26 +32,26 @@ cubes:
       {{ trend.as_dimensions(skip=trend_measures) }}
 
     refresh_key:
-      sql: 'SELECT MAX(ingest_ts) FROM {{ trend.sql_table }}'
+      sql: 'SELECT MAX("ingest_ts") FROM {{ trend.sql_table }}'
 
     measures:
       - name: total_victims
-        sql: victims
+        sql: '"victims"'
         type: sum
         description: {{ trend.column('victims').description }}
 
       - name: total_fatalities
-        sql: fatalities
+        sql: '"fatalities"'
         type: sum
         description: {{ trend.column('fatalities').description }}
 
       - name: total_perpetrators
-        sql: perpetrators
+        sql: '"perpetrators"'
         type: sum
         description: {{ trend.column('perpetrators').description }}
 
       - name: total_children_investigated
-        sql: children_investigated
+        sql: '"children_investigated"'
         type: sum
         description: {{ trend.column('children_investigated').description }}
 
@@ -61,12 +61,12 @@ cubes:
       # total_victims by the matching population; NCANDS's own National row
       # (excluded from this mart) is the published alternative.
       - name: avg_victim_rate_per_1000
-        sql: victim_rate_per_1000
+        sql: '"victim_rate_per_1000"'
         type: avg
         description: {{ trend.column('victim_rate_per_1000').description }}
 
       - name: avg_children_investigated_rate_per_1000
-        sql: children_investigated_rate_per_1000
+        sql: '"children_investigated_rate_per_1000"'
         type: avg
         description: {{ trend.column('children_investigated_rate_per_1000').description }}
 
@@ -74,14 +74,14 @@ cubes:
       # column — this is the number that stays correct at every grain, which is
       # exactly what a semantic layer is for.
       - name: substantiation_ratio
-        sql: "SUM({CUBE}.victims) / NULLIF(SUM({CUBE}.children_investigated), 0)"
+        sql: "SUM({CUBE}.\"victims\") / NULLIF(SUM({CUBE}.\"children_investigated\"), 0)"
         type: number
         description: >-
           Victims divided by children investigated, computed from summed counts
           so it holds at any grain — nationally, per state, or per year.
 
       - name: states_reporting
-        sql: state
+        sql: '"state"'
         type: count_distinct
         description: "Distinct states in the current filter — a coverage check, not a KPI."
 
@@ -90,22 +90,22 @@ cubes:
     joins:
       - name: child_welfare__cps_funnel
         relationship: many_to_one
-        sql: "{CUBE}.state = {child_welfare__cps_funnel}.state"
+        sql: "{CUBE}.\"state\" = {child_welfare__cps_funnel}.\"state\""
 
     dimensions:
       {{ profile.as_dimensions(skip=profile_measures) }}
 
     refresh_key:
-      sql: 'SELECT MAX(ingest_ts) FROM {{ profile.sql_table }}'
+      sql: 'SELECT MAX("ingest_ts") FROM {{ profile.sql_table }}'
 
     measures:
       - name: victims_with_type
-        sql: victims
+        sql: '"victims"'
         type: sum
         description: {{ profile.column('victims').description }}
 
       - name: avg_pct_of_victims
-        sql: pct_of_victims
+        sql: '"pct_of_victims"'
         type: avg
         description: {{ profile.column('pct_of_victims').description }}
 
@@ -115,41 +115,41 @@ cubes:
       {{ funnel.as_dimensions(skip=funnel_measures) }}
 
     refresh_key:
-      sql: 'SELECT MAX(ingest_ts) FROM {{ funnel.sql_table }}'
+      sql: 'SELECT MAX("ingest_ts") FROM {{ funnel.sql_table }}'
 
     measures:
       - name: total_referrals
-        sql: total_referrals
+        sql: '"total_referrals"'
         type: sum
         description: {{ funnel.column('total_referrals').description }}
 
       - name: screened_in_referrals
-        sql: screened_in_referrals
+        sql: '"screened_in_referrals"'
         type: sum
         description: {{ funnel.column('screened_in_referrals').description }}
 
       - name: screened_out_referrals
-        sql: screened_out_referrals
+        sql: '"screened_out_referrals"'
         type: sum
         description: {{ funnel.column('screened_out_referrals').description }}
 
       - name: children_with_disposition
-        sql: children_with_disposition
+        sql: '"children_with_disposition"'
         type: sum
         description: {{ funnel.column('children_with_disposition').description }}
 
       - name: substantiated_children
-        sql: substantiated
+        sql: '"substantiated"'
         type: sum
         description: {{ funnel.column('substantiated').description }}
 
       - name: total_victims
-        sql: total_victims
+        sql: '"total_victims"'
         type: sum
         description: {{ funnel.column('total_victims').description }}
 
       - name: total_child_fatalities
-        sql: total_child_fatalities
+        sql: '"total_child_fatalities"'
         type: sum
         description: {{ funnel.column('total_child_fatalities').description }}
 
@@ -157,25 +157,25 @@ cubes:
       # per-state columns, so they stay correct when several states are rolled
       # up together.
       - name: screen_in_rate
-        sql: "SUM({CUBE}.screened_in_referrals) / NULLIF(SUM({CUBE}.total_referrals), 0)"
+        sql: "SUM({CUBE}.\"screened_in_referrals\") / NULLIF(SUM({CUBE}.\"total_referrals\"), 0)"
         type: number
         description: >-
           Share of referrals accepted for a CPS response, computed from summed
           counts so it holds at any grain.
 
       - name: substantiation_rate
-        sql: "SUM({CUBE}.substantiated) / NULLIF(SUM({CUBE}.children_with_disposition), 0)"
+        sql: "SUM({CUBE}.\"substantiated\") / NULLIF(SUM({CUBE}.\"children_with_disposition\"), 0)"
         type: number
         description: >-
           Share of children reaching a disposition whose maltreatment was
           substantiated, computed from summed counts so it holds at any grain.
 
       - name: avg_fatality_rate_per_100k
-        sql: fatality_rate_per_100k
+        sql: '"fatality_rate_per_100k"'
         type: avg
         description: {{ funnel.column('fatality_rate_per_100k').description }}
 
       - name: avg_referral_rate_per_100k
-        sql: referral_rate_per_100k
+        sql: '"referral_rate_per_100k"'
         type: avg
         description: {{ funnel.column('referral_rate_per_100k').description }}
