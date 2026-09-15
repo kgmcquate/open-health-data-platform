@@ -34,9 +34,6 @@ models:
       - name: longitude
         description: Site longitude, WGS84.
         data_type: double
-      - name: appointment_url
-        description: Link for booking an appointment at the site, where published.
-        data_type: varchar
       - name: last_report_date
         description: Date the site last self-reported its inventory.
         data_type: date
@@ -53,9 +50,6 @@ models:
         data_type: boolean
       - name: treats_flu
         description: Site participates in the influenza therapeutics programme.
-        data_type: boolean
-      - name: has_prescribing_services
-        description: Site can prescribe on-site, not only dispense.
         data_type: boolean
       - name: has_home_delivery
         description: Site offers home delivery of the therapeutic.

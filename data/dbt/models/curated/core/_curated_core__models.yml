@@ -330,9 +330,6 @@ models:
       - name: address_line_1
         description: Street address of the site.
         data_type: varchar
-      - name: address_line_2
-        description: Second address line (suite, unit), where published.
-        data_type: varchar
       - name: city
         description: City of the site.
         data_type: varchar
@@ -342,12 +339,6 @@ models:
         data_tests: [not_null]
       - name: zip_code
         description: Postal code of the site.
-        data_type: varchar
-      - name: public_phone
-        description: Public contact number for the site.
-        data_type: varchar
-      - name: appointment_url
-        description: Link for booking an appointment at the site, where published.
         data_type: varchar
       - name: grantee_code
         description: Code of the federal grantee the site reports under.
@@ -373,17 +364,26 @@ models:
       - name: is_patient_assistance_program
         description: Site dispenses through a patient assistance programme.
         data_type: boolean
-      - name: has_prescribing_services
-        description: Site can prescribe on-site, not only dispense.
-        data_type: boolean
       - name: has_home_delivery
         description: Site offers home delivery of the therapeutic.
         data_type: boolean
       - name: has_paxlovid
         description: Site reports Paxlovid (nirmatrelvir/ritonavir) in stock.
         data_type: boolean
+      - name: has_commercial_paxlovid
+        description: Site reports commercially purchased Paxlovid in stock.
+        data_type: boolean
+      - name: has_usg_paxlovid
+        description: Site reports US-government-supplied Paxlovid in stock.
+        data_type: boolean
       - name: has_lagevrio
         description: Site reports Lagevrio (molnupiravir) in stock.
+        data_type: boolean
+      - name: has_commercial_lagevrio
+        description: Site reports commercially purchased Lagevrio in stock.
+        data_type: boolean
+      - name: has_usg_lagevrio
+        description: Site reports US-government-supplied Lagevrio in stock.
         data_type: boolean
       - name: has_veklury
         description: Site reports Veklury (remdesivir) in stock.
