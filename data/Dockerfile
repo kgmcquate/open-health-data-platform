@@ -25,6 +25,14 @@ WORKDIR /app/data
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-editable
 
+# dbt v2 (Fusion) is a standalone binary, installed outside site-packages —
+# see the script for why it can't be a pip dependency here (dbt-core, needed
+# transitively by dagster-dbt and openmetadata-ingestion's `snowflake` extra,
+# ships files under the same `dbt/` package and can't coexist with dbt-oss in
+# one venv). This only replaces the `bin/dbt` console script.
+COPY data/scripts/install_dbt_fusion.sh scripts/install_dbt_fusion.sh
+RUN scripts/install_dbt_fusion.sh /app/.venv
+
 # dbt deps hits the network (dbt Hub); dbt parse is offline — no Snowflake
 # credentials needed, the catalog is only attached on a real run. Copy just the dbt project
 # first so ordinary source changes elsewhere in data/ don't force a re-fetch of
@@ -34,16 +42,21 @@ COPY data/dbt/ dbt/
 RUN /app/.venv/bin/dbt deps --project-dir dbt \
  && /app/.venv/bin/dbt parse --project-dir dbt --profiles-dir dbt
 
-# Bake DuckDB's extensions in. The profile lists them (data/dbt/profiles.yml)
-# and DuckDB would fetch them on first connect, but a run pod that has to reach
-# extensions.duckdb.org before it can build anything is a needless dependency —
-# and the failure mode is an opaque "could not install extension" mid-run.
-# Installed into the venv's DuckDB home, which the runtime stage copies.
+# Bake DuckDB's extensions in. Fusion fetches these itself on first catalog
+# attach (confirmed: iceberg, httpfs, and avro — Iceberg's manifest lists are
+# Avro-encoded; unlike dbt-duckdb v1, no `aws` extension is pulled since
+# Horizon's vended credentials don't go through DuckDB's own AWS credential
+# chain), but a run pod that has to reach extensions.duckdb.org before it can
+# build anything is a needless dependency — and the failure mode is an opaque
+# "could not install extension" mid-run. Installed via the `duckdb` Python
+# package (pinned in pyproject.toml to match the DuckDB version Fusion
+# embeds, not imported anywhere else) into the venv's DuckDB home, which the
+# runtime stage copies.
 ENV DUCKDB_HOME=/app/.duckdb
 RUN mkdir -p "$DUCKDB_HOME" \
  && /app/.venv/bin/python -c "\
 import duckdb; con = duckdb.connect(); \
-[con.execute(f'INSTALL {e}') for e in ('httpfs', 'aws', 'iceberg')]"
+[con.execute(f'INSTALL {e}') for e in ('httpfs', 'iceberg', 'avro')]"
 
 COPY data/ /app/data/
 

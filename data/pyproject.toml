@@ -10,8 +10,29 @@ dependencies = [
     "dagster-dbt>=0.29",
     "dagster-dlt>=0.29,<0.30",
     "dagster-aws>=0.29",
-    "dbt-duckdb>=1.9",
-    "duckdb>=1.5.3",
+    # dbt v2 (Fusion) is NOT a pip dependency here (ADR-0019 migration) —
+    # `dbt-oss`/`dbt` install Python files under the same top-level `dbt/`
+    # namespace dbt-core owns, and dagster-dbt imports dbt-core's classes
+    # directly at import time (dagster_dbt.compat: `from dbt.contracts.results
+    # import ...`); installing both in one venv corrupts that shared
+    # namespace and breaks dagster_dbt entirely, not just Fusion (confirmed:
+    # ImportError on dagster_dbt import with both present). dbt-core itself
+    # stays as a transitive dependency regardless (required by dagster-dbt
+    # and, via collate-data-diff, openmetadata-ingestion's `snowflake`
+    # extra) — it's just never the engine that runs against Horizon anymore.
+    # The actual Fusion binary is installed separately, outside this venv
+    # (data/Dockerfile), and DbtCliResource is pointed at it by path.
+    #
+    # dbt-duckdb (v1's Python DuckDB adapter) is dropped: v2/Fusion writes
+    # through catalogs.yml natively and never uses it.
+    #
+    # Pinned exactly (not a floor) to match the DuckDB version the installed
+    # Fusion release embeds — used only to pre-bake DuckDB extensions at
+    # image build time (data/Dockerfile), not imported by application code.
+    # A mismatch doesn't break anything by itself, but silently defeats the
+    # pre-bake (Fusion falls back to fetching its own matching-version
+    # extensions at runtime) so bump this in lockstep with the Fusion pin.
+    "duckdb==1.5.4",
     # filesystem+iceberg is how raw tables land in Snowflake's catalog
     # (ADR-0019); s3/parquet are what that path reads and writes through.
     "dlt[filesystem,parquet,pyiceberg,s3]>=1.30",

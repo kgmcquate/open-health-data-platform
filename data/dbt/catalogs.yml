@@ -1,7 +1,48 @@
-# This project does not use dbt's `catalogs.yml` mechanism for the DuckDB
-# target. The Iceberg catalogs are attached in `profiles.yml` instead, and the
-# dbt-duckdb adapter for this version does not read write integrations here.
-# Keep the file valid but empty so `dbt parse` does not fail on an obsolete
-# Horizon-style schema.
-catalogs: []
+# One entry per medallion-layer database (ADR-0013), each its own Iceberg
+# catalog now that Snowflake is the catalog (ADR-0019). Under dbt v2/Fusion
+# (flags.use_catalogs_v2 in dbt_project.yml), this file is what actually
+# ATTACHes each Horizon catalog — `+catalog_name` in dbt_project.yml picks
+# which of these a model writes to, and a `source()`'s plain `database:`
+# (e.g. RAW, in the generated `_stg_*__sources.yml` files) resolves against
+# an entry here purely by name match, with no per-source config needed.
+#
+# Confirmed via a Phase 0 spike (see the dbt-v2-fusion-migration branch):
+# Fusion's native catalogs.yml write path does not reproduce the
+# CREATE+RENAME-in-one-transaction bug that `disable_transactions: true`
+# used to work around against Horizon (dbt-duckdb v1) — six consecutive
+# `dbt run`s against a real Horizon-backed scratch schema all succeeded, so
+# that flag and the old `attach:`/`extensions:` blocks in profiles.yml are
+# gone rather than carried forward unused.
+catalogs:
+  - name: RAW
+    type: horizon
+    table_format: iceberg
+    config:
+      duckdb:
+        warehouse: RAW
+        default_schema: RAW
+        endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
+        secret: horizon_secret
+        access_delegation_mode: vended_credentials
 
+  - name: CLEAN
+    type: horizon
+    table_format: iceberg
+    config:
+      duckdb:
+        warehouse: CLEAN
+        default_schema: CLEAN
+        endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
+        secret: horizon_secret
+        access_delegation_mode: vended_credentials
+
+  - name: CURATED
+    type: horizon
+    table_format: iceberg
+    config:
+      duckdb:
+        warehouse: CURATED
+        default_schema: CURATED
+        endpoint: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog"
+        secret: horizon_secret
+        access_delegation_mode: vended_credentials
