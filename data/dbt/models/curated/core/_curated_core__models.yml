@@ -241,8 +241,9 @@ models:
         data_type: boolean
       - name: fiscal_year
         description: >-
-          Federal fiscal year, from the dispositions file -- the only one of the
-          three sources that publishes the collection year as a column.
+          Federal fiscal year. Currently always null -- the dispositions
+          source is documented as publishing a `year` column but the ingested
+          raw data doesn't carry it.
         data_type: integer
       - name: total_referrals
         description: Notifications to the CPS agency of suspected maltreatment. A referral may cover more than one child.
@@ -505,6 +506,16 @@ models:
         description: Crude vs age-adjusted, prevalence vs rate vs mean. Never average across types.
       - name: data_value
         description: The indicator value, in data_value_unit.
+      - name: stratification_category_2
+        description: >-
+          A second, independent demographic dimension; only alzheimers_healthy_aging
+          rows populate it (cross-tabulated by two strata at once), null elsewhere.
+      - name: stratification_2
+        description: The specific stratum within stratification_category_2.
+      - name: response
+        description: >-
+          The answer option, for chronic_disease_indicators questions with more
+          than one categorical response; null elsewhere.
 
   - name: core__nndss_weekly_case_counts
     description: >

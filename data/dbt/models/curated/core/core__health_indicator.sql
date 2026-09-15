@@ -39,9 +39,11 @@ with cdi as (
         try_cast(highconfidencelimit as double)         as high_confidence_limit,
         coalesce(nullif(stratificationcategory1, ''), 'Overall') as stratification_category,
         coalesce(nullif(stratification1, ''), 'Overall')         as stratification,
+        cast(null as varchar)                           as stratification_category_2,
+        cast(null as varchar)                           as stratification_2,
         datasource                                      as data_source,
         ingest_ts
-    from {{ ref('stg_cdc__chronic_disease_indicators') }}
+    from {{ ref('stg_cdc__chronic_disease_indicators') }} as t
 
 ), places as (
 
@@ -66,6 +68,8 @@ with cdi as (
         try_cast(high_confidence_limit as double)       as high_confidence_limit,
         'Overall'                                       as stratification_category,
         'Overall'                                       as stratification,
+        cast(null as varchar)                           as stratification_category_2,
+        cast(null as varchar)                           as stratification_2,
         datasource                                      as data_source,
         ingest_ts
     from {{ ref('stg_cdc__places_county') }}
@@ -92,6 +96,8 @@ with cdi as (
         try_cast(high_confidence_limit as double)       as high_confidence_limit,
         coalesce(nullif(stratificationcategory1, ''), 'Overall') as stratification_category,
         coalesce(nullif(stratification1, ''), 'Overall')         as stratification,
+        cast(null as varchar)                           as stratification_category_2,
+        cast(null as varchar)                           as stratification_2,
         datasource                                      as data_source,
         ingest_ts
     from {{ ref('stg_cdc__nutrition_activity_obesity') }}
@@ -120,6 +126,8 @@ with cdi as (
         try_cast(high_confidence_limit as double)       as high_confidence_limit,
         coalesce(nullif(stratificationcategory1, ''), 'Overall') as stratification_category,
         coalesce(nullif(stratification1, ''), 'Overall')         as stratification,
+        nullif(stratificationcategory2, '')             as stratification_category_2,
+        nullif(stratification2, '')                     as stratification_2,
         datasource                                      as data_source,
         ingest_ts
     from {{ ref('stg_cdc__alzheimers_healthy_aging') }}

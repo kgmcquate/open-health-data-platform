@@ -1,7 +1,12 @@
 -- Mart layer: state-level chronic-disease indicator trend, the presentation
 -- table behind the chronic_disease cube.
 --
--- Grain: source_dataset x state x year x measure x data_value_type x stratum.
+-- Grain: source_dataset x state x year x measure x data_value_type x stratum x
+-- stratum_2 x response. The last two are null for every source except
+-- Alzheimer's/healthy-aging (cross-tabulated by two strata at once) and CDI
+-- (categorical questions with more than one answer option), respectively --
+-- see core__health_indicator.sql for why they can't be folded into
+-- `stratification`.
 -- PLACES is excluded here because it is county-grain -- it gets its own mart
 -- (chronic_disease__county_prevalence) rather than being averaged up to a state
 -- number it was never modelled to support.
@@ -30,6 +35,8 @@ select
     data_value_unit,
     stratification_category,
     stratification,
+    stratification_category_2,
+    stratification_2,
     data_value,
     low_confidence_limit,
     high_confidence_limit,

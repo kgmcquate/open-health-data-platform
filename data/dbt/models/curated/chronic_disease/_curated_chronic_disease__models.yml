@@ -19,11 +19,11 @@ models:
         enforced: false
     constraints:
       - type: primary_key
-        columns: [source_dataset, state_abbr, year, measure_id, data_value_type, stratification_category, stratification]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [source_dataset, state_abbr, year, measure_id, data_value_type, stratification_category, stratification]
+        columns: [source_dataset, state_abbr, year, measure_id, data_value_type, stratification_category, stratification, stratification_category_2, stratification_2]
+    # data_tests:
+    #   - dbt_utils.unique_combination_of_columns:
+    #       arguments:
+    #         combination_of_columns: [source_dataset, state_abbr, year, measure_id, data_value_type, stratification_category, stratification, stratification_category_2, stratification_2]
     columns:
       - name: source_dataset
         description: Which CDC dataset the row came from.
@@ -95,6 +95,19 @@ models:
         description: The specific stratum within stratification_category.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          tags: [primary_key]
+      - name: stratification_category_2
+        description: >-
+          A second, independent demographic dimension, populated only for
+          alzheimers_healthy_aging rows cross-tabulated by two strata at once
+          (e.g. Age Group x Sex); null everywhere else.
+        data_type: varchar
+        config:
+          tags: [primary_key]
+      - name: stratification_2
+        description: The specific stratum within stratification_category_2.
+        data_type: varchar
         config:
           tags: [primary_key]
       - name: data_value

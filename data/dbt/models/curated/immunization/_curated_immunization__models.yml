@@ -10,18 +10,18 @@ models:
     description: >
       Vaccination coverage estimates, seasonal influenza and childhood
       immunisation (0-35 months) conformed into one table. One row per program x
-      vaccine x dose x geography x season x month x demographic stratum.
+      vaccine x dose x geography x fips x season x month x demographic stratum.
       Coverage is a percentage of a population -- average it, never sum it.
     config:
       contract:
         enforced: false
     constraints:
       - type: primary_key
-        columns: [program, vaccine, dose, geography, geography_level, year_season, month, stratification_category, stratification]
+        columns: [program, vaccine, dose, geography, geography_level, fips, year_season, month, stratification_category, stratification]
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [program, vaccine, dose, geography, geography_level, year_season, month, stratification_category, stratification]
+            combination_of_columns: [program, vaccine, dose, geography, geography_level, fips, year_season, month, stratification_category, stratification]
     columns:
       - name: program
         description: Which immunisation programme the row belongs to -- seasonal influenza or childhood (0-35 months).
@@ -58,6 +58,14 @@ models:
       - name: geography_type
         description: CDC's own geography label, kept verbatim.
         data_type: varchar
+      - name: fips
+        description: >-
+          FIPS code for the geography. Only populated for influenza rows;
+          needed in the grain because county names repeat across states, so
+          geography name alone doesn't uniquely identify a county.
+        data_type: varchar
+        config:
+          tags: [primary_key]
       - name: year_season
         description: Survey year or influenza season the estimate covers (e.g. "2023-24").
         data_type: varchar

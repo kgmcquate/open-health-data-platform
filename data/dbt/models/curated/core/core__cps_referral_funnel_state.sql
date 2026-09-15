@@ -3,8 +3,14 @@
 -- Joins three NCANDS cross-sections that share a state grain and the same most
 -- recent federal fiscal year: referrals screened in or out, what the resulting
 -- investigations concluded, and fatalities by which NCANDS file reported them.
--- `fiscal_year` comes from the dispositions file -- the only one of the three
--- that publishes the collection year as a column.
+--
+-- `fiscal_year` was meant to come from the dispositions file's `year` column --
+-- Socrata's own metadata documents one (added 2021-11-29, see
+-- ohdp_orchestration/defs/healthdata_gov/datasets/defs.yaml) -- but the
+-- currently ingested RAW.HEALTHDATA_GOV.CHILDREN_BY_DISPOSITION rows don't
+-- actually carry it (dbt1308 binder error, no `year` in that relation), so
+-- it's left null here rather than guessed at. Investigate on the loader side
+-- if a real fiscal year is needed.
 {{ config(materialized="table") }}
 
 with referrals as (
@@ -23,7 +29,7 @@ with referrals as (
 dispositions as (
     select
         state,
-        year::int as fiscal_year,
+        cast(null as int) as fiscal_year,
         total_children::int as children_with_disposition,
         substantiated::int as substantiated,
         indicated::int as indicated,
