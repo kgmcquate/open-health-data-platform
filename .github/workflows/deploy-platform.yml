@@ -19,59 +19,59 @@ on:
         type: boolean
         default: true
       deploy_foundation:
-        description: "Chart: platform-base, Traefik, cert-manager, ClusterIssuer (ignored if deploy_all is checked)"
+        description: "Chart: platform-base, Traefik, cert-manager, ClusterIssuer"
         type: boolean
         default: false
       deploy_opensearch:
-        description: "Chart: OpenSearch (ignored if deploy_all is checked)"
+        description: "Chart: OpenSearch"
         type: boolean
         default: false
       deploy_openmetadata:
-        description: "Chart: OpenMetadata (ignored if deploy_all is checked)"
+        description: "Chart: OpenMetadata"
         type: boolean
         default: false
       deploy_proxy:
-        description: "Chart: GraphQL authz proxy (ignored if deploy_all is checked)"
+        description: "Chart: GraphQL authz proxy"
         type: boolean
         default: false
       deploy_dagster_monitoring:
-        description: "Chart: Dagster monitoring dashboard (ignored if deploy_all is checked)"
+        description: "Chart: Dagster monitoring dashboard"
         type: boolean
         default: false
       deploy_oauth2_proxy:
-        description: "Chart: oauth2-proxy (Dagster + monitoring wall) (ignored if deploy_all is checked)"
+        description: "Chart: oauth2-proxy"
         type: boolean
         default: false
       deploy_dagster:
-        description: "Chart: Dagster (ignored if deploy_all is checked)"
+        description: "Chart: Dagster"
         type: boolean
         default: false
       deploy_cube:
-        description: "Chart: Cube (ignored if deploy_all is checked)"
+        description: "Chart: Cube"
         type: boolean
         default: false
       deploy_streamlit:
-        description: "Chart: Streamlit (ignored if deploy_all is checked)"
+        description: "Chart: Streamlit"
         type: boolean
         default: false
       deploy_oauth2_proxy_streamlit:
-        description: "Chart: oauth2-proxy (Streamlit wall) (ignored if deploy_all is checked)"
+        description: "Chart: oauth2-proxy (Streamlit wall)"
         type: boolean
         default: false
       deploy_hub_api:
-        description: "Chart: hub-api (ignored if deploy_all is checked)"
+        description: "Chart: hub-api"
         type: boolean
         default: false
       deploy_oauth2_proxy_app:
-        description: "Chart: oauth2-proxy (hub app wall) (ignored if deploy_all is checked)"
+        description: "Chart: oauth2-proxy (hub app wall)"
         type: boolean
         default: false
       deploy_mcp_cube:
-        description: "Chart: Cube MCP server (ignored if deploy_all is checked)"
+        description: "Chart: Cube MCP server"
         type: boolean
         default: false
       deploy_open_webui:
-        description: "Chart: Open WebUI (ignored if deploy_all is checked)"
+        description: "Chart: Open WebUI"
         type: boolean
         default: false
 
@@ -316,7 +316,18 @@ jobs:
         if: inputs.deploy_all || inputs.deploy_open_webui
         env:
           OPENWEBUI_OIDC_CLIENT_ID: ${{ secrets.OPENWEBUI_OIDC_CLIENT_ID || secrets.DAGSTER_OIDC_CLIENT_ID }}
-        run: make -C platform/helm open-webui
+        run: make -C platform/helm open-webui TAG="$TAG"
+
+      # ADR-0022: idempotent, so safe to re-apply on every deploy. Not a Helm
+      # hook — see the comment at the top of the manifest for why. Jobs are
+      # immutable, hence delete-then-apply rather than `kubectl apply` alone.
+      - name: Open WebUI token-tracking DB init
+        if: inputs.deploy_all || inputs.deploy_open_webui
+        run: |
+          set -euo pipefail
+          kubectl delete job/open-webui-token-tracking-init -n app --ignore-not-found
+          envsubst < platform/helm/manifests/open-webui-token-tracking-init-job.yaml | kubectl apply -f -
+          kubectl wait --for=condition=complete job/open-webui-token-tracking-init -n app --timeout=120s
 
       - name: Pods
         if: always()

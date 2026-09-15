@@ -378,3 +378,65 @@ nothing until an admin promotes it. **That pending role is the whole access
 policy**, standing in for the email allowlist the other three walls use, and it is
 what separates a public hostname from a metered Anthropic key. There is no quota
 gate behind it.
+
+### 11.4 Token usage limits (ADR-0022)
+
+The gap §11.3 calls out — no quota gate on this surface — is what
+[`openwebui-token-tracking`](https://dartmouth.github.io/openwebui-token-tracking/)
+closes: per-user/group daily credit allowances, enforced by routing the model
+through a tracked "pipe" Function instead of the direct OpenAI-compatible
+passthrough. The package is baked into the image
+(`apps/open-webui/Dockerfile`, ADR-0022) and the database is migrated
+automatically on every deploy (`platform/helm/manifests/open-webui-token-tracking-init-job.yaml`).
+What's left is manual, because Open WebUI has no declarative path for custom
+Function code or per-model visibility — the same limitation §11.2 already
+lives with for MCP tool-server registration:
+
+- **Register the Function** (Settings → Admin → Functions → New). Paste:
+
+  ```python
+  """
+  title: Anthropic Pipe
+  author: (you)
+  requirements: openwebui-token-tracking
+  version: 0.1.0
+  """
+  from openwebui_token_tracking.pipes.anthropic import AnthropicTrackedPipe
+
+  Pipe = AnthropicTrackedPipe
+  ```
+
+  Name the Function `Anthropic` — matching `provider` in the pricing table is
+  required and case-insensitive. Its `ANTHROPIC_API_KEY` Valve defaults from
+  the pod's own `ANTHROPIC_API_KEY` env var (`values/open-webui.yaml`, same
+  secret as `openaiApiKeyExistingSecret`), so it doesn't need to be retyped —
+  confirm the Valve picked it up before enabling the Function.
+
+- **Hide the untracked model.** Once the Function is enabled it registers a
+  new selectable model (`claude-sonnet-5`, pulled from the pricing table the
+  init Job seeds). The existing plain `claude-sonnet-5` OpenAI-API model is
+  still directly selectable and bypasses tracking entirely — set its
+  visibility to Private/admin-only in Settings → Admin → Models so regular
+  users can only reach the model through the tracked pipe.
+
+- **Re-point the `health-data-analyst` custom model.** It's currently built
+  on top of the untracked `claude-sonnet-5` base model
+  (`models/health-data-analyst-*.json`) — re-import it with its base model
+  changed to the tracked pipe's model, or it's a second bypass.
+
+- **Credit groups**, via `kubectl exec` into the running Open WebUI pod
+  (`kubectl -n app exec -it deploy/open-webui -- sh`):
+
+  ```sh
+  owui-token-tracking credit-group create "power users" 2000 "extra daily allowance"
+  owui-token-tracking user find --email someone@example.com
+  owui-token-tracking credit-group add-user <user-id> "power users"
+  ```
+
+  Every user already gets the base allowance seeded by the init Job
+  (`token_tracking_base_settings`, 1000 credits/day = $1 at the package's
+  1000-credits-per-USD convention) — credit groups are additive on top of
+  that, not a replacement for it.
+
+This only covers Open WebUI's surface. hub-api's own quota gate (§6) is
+separate and unaffected.

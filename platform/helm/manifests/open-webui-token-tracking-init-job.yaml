@@ -1,0 +1,75 @@
+# ADR-0022: one-time (but idempotent) setup for `openwebui-token-tracking` —
+# migrates Open WebUI's own Postgres database to add the credit-tracking
+# tables, and upserts pricing for claude-sonnet-5, which the package's own
+# bundled pricing table doesn't know about (it only ships Claude 3.5 entries).
+#
+# Not a Helm hook: Open WebUI is installed straight from the upstream
+# `open-webui/open-webui` chart (platform/helm/Makefile's `open-webui`
+# target), so there's no local chart to hook a post-install Job into the way
+# platform-base's db-bootstrap-job.yaml does. This is applied directly with
+# `kubectl` right after `make open-webui`
+# (.github/workflows/deploy-platform.yml), the same way that step already
+# applies the externally-issued secrets.
+#
+# `${TAG}` is substituted by the deploy workflow (envsubst) — this file is a
+# plain manifest, not a Helm template. Jobs are immutable, so the workflow
+# deletes any previous run of this Job before re-applying.
+#
+# Both CLI commands below are safe to re-run: `init` uses SQLAlchemy `merge`
+# (upsert) for settings and pricing, and `pricing upsert` is upsert by name.
+#
+# Pricing note: input/output credit costs below are last-known Anthropic
+# Sonnet per-million-token rates ($3 / $15), *not* verified current pricing —
+# check https://www.anthropic.com/pricing before this Job first runs against
+# prod and update if they've changed. 1000 credits = 1 USD (the package's
+# documented convention; see docs/chatbot.md §11.4).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: open-webui-token-tracking-init
+  namespace: app
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: open-webui-token-tracking-init
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: owui-token-tracking
+          image: ghcr.io/kgmcquate/ohdp-open-webui:${TAG}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: openwebui-db, key: DATABASE_URL }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              owui-token-tracking init
+              owui-token-tracking pricing upsert claude-sonnet-5 \
+                --provider anthropic \
+                --name "Claude Sonnet 5" \
+                --input-cost-credits 3000 --per-input-tokens 1000000 \
+                --output-cost-credits 15000 --per-output-tokens 1000000
+              echo "token tracking init complete"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

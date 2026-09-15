@@ -162,12 +162,14 @@ mcp-cube: ## Install the Cube MCP server (runs the hub-api image; TAG defaults t
 # be the same client whose secret is in the `openwebui-secrets` Secret, so it is
 # passed in rather than written into the values file. deploy-platform.yml
 # supplies it; for a manual deploy, export it first.
-open-webui: ## Install Open WebUI, the chat UI (needs OPENWEBUI_OIDC_CLIENT_ID)
+open-webui: ## Install Open WebUI, the chat UI (needs OPENWEBUI_OIDC_CLIENT_ID; TAG defaults to the current commit's sha-<12>)
 	@test -n "$(OPENWEBUI_OIDC_CLIENT_ID)" || { \
 		echo "OPENWEBUI_OIDC_CLIENT_ID is empty — Google sign-in is the only way into this app"; exit 1; }
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
 	$(HELM) upgrade --install open-webui open-webui/open-webui --version $(OPENWEBUI_VERSION) \
 		-n app --create-namespace -f $(VALUES)/open-webui.yaml \
 		--set sso.google.clientId=$(OPENWEBUI_OIDC_CLIENT_ID) \
+		--set image.tag=$(TAG) \
 		--wait --timeout 10m
 
 install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)

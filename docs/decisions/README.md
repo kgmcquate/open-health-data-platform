@@ -27,3 +27,4 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0019](0019-iceberg-on-s3-duckdb-dbt.md) | Snowflake as the Iceberg catalog; DuckDB builds, Snowflake serves | Accepted |
 | [0020](0020-pipeline-creates-its-own-namespaces.md) | dbt and dlt create the catalog namespaces, not Terraform | Superseded by [0021](0021-terraform-creates-the-namespaces-again.md) |
 | [0021](0021-terraform-creates-the-namespaces-again.md) | Terraform creates the catalog namespaces again | Accepted |
+| [0022](0022-token-usage-limits.md) | Per-user/group token usage limits on Open WebUI | Accepted |

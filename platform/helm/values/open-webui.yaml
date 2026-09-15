@@ -21,6 +21,19 @@
 # this one.
 
 # ---------------------------------------------------------------------------
+# Image: our own build, not the upstream chart's default. ADR-0022 — the only
+# thing added on top of ghcr.io/open-webui/open-webui is the
+# `openwebui-token-tracking` pip package (apps/open-webui/Dockerfile), so that
+# per-user/group token limits don't depend on a runtime `pip install` on every
+# pod restart. `tag` is supplied via `--set` at deploy time
+# (platform/helm/Makefile's `open-webui` target), the same way hub-api/
+# streamlit/cube/pipeline are.
+# ---------------------------------------------------------------------------
+image:
+  repository: ghcr.io/kgmcquate/ohdp-open-webui
+  tag: ""
+
+# ---------------------------------------------------------------------------
 # Subcharts. All off: the node runs near its memory ceiling (ARCHITECTURE.md §4)
 # and none of these earn their GB here.
 #   ollama    — local inference on a 32 GB shared node is not happening; the
@@ -83,6 +96,19 @@ extraEnvVars:
     value: "false"
   - name: ENABLE_PASSWORD_AUTH
     value: "false"
+  # ADR-0022: the `openwebui-token-tracking` package's AnthropicTrackedPipe
+  # reads this env var as the default for its `ANTHROPIC_API_KEY` Valve on
+  # first load — same key as openaiApiKeyExistingSecret above, just under the
+  # name that package's __init__ looks for (os.getenv("ANTHROPIC_API_KEY")).
+  # Registering the pipe Function itself is still a manual post-install step
+  # (docs/chatbot.md §11.4) — Open WebUI has no declarative path for custom
+  # Function code — but this at least means the API key doesn't also have to
+  # be retyped by hand into the Valve UI.
+  - name: ANTHROPIC_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: openwebui-secrets
+        key: OPENAI_API_KEY
   # The image is built with its static assets under /app/backend/open_webui/static,
   # owned by root (same root-default-build-args issue podSecurityContext below
   # works around for the container's own UID). Boot logs under runAsUser 1000
@@ -116,19 +142,19 @@ extraEnvVars:
     value: >-
       [
         {
-          "title": ["Explore", "chronic disease trends"],
+          "title": ["Explore", "Chronic disease trends"],
           "content": "What datasets do we have on chronic disease prevalence, and how has it changed over time across states?"
         },
         {
-          "title": ["Compare", "health outcomes by region"],
+          "title": ["Compare", "Health outcomes by region"],
           "content": "Compare a key health outcome (e.g. obesity, diabetes, or life expectancy) across US regions using the latest available data."
         },
         {
-          "title": ["Summarize", "a recent dataset"],
+          "title": ["Summarize", "A recent dataset"],
           "content": "Give me a summary of the most recently ingested HealthData.gov dataset, including what it covers and its time range."
         },
         {
-          "title": ["Find", "vaccination coverage data"],
+          "title": ["Find", "Vaccination coverage data"],
           "content": "What vaccination coverage data is available in the catalog, and which populations or geographies does it cover?"
         }
       ]
