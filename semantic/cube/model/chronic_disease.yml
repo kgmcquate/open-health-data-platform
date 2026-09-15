@@ -28,7 +28,18 @@ cubes:
   - {{ trend.as_cube() }}
 
     dimensions:
-      {{ trend.as_dimensions(skip=trend_measures) }}
+      {{ trend.as_dimensions(skip=trend_measures + ['measure']) }}
+
+      # Snowflake now treats MEASURE as a keyword (Semantic Views' `AS
+      # MEASURE`), so the cube_dbt-generated `sql: measure` fails to compile
+      # unquoted. Quote it explicitly instead of letting as_dimensions()
+      # emit it bare -- uppercase because the column is created from an
+      # unquoted `measure` alias in the dbt model, which Snowflake folds to
+      # MEASURE, and a quoted identifier is matched case-sensitively.
+      - name: measure
+        sql: '{CUBE}."MEASURE"'
+        type: string
+        description: {{ trend.column('measure').description }}
 
     refresh_key:
       sql: 'SELECT MAX(ingest_ts) FROM {{ trend.sql_table }}'
@@ -97,7 +108,13 @@ cubes:
   - {{ county.as_cube() }}
 
     dimensions:
-      {{ county.as_dimensions(skip=county_measures) }}
+      {{ county.as_dimensions(skip=county_measures + ['measure']) }}
+
+      # Same MEASURE-is-now-reserved issue as the trend cube above.
+      - name: measure
+        sql: '{CUBE}."MEASURE"'
+        type: string
+        description: {{ county.column('measure').description }}
 
     refresh_key:
       sql: 'SELECT MAX(ingest_ts) FROM {{ county.sql_table }}'
