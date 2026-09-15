@@ -14,6 +14,9 @@
 -- into the total.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     state_abbr,
     state_name,
@@ -29,3 +32,10 @@ select
 from {{ ref('core__drug_overdose_deaths_monthly') }}
 where state_abbr <> 'US'
   and month_start is not null
+
+)
+
+select
+    {{ row_sk(['state_abbr', 'month_start', 'indicator']) }} as row_sk,
+    *
+from mart

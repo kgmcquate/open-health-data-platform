@@ -10,6 +10,9 @@
 -- *reporting*, and this column is the only way to tell the two apart.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     jurisdiction,
     week_end,
@@ -29,3 +32,10 @@ select
     ingest_ts
 from {{ ref('core__hospital_respiratory_weekly') }}
 where not is_national
+
+)
+
+select
+    {{ row_sk(['jurisdiction', 'week_end']) }} as row_sk,
+    *
+from mart

@@ -10,6 +10,9 @@
 -- as sum(detections)/sum(samples) so it stays correct at every rollup.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     pathogen,
     state_abbr,
@@ -22,3 +25,10 @@ select
 from {{ ref('core__wastewater_pathogen_detection') }}
 where state_abbr is not null
 group by 1, 2, 3
+
+)
+
+select
+    {{ row_sk(['pathogen', 'state_abbr', 'week_start']) }} as row_sk,
+    *
+from mart

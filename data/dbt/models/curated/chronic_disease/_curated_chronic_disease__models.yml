@@ -17,14 +17,20 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [source_dataset, state_abbr, year, measure_id, data_value_type, stratification_category, stratification, stratification_category_2, stratification_2]
-    # data_tests:
-    #   - dbt_utils.unique_combination_of_columns:
-    #       arguments:
-    #         combination_of_columns: [source_dataset, state_abbr, year, measure_id, data_value_type, stratification_category, stratification, stratification_category_2, stratification_2]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (source_dataset,
+          state_abbr, year, measure_id, data_value_type,
+          stratification_category, stratification,
+          stratification_category_2, stratification_2) hashed into one
+          opaque column. It carries the grain -- `unique` on it asserts
+          exactly what unique_combination_of_columns used to -- and is
+          the primary key Cube joins and pre-aggregates on, which is
+          what keeps the natural-key columns themselves public
+          dimensions. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: source_dataset
         description: Which CDC dataset the row came from.
         data_type: varchar
@@ -34,7 +40,8 @@ models:
               arguments:
                 values: [chronic_disease_indicators, nutrition_activity_obesity, alzheimers_healthy_aging]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: location_level
         description: Geographic level of the row -- state, or the national rollup CDC publishes alongside.
         data_type: varchar
@@ -47,7 +54,8 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: state_name
         description: Full state, territory or jurisdiction name.
         data_type: varchar
@@ -56,7 +64,8 @@ models:
         data_type: integer
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: category
         description: >
           Topic grouping -- CDI's topic (e.g. Diabetes, Cardiovascular Disease,
@@ -70,7 +79,8 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: data_value_type
         description: >-
           How the value was computed -- Crude Prevalence, Age-adjusted
@@ -79,7 +89,8 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: data_value_unit
         description: Unit of data_value -- "%", "cases per 100,000", "Number", "Years".
         data_type: varchar
@@ -90,13 +101,15 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: stratification
         description: The specific stratum within stratification_category.
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: stratification_category_2
         description: >-
           A second, independent demographic dimension, populated only for
@@ -104,12 +117,14 @@ models:
           (e.g. Age Group x Sex); null everywhere else.
         data_type: varchar
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: stratification_2
         description: The specific stratum within stratification_category_2.
         data_type: varchar
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: data_value
         description: >-
           The indicator value, in data_value_unit. A prevalence or rate -- average
@@ -142,14 +157,18 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [county_fips, measure_id, data_value_type]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [county_fips, measure_id, data_value_type]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (county_fips,
+          measure_id, data_value_type) hashed into one opaque column. It
+          carries the grain -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state_abbr
         description: Two-letter state postal code the county sits in.
         data_type: varchar
@@ -162,7 +181,8 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: year
         description: PLACES release year the estimate belongs to.
         data_type: integer
@@ -179,13 +199,15 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: data_value_type
         description: Crude prevalence or age-adjusted prevalence. Never average across both.
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: prevalence_pct
         description: >-
           Modelled prevalence for the county, as a percentage of the relevant

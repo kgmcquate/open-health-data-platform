@@ -10,14 +10,18 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [district_nces_id, week]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [district_nces_id, week]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (district_nces_id,
+          week) hashed into one opaque column. It carries the grain --
+          `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: school_year
         description: School year the row belongs to ("2020-2021" or "2021-2022").
         data_type: varchar
@@ -26,7 +30,8 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: district_name
         description: Name of the school district.
         data_type: varchar
@@ -41,7 +46,8 @@ models:
         data_type: date
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: learning_modality
         description: Reported instruction mode for the week -- In Person, Hybrid or Remote.
         data_type: varchar

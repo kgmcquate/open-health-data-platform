@@ -15,20 +15,25 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [state_abbr, month_start, indicator]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state_abbr, month_start, indicator]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state_abbr,
+          month_start, indicator) hashed into one opaque column. It
+          carries the grain -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state_abbr
         description: Two-letter state postal code (the national "US" row is excluded).
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: state_name
         description: Full state name.
         data_type: varchar
@@ -37,7 +42,8 @@ models:
         data_type: date
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: year
         description: Calendar year the window closes in.
         data_type: integer
@@ -49,7 +55,8 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: is_drug_class
         description: True for per-drug-class rows, false for the overall counts. Never add the two together.
         data_type: boolean
@@ -87,14 +94,18 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [condition, month_start, stratification_category, stratification]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [condition, month_start, stratification_category, stratification]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (condition,
+          month_start, stratification_category, stratification) hashed
+          into one opaque column. It carries the grain -- `unique` on it
+          asserts exactly what unique_combination_of_columns used to --
+          and is the primary key Cube joins and pre-aggregates on, which
+          is what keeps the natural-key columns themselves public
+          dimensions. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: condition
         description: >-
           Mental health condition category -- Any Mental Health, Anxiety
@@ -104,13 +115,15 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: month_start
         description: First day of the reporting month.
         data_type: date
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: month_end
         description: Last day of the reporting month.
         data_type: date
@@ -119,13 +132,15 @@ models:
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: stratification
         description: The specific stratum within stratification_category ("All" for the total row).
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: is_total
         description: True for the unstratified total row; use it to exclude the total from a demographic breakdown.
         data_type: boolean

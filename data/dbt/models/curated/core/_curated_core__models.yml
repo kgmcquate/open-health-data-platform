@@ -43,15 +43,25 @@ models:
     config:
       contract:
         enforced: false
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state, fiscal_year]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state, fiscal_year)
+          hashed into one opaque column. It carries the grain --
+          `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: NCANDS reporting unit -- the 50 states, DC, Puerto Rico, plus a "National" row.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: fiscal_year
         description: Federal fiscal year the counts were reported for.
         data_type: integer
@@ -61,6 +71,9 @@ models:
               arguments:
                 values: [2015, 2016, 2017, 2018, 2019]
                 quote: false
+        config:
+          meta:
+            grain: true
       - name: is_national
         description: >-
           True for NCANDS's rolled-up National row, which sums only the states
@@ -105,15 +118,25 @@ models:
     config:
       contract:
         enforced: false
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state, maltreatment_type]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state,
+          maltreatment_type) hashed into one opaque column. It carries
+          the grain -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: NCANDS reporting unit, including a "National" row.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: is_national
         description: True for NCANDS's rolled-up National row.
         data_type: boolean
@@ -121,6 +144,9 @@ models:
         description: Maltreatment category code (snake_case, stable across runs).
         data_type: varchar
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: maltreatment_type_label
         description: Human-readable maltreatment category, for display.
         data_type: varchar
@@ -148,15 +174,25 @@ models:
     config:
       contract:
         enforced: false
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state, relationship]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state, relationship)
+          hashed into one opaque column. It carries the grain --
+          `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: NCANDS reporting unit, including a "National" row.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: is_national
         description: True for NCANDS's rolled-up National row.
         data_type: boolean
@@ -164,6 +200,9 @@ models:
         description: Perpetrator's relationship to the victim, as a stable code.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: relationship_label
         description: Human-readable relationship, for display.
         data_type: varchar
@@ -184,15 +223,25 @@ models:
     config:
       contract:
         enforced: false
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state, age_group]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state, age_group)
+          hashed into one opaque column. It carries the grain --
+          `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: NCANDS reporting unit, including a "National" row.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: is_national
         description: True for NCANDS's rolled-up National row.
         data_type: boolean
@@ -202,6 +251,9 @@ models:
           "1" to "17".
         data_type: varchar
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: age_years
         description: >-
           Numeric age for ordering and banding; 0 for "<1" and null for
@@ -232,10 +284,23 @@ models:
       contract:
         enforced: false
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state) hashed into one
+          opaque column. It carries the grain -- `unique` on it asserts
+          exactly what unique_combination_of_columns used to -- and is
+          the primary key Cube joins and pre-aggregates on, which is
+          what keeps the natural-key columns themselves public
+          dimensions. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: NCANDS reporting unit, including a "National" row.
         data_type: varchar
-        data_tests: [unique, not_null]
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: is_national
         description: True for NCANDS's rolled-up National row.
         data_type: boolean
@@ -429,11 +494,18 @@ models:
     config:
       contract:
         enforced: false
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [district_nces_id, week]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (district_nces_id,
+          week) hashed into one opaque column. It carries the grain --
+          `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: school_year
         description: School year the row came from ("2020-2021" or "2021-2022").
         data_type: varchar
@@ -445,6 +517,9 @@ models:
         description: NCES local education agency identifier; the district key.
         data_type: varchar
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: district_name
         description: Name of the school district.
         data_type: varchar
@@ -461,6 +536,9 @@ models:
         description: Monday starting the reported week.
         data_type: date
         data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: learning_modality
         description: >-
           Reported instruction mode for the week -- In Person, Hybrid or Remote.

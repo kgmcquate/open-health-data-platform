@@ -8,6 +8,9 @@
 -- national figure.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     state,
     fiscal_year,
@@ -23,3 +26,10 @@ select
     ingest_ts
 from {{ ref('core__child_maltreatment_state_year') }}
 where not is_national
+
+)
+
+select
+    {{ row_sk(['state', 'fiscal_year']) }} as row_sk,
+    *
+from mart

@@ -9,6 +9,9 @@
 -- the measures it did report.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 {% set years = [2015, 2016, 2017, 2018, 2019] %}
 
 with victims as (
@@ -88,3 +91,10 @@ left join fatalities f on s.state = f.state and s.fiscal_year = f.fiscal_year
 left join perpetrators p on s.state = p.state and s.fiscal_year = p.fiscal_year
 left join investigated i on s.state = i.state and s.fiscal_year = i.fiscal_year
 where s.state is not null
+
+)
+
+select
+    {{ row_sk(['state', 'fiscal_year']) }} as row_sk,
+    *
+from mart

@@ -8,6 +8,9 @@
 -- the Cube model joins to on state.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     state,
     maltreatment_type,
@@ -17,3 +20,10 @@ select
     ingest_ts
 from {{ ref('core__child_maltreatment_type_state') }}
 where not is_national
+
+)
+
+select
+    {{ row_sk(['state', 'maltreatment_type']) }} as row_sk,
+    *
+from mart

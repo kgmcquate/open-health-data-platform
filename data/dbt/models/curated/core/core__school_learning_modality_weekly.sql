@@ -8,6 +8,9 @@
 -- the two files disagree on casing for the same three values.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 -- Columns are listed explicitly rather than `select *`: UNION ALL matches by
 -- POSITION, and the two source tables' physical column order is whatever dlt
 -- inferred on first load -- the two defs.yaml files already advertise them in
@@ -43,3 +46,10 @@ select
 from unioned
 where district_nces_id is not null
   and week is not null
+
+)
+
+select
+    {{ row_sk(['district_nces_id', 'week']) }} as row_sk,
+    *
+from mart

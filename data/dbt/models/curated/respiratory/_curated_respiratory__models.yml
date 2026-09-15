@@ -10,27 +10,32 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [state, week]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state, week]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state, week) hashed
+          into one opaque column. It carries the grain -- `unique` on it
+          asserts exactly what unique_combination_of_columns used to --
+          and is the primary key Cube joins and pre-aggregates on, which
+          is what keeps the natural-key columns themselves public
+          dimensions. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: US state postal code.
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
 
       - name: week
         description: Week start (Monday), truncated from report_date.
         data_type: date
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
 
       - name: avg_covid_inpatients
         description: >-
@@ -62,26 +67,32 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [state, week_end, pathogen]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state, week_end, pathogen]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state, week_end,
+          pathogen) hashed into one opaque column. It carries the grain
+          -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: State or territory name as NSSP publishes it.
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: week_end
         description: Last day of the reporting week.
         data_type: date
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: pathogen
         description: >-
           Respiratory pathogen -- COVID-19, Influenza, RSV, or Combined (CDC's
@@ -93,7 +104,8 @@ models:
               arguments:
                 values: ["COVID-19", "Influenza", "RSV", "Combined"]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: percent_of_ed_visits
         description: Percentage of the week's emergency department visits attributed to the pathogen.
         data_type: double
@@ -118,32 +130,39 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [state_abbr, season, week_end]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state_abbr, season, week_end]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state_abbr, season,
+          week_end) hashed into one opaque column. It carries the grain
+          -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state_abbr
         description: Two-letter postal code of the RSV-NET surveillance site's state.
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: season
         description: RSV surveillance season (e.g. "2025-26").
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: week_end
         description: Last day of the reporting week.
         data_type: date
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: hospitalization_rate_per_100k
         description: >-
           Laboratory-confirmed RSV hospitalisations per 100,000 population for the
@@ -166,26 +185,32 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [jurisdiction, week_end]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [jurisdiction, week_end]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (jurisdiction,
+          week_end) hashed into one opaque column. It carries the grain
+          -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: jurisdiction
         description: Two-letter state or territory code (the national "USA" row is excluded).
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: week_end
         description: Last day of the reporting week.
         data_type: date
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: admissions_covid
         description: Confirmed COVID-19 hospital admissions during the week, all ages. Additive.
         data_type: double

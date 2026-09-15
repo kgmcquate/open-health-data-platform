@@ -9,6 +9,9 @@
 -- prevalence to be averaged or mapped -- never summed across counties.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 with places as (
 
     select *
@@ -41,3 +44,10 @@ from places p
 join latest_year ly
   on p.measure_id = ly.measure_id
  and p.year_start = ly.year
+
+)
+
+select
+    {{ row_sk(['county_fips', 'measure_id', 'data_value_type']) }} as row_sk,
+    *
+from mart

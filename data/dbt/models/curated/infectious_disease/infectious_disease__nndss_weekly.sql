@@ -12,6 +12,9 @@
 -- accumulates), which is why the cube exposes it only as a max.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     disease,
     reporting_area,
@@ -29,3 +32,12 @@ select
     ingest_ts
 from {{ ref('core__nndss_weekly_case_counts') }}
 where is_jurisdiction
+
+)
+
+select
+    {{ row_sk([
+        'disease', 'reporting_area', 'mmwr_year', 'mmwr_week',
+    ]) }} as row_sk,
+    *
+from mart

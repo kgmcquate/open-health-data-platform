@@ -5,6 +5,9 @@
 -- these columns are not carried on child_welfare__maltreatment_profile.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     state,
     fiscal_year,
@@ -38,3 +41,10 @@ left join (
     group by 1
 ) v on f.state = v.victim_state
 where not f.is_national
+
+)
+
+select
+    {{ row_sk(['state']) }} as row_sk,
+    *
+from mart

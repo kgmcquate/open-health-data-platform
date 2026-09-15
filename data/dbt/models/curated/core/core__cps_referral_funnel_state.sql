@@ -13,6 +13,9 @@
 -- if a real fiscal year is needed.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 with referrals as (
     select
         state,
@@ -97,3 +100,10 @@ left join referrals r on s.state = r.state
 left join dispositions d on s.state = d.state
 left join fatalities f on s.state = f.state
 where s.state is not null
+
+)
+
+select
+    {{ row_sk(['state']) }} as row_sk,
+    *
+from mart

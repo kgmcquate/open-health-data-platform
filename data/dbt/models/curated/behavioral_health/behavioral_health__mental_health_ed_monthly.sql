@@ -12,6 +12,9 @@
 -- exclude it.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     condition,
     month_start,
@@ -23,3 +26,13 @@ select
     ingest_ts
 from {{ ref('core__ed_visits_mental_health_monthly') }}
 where rate_per_100k_visits is not null
+
+)
+
+select
+    {{ row_sk([
+        'condition', 'month_start', 'stratification_category',
+        'stratification',
+    ]) }} as row_sk,
+    *
+from mart

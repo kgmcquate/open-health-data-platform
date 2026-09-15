@@ -9,6 +9,9 @@
 -- exists and is null otherwise, for ordering and banding.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 {% set ages = range(1, 18) | list %}
 
 with source as (
@@ -64,3 +67,10 @@ select
     ingest_ts
 from unpivoted
 where state is not null
+
+)
+
+select
+    {{ row_sk(['state', 'age_group']) }} as row_sk,
+    *
+from mart

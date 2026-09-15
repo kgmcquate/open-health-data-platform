@@ -13,14 +13,30 @@
 # CURATED.CORE and CURATED.<MART> (ADR-0013), the presentation layer dashboards
 # and Cube read. RAW and CLEAN are staging.
 #
-# Primary keys, for as_dimensions() to mark primary_key: true (required by
-# Cube whenever a cube defines a join): cube_dbt<0.7 (pinned in
-# requirements.txt) only reads a column's own tags/tests when rendering a
-# dimension -- model-level `constraints: [{type: primary_key, ...}]` populates
-# dbt's manifest and Model.primary_key, but as_dimensions() never consults it.
-# So every natural-key column in the curated *_models.yml docs also carries
-# `config: {tags: [primary_key]}` (single-column keys instead just use
-# `data_tests: [unique, not_null]`, which cube_dbt does check per-column).
+# Primary keys: every curated mart carries a `row_sk` column -- its natural key
+# hashed by macros/row_sk.sql -- and that column alone is what cube_dbt renders
+# as `primary_key: true`. It needs no tag to do so: row_sk's
+# `data_tests: [unique, not_null]` is one of the signals cube_dbt<0.7 (pinned
+# in requirements.txt) checks per column. Model-level
+# `constraints: [{type: primary_key, ...}]` is NOT one of them -- it populates
+# dbt's manifest and Model.primary_key, but as_dimensions() never consults it,
+# which is why the grain is declared in the model SQL rather than there.
+#
+# The hash exists because of what `primary_key: true` costs in Cube: it flips
+# that dimension's `public` default to false, so the dimension is dropped from
+# /meta and no client -- the REST API, the MCP server, a BI tool -- can group
+# or filter by it. These marts key on composite *natural* keys, so marking
+# those columns hid exactly the axes the semantic layer exists to slice by:
+# chronic_disease__state_indicator_trend once exposed 5 of its 14 dimensions
+# and no time axis at all. Hashing the key into one opaque column puts Cube's
+# hidden-by-default treatment on something nobody wants to group by, and leaves
+# year, week_end, state_abbr and the rest as plain public dimensions. Those
+# columns carry `config: {meta: {grain: true}}`, which cube_dbt passes through
+# to the dimension, so the grain is still readable through /meta.
+#
+# Two marts are exempt: access__treatment_sites and core__treatment_site key on
+# site_id, a Socrata row id that already *is* a surrogate. They keep it as
+# their primary key and Cube hides it, which is the right outcome.
 #
 # Column quoting (ADR-0019 fallout): curated models now land in Snowflake as
 # Iceberg tables via the Horizon/Polaris catalog (catalogs.yml), and unlike

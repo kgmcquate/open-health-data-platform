@@ -22,6 +22,9 @@
 -- entirely.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     source_dataset,
     location_level,
@@ -45,3 +48,15 @@ select
 from {{ ref('core__health_indicator') }}
 where location_level in ('state', 'national')
   and data_value is not null
+
+)
+
+select
+    {{ row_sk([
+        'source_dataset', 'state_abbr', 'year', 'measure_id',
+        'data_value_type', 'stratification_category',
+        'stratification', 'stratification_category_2',
+        'stratification_2',
+    ]) }} as row_sk,
+    *
+from mart

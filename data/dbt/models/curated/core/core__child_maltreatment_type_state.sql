@@ -7,6 +7,9 @@
 -- against the unique victim count -- do not re-derive it from `victims`.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 {% set types = [
     ('medical_neglect_only',        'Medical neglect',            'medical_neglect_only',        'medical_neglect_only_percent'),
     ('neglect_only',                'Neglect',                    'neglect_only',                'neglect_only_percent'),
@@ -53,3 +56,10 @@ select
     ingest_ts
 from unpivoted
 where state is not null
+
+)
+
+select
+    {{ row_sk(['state', 'maltreatment_type']) }} as row_sk,
+    *
+from mart

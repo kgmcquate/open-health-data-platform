@@ -13,26 +13,32 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [state, fiscal_year]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state, fiscal_year]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state, fiscal_year)
+          hashed into one opaque column. It carries the grain --
+          `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: US state, DC or Puerto Rico, as NCANDS reports it.
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: fiscal_year
         description: Federal fiscal year the counts were reported for.
         data_type: integer
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: victims
         description: Children determined to be victims of maltreatment (unique count).
         data_type: integer
@@ -83,26 +89,32 @@ models:
     config:
       contract:
         enforced: false
-    constraints:
-      - type: primary_key
-        columns: [state, maltreatment_type]
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [state, maltreatment_type]
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state,
+          maltreatment_type) hashed into one opaque column. It carries
+          the grain -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: US state, DC or Puerto Rico, as NCANDS reports it.
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: maltreatment_type
         description: Maltreatment category code, stable across publications.
         data_type: varchar
         data_tests: [not_null]
         config:
-          tags: [primary_key]
+          meta:
+            grain: true
       - name: maltreatment_type_label
         description: Human-readable maltreatment category, for display.
         data_type: varchar
@@ -136,10 +148,23 @@ models:
       contract:
         enforced: false
     columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state) hashed into one
+          opaque column. It carries the grain -- `unique` on it asserts
+          exactly what unique_combination_of_columns used to -- and is
+          the primary key Cube joins and pre-aggregates on, which is
+          what keeps the natural-key columns themselves public
+          dimensions. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
       - name: state
         description: US state, DC or Puerto Rico, as NCANDS reports it.
         data_type: varchar
-        data_tests: [unique, not_null]
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: fiscal_year
         description: Federal fiscal year the counts were reported for.
         data_type: integer

@@ -6,6 +6,9 @@
 -- individual category -- so these rows DO sum to total_perpetrators.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 {% set relationships = [
     ('parent',                      'Parent'),
     ('unmarried_partner_of_parent', 'Unmarried partner of parent'),
@@ -49,3 +52,10 @@ select
     ingest_ts
 from unpivoted
 where state is not null
+
+)
+
+select
+    {{ row_sk(['state', 'relationship']) }} as row_sk,
+    *
+from mart

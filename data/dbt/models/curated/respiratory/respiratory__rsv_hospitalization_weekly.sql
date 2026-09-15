@@ -10,6 +10,9 @@
 -- clinical characteristics remain in core__rsv_hospitalization_rate_weekly.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     state_abbr,
     season,
@@ -24,3 +27,10 @@ where measure = 'Weekly Rate'
   and sex = 'All'
   and race_ethnicity = 'All'
   and rate_per_100k is not null
+
+)
+
+select
+    {{ row_sk(['state_abbr', 'season', 'week_end']) }} as row_sk,
+    *
+from mart

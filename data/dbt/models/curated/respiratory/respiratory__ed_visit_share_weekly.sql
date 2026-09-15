@@ -11,6 +11,9 @@
 -- double-counts -- the cube filters to a single pathogen per measure.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     geography                                   as state,
     week_end,
@@ -20,3 +23,10 @@ select
     ingest_ts
 from {{ ref('core__ed_visit_share_weekly') }}
 where geography_level = 'state'
+
+)
+
+select
+    {{ row_sk(['state', 'week_end', 'pathogen']) }} as row_sk,
+    *
+from mart

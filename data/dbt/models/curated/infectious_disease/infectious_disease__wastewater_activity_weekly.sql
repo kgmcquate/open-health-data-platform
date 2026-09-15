@@ -9,6 +9,9 @@
 -- is kept alongside it so the two can be compared when coverage is thin.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     state_abbr,
     pathogen,
@@ -24,3 +27,10 @@ select
 from {{ ref('core__wastewater_viral_activity_weekly') }}
 where state_abbr is not null
 group by 1, 2, 3
+
+)
+
+select
+    {{ row_sk(['state_abbr', 'pathogen', 'week_end']) }} as row_sk,
+    *
+from mart

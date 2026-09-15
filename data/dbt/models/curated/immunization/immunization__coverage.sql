@@ -14,6 +14,9 @@
 -- source for that, which is why geography_level is kept as a dimension.
 {{ config(materialized="table") }}
 
+-- Wrapped so row_sk hashes this mart's own output names -- macros/row_sk.sql.
+with mart as (
+
 select
     program,
     vaccine,
@@ -34,3 +37,14 @@ select
     ingest_ts
 from {{ ref('core__vaccination_coverage') }}
 where coverage_pct is not null
+
+)
+
+select
+    {{ row_sk([
+        'program', 'vaccine', 'dose', 'geography',
+        'geography_level', 'fips', 'year_season', 'month',
+        'stratification_category', 'stratification',
+    ]) }} as row_sk,
+    *
+from mart
