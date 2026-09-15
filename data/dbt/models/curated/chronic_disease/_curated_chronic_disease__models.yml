@@ -11,7 +11,8 @@ models:
       State-level chronic-disease indicators over time, conformed from three CDC
       sources (Chronic Disease Indicators, BRFSS nutrition/physical
       activity/obesity, Alzheimer's & healthy aging). One row per source x state
-      x year x measure x value type x demographic stratum. Values are
+      x reporting window (year..year_end) x measure x value type x demographic
+      stratum. Values are
       prevalences, rates and means in mixed units -- always read data_value
       alongside data_value_type and data_value_unit.
     config:
@@ -21,7 +22,7 @@ models:
       - name: row_sk
         description: >-
           Surrogate key: this mart's natural key (source_dataset,
-          state_abbr, year, measure_id, data_value_type,
+          state_abbr, year, year_end, measure_id, data_value_type,
           stratification_category, stratification,
           stratification_category_2, stratification_2) hashed into one
           opaque column. It carries the grain -- `unique` on it asserts
@@ -61,6 +62,19 @@ models:
         data_type: varchar
       - name: year
         description: Year the indicator was measured (the start year where CDC reports a range).
+        data_type: integer
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: year_end
+        description: >-
+          Last year of the reporting window; equal to `year` for a single-year
+          estimate. Part of the grain, not decoration: the Alzheimer's source
+          publishes a single-year and a multi-year pooled estimate under the
+          same start year (2019/2019 next to 2019/2022), and they are different
+          statistics -- filter `year = year_end` for single-year figures rather
+          than averaging the two together.
         data_type: integer
         data_tests: [not_null]
         config:

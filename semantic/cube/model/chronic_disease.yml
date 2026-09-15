@@ -13,6 +13,13 @@
 # defensive than respiratory_hospital_load's.
 #
 # Everything here is a prevalence or a rate, so nothing is a SUM.
+#
+# The same warning applies to the time axis on the trend cube, for the same
+# reason. CDC's Alzheimer's source publishes a single-year estimate and a
+# multi-year pooled one under the same start year (2019/2019 alongside
+# 2019/2022), so `year` alone does not identify a reporting window -- group by
+# or filter `year_end` with it, or the averages below mix a one-year and a
+# four-year statistic. See chronic_disease__state_indicator_trend.sql.
 {% set trend = dbt_model('chronic_disease__state_indicator_trend') %}
 {% set county = dbt_model('chronic_disease__county_prevalence') %}
 
@@ -29,6 +36,23 @@ cubes:
 
     dimensions:
       {{ trend.as_dimensions(skip=trend_measures) }}
+
+      # Hand-written rather than a mart column: it is derived from two
+      # dimensions that are already here, and nothing outside the semantic
+      # layer needs it. Quoted and {CUBE}-qualified like every hand-written
+      # sql in this repo -- see semantic/cube/model/globals.py.
+      - name: is_single_year
+        sql: '{CUBE}."year" = {CUBE}."year_end"'
+        type: boolean
+        description: >-
+          True when the row covers one calendar year, false when it is a pooled
+          multi-year window. Filter to true to compare years without averaging a
+          single-year and a multi-year estimate together. Note what false
+          selects: CDC's Alzheimer's source publishes pooled rows *alongside*
+          the single-year ones (2019/2022 next to 2019/2019), but CDI's cancer,
+          cognitive health, oral health and sleep measures are published pooled
+          and nothing else -- filtering to true drops those indicators entirely
+          rather than making them annual.
 
     refresh_key:
       sql: 'SELECT MAX("ingest_ts") FROM {{ trend.sql_table }}'
