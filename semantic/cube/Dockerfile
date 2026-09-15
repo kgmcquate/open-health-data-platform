@@ -7,12 +7,22 @@
 # (semantic/cube/model/globals.py) reads the resulting manifest.json for
 # dimensions and column descriptions.
 #
-# dbt-duckdb because that is the project's adapter (ADR-0019); the manifest's
-# relation names (`CURATED.<SCHEMA>.<TABLE>`) resolve in Snowflake too, because
-# Snowflake *is* the catalog those tables live in — see
-# platform/terraform/snowflake.tf.
+# dbt v2 (Fusion), not dbt-duckdb: this project's catalogs.yml is v2
+# (flags.use_catalogs_v2 in dbt_project.yml, ADR-0019), and dbt-duckdb v1
+# can't parse it ("Adapter 'duckdb' does not support catalogs.yml v2 yet").
+# Installed the same way as the pipeline image (data/Dockerfile) — Fusion is
+# a standalone binary, not a pip package, so it's fetched via the shared
+# install script rather than `pip install`. The manifest's relation names
+# (`CURATED.<SCHEMA>.<TABLE>`) resolve in Snowflake too, because Snowflake
+# *is* the catalog those tables live in — see platform/terraform/snowflake.tf.
 FROM python:3.12-slim AS dbt-manifest
-RUN pip install --no-cache-dir "dbt-duckdb>=1.9"
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+COPY data/scripts/install_dbt_fusion.sh /tmp/install_dbt_fusion.sh
+RUN mkdir -p /opt/dbt-fusion/bin && /tmp/install_dbt_fusion.sh /opt/dbt-fusion
+ENV PATH="/opt/dbt-fusion/bin:${PATH}"
+
 WORKDIR /dbt
 COPY data/dbt /dbt
 RUN dbt deps && dbt parse
