@@ -14,6 +14,66 @@ on:
         description: Override the dagster + hub-api + mcp-cube + streamlit + cube image tag (blank = the sha-<12> of the deployed commit).
         type: string
         default: ""
+      deploy_all:
+        description: Deploy every chart (overrides the individual chart checkboxes below).
+        type: boolean
+        default: true
+      deploy_foundation:
+        description: "Chart: platform-base, Traefik, cert-manager, ClusterIssuer (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_opensearch:
+        description: "Chart: OpenSearch (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_openmetadata:
+        description: "Chart: OpenMetadata (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_proxy:
+        description: "Chart: GraphQL authz proxy (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_dagster_monitoring:
+        description: "Chart: Dagster monitoring dashboard (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_oauth2_proxy:
+        description: "Chart: oauth2-proxy (Dagster + monitoring wall) (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_dagster:
+        description: "Chart: Dagster (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_cube:
+        description: "Chart: Cube (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_streamlit:
+        description: "Chart: Streamlit (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_oauth2_proxy_streamlit:
+        description: "Chart: oauth2-proxy (Streamlit wall) (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_hub_api:
+        description: "Chart: hub-api (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_oauth2_proxy_app:
+        description: "Chart: oauth2-proxy (hub app wall) (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_mcp_cube:
+        description: "Chart: Cube MCP server (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
+      deploy_open_webui:
+        description: "Chart: Open WebUI (ignored if deploy_all is checked)"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-platform
@@ -66,6 +126,7 @@ jobs:
       # platform-base generates every internal secret itself; nothing sensitive
       # is passed to this step.
       - name: Foundation — platform-base, Traefik, cert-manager, ClusterIssuer
+        if: inputs.deploy_all || inputs.deploy_foundation
         run: make -C platform/helm base traefik cert-manager cluster-issuer
 
       # The only externally-issued secrets. Endpoint + bucket are non-secret and
@@ -202,44 +263,57 @@ jobs:
           kubectl -n app patch secret oauth2-proxy-app-secret --type merge -p "$patch"
 
       - name: OpenSearch
+        if: inputs.deploy_all || inputs.deploy_opensearch
         run: make -C platform/helm opensearch
 
       - name: OpenMetadata
+        if: inputs.deploy_all || inputs.deploy_openmetadata
         run: make -C platform/helm openmetadata
 
       - name: GraphQL authz proxy
+        if: inputs.deploy_all || inputs.deploy_proxy
         run: make -C platform/helm proxy
 
       - name: Dagster monitoring dashboard
+        if: inputs.deploy_all || inputs.deploy_dagster_monitoring
         run: make -C platform/helm dagster-monitoring
 
       - name: oauth2-proxy (Google login wall — Dagster + monitoring)
+        if: inputs.deploy_all || inputs.deploy_oauth2_proxy
         run: make -C platform/helm oauth2-proxy
 
       - name: Dagster
+        if: inputs.deploy_all || inputs.deploy_dagster
         run: make -C platform/helm dagster TAG="$TAG"
 
       - name: Cube
+        if: inputs.deploy_all || inputs.deploy_cube
         run: make -C platform/helm cube TAG="$TAG"
 
       - name: Streamlit
+        if: inputs.deploy_all || inputs.deploy_streamlit
         run: make -C platform/helm streamlit TAG="$TAG"
 
       - name: oauth2-proxy (Google login wall — Streamlit)
+        if: inputs.deploy_all || inputs.deploy_oauth2_proxy_streamlit
         run: make -C platform/helm oauth2-proxy-streamlit
 
       - name: hub-api
+        if: inputs.deploy_all || inputs.deploy_hub_api
         run: make -C platform/helm hub-api TAG="$TAG"
 
       - name: oauth2-proxy (Google login wall — hub app)
+        if: inputs.deploy_all || inputs.deploy_oauth2_proxy_app
         run: make -C platform/helm oauth2-proxy-app
 
       # mcp-cube before open-webui: the tool-server connection is registered by
       # hand in Open WebUI's admin UI, so the Service should already exist.
       - name: Cube MCP server
+        if: inputs.deploy_all || inputs.deploy_mcp_cube
         run: make -C platform/helm mcp-cube TAG="$TAG"
 
       - name: Open WebUI (chat UI — Google SSO is its own, not an oauth2-proxy wall)
+        if: inputs.deploy_all || inputs.deploy_open_webui
         env:
           OPENWEBUI_OIDC_CLIENT_ID: ${{ secrets.OPENWEBUI_OIDC_CLIENT_ID || secrets.DAGSTER_OIDC_CLIENT_ID }}
         run: make -C platform/helm open-webui

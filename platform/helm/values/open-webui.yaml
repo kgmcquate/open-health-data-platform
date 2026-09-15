@@ -113,7 +113,25 @@ extraEnvVars:
   - name: "ENABLE_MEMORY_SYSTEM_CONTEXT"
     value: "true"
   - name: DEFAULT_PROMPT_SUGGESTIONS
-    value: "[]" # [{"title": ["Title part 1", "Title part 2"], "content": "prompt"}]
+    value: >-
+      [
+        {
+          "title": ["Explore", "chronic disease trends"],
+          "content": "What datasets do we have on chronic disease prevalence, and how has it changed over time across states?"
+        },
+        {
+          "title": ["Compare", "health outcomes by region"],
+          "content": "Compare a key health outcome (e.g. obesity, diabetes, or life expectancy) across US regions using the latest available data."
+        },
+        {
+          "title": ["Summarize", "a recent dataset"],
+          "content": "Give me a summary of the most recently ingested HealthData.gov dataset, including what it covers and its time range."
+        },
+        {
+          "title": ["Find", "vaccination coverage data"],
+          "content": "What vaccination coverage data is available in the catalog, and which populations or geographies does it cover?"
+        }
+      ]
   - name: ENABLE_TOOL_PERMISSIONS
     value: "true"
   # The gate. `sso.enableSignup` below lets any Google account create an
@@ -215,7 +233,7 @@ extraEnvVars:
   - name: OPENAI_API_CONFIGS
     value: '{"0":{"enable":true,"model_ids":["claude-sonnet-5"]}}'
   - name: DEFAULT_MODELS
-    value: "health-data-analyst"
+    value: "health-data-analyst,claude-sonnet-5"
   # ENABLE_OLLAMA_API is already rendered by `ollama.enabled: false` above —
   # repeating it here would be a duplicate env entry, not a stronger one.
   #
