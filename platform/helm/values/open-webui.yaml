@@ -8,7 +8,7 @@
 # Core's REST API, because Cube Core ships no MCP server of its own (ADR-0016).
 #
 #   Cloudflare -> Traefik -> Ingress(chat.ohdp) -> THIS -> mcp-cube -> cube -> Snowflake
-#                                                       -> api.anthropic.com
+#                                                       -> openrouter.ai
 #
 # This is a *second* chat surface, not a replacement: hub-api keeps its own UI,
 # quota gate, Europe PMC literature tools and `chat_turns` logging at
@@ -37,7 +37,7 @@ image:
 # Subcharts. All off: the node runs near its memory ceiling (ARCHITECTURE.md §4)
 # and none of these earn their GB here.
 #   ollama    — local inference on a 32 GB shared node is not happening; the
-#               model is Claude, over the API.
+#               model is GLM 5.3 Flash, over OpenRouter's API (ADR-0023).
 #   pipelines — a second Python service whose job is filtering/transforming
 #               requests. Nothing needs it, and leaving it on silently
 #               repoints openaiBaseApiUrl at the pipelines Service.
@@ -66,17 +66,32 @@ websocket:
 replicaCount: 1
 
 # ---------------------------------------------------------------------------
-# Model backend: Anthropic through its OpenAI-compatible endpoint.
+# Model backend: OpenRouter (ADR-0023), running Z.ai's GLM 5.3 Flash.
 #
-# Open WebUI speaks OpenAI's API shape and Ollama's; it has no native Anthropic
-# client. Anthropic publishes an OpenAI-compatible surface at /v1, so pointing
-# Open WebUI at it costs nothing and bills the ANTHROPIC_API_KEY this platform
-# already uses for hub-api's agent. The compatibility layer does not expose
-# extended thinking or the full tool-use surface — hub-api's loop keeps those,
-# which is another reason the two chat surfaces are not interchangeable.
+# Open WebUI speaks OpenAI's API shape and Ollama's, and OpenRouter is natively
+# OpenAI-compatible at /v1 — no compatibility layer in between, unlike the
+# Anthropic endpoint this replaces. One key reaches every model OpenRouter
+# fronts, so changing which model this surface runs is a `model_ids` edit in
+# OPENAI_API_CONFIGS below rather than a new provider, a new key and a new
+# base URL.
+#
+# The key in `openwebui-secrets` is an *OpenRouter* key (sk-or-v1-...), not an
+# Anthropic one. The Secret entry keeps the name OPENAI_API_KEY because two
+# things read it under that name: this chart, which renders it into the pod as
+# $OPENAI_API_KEY, and ADR-0022's tracked pipe, whose API_KEY Valve defaults
+# from os.getenv("OPENAI_API_KEY"). That is why there is no key env var of our
+# own in extraEnvVars below — where ADR-0022 needed one for
+# AnthropicTrackedPipe, ADR-0023's OpenAITrackedPipe finds the chart's. Its
+# other two Valves (API_BASE_URL, PROVIDER) have no env fallback in the package
+# and are still typed in by hand at registration (docs/chatbot.md §11.4): they
+# must match openaiBaseApiUrl below and the `--provider` of the init Job's
+# pricing rows, or the pipe lists no models.
+#
+# hub-api still bills ANTHROPIC_API_KEY directly for its own agent — ADR-0023
+# changes this surface only.
 # ---------------------------------------------------------------------------
 enableOpenaiApi: true
-openaiBaseApiUrl: "https://api.anthropic.com/v1"
+openaiBaseApiUrl: "https://openrouter.ai/api/v1"
 openaiApiKeyExistingSecret: openwebui-secrets
 openaiApiKeyExistingSecretKey: OPENAI_API_KEY
 
@@ -96,19 +111,6 @@ extraEnvVars:
     value: "false"
   - name: ENABLE_PASSWORD_AUTH
     value: "false"
-  # ADR-0022: the `openwebui-token-tracking` package's AnthropicTrackedPipe
-  # reads this env var as the default for its `ANTHROPIC_API_KEY` Valve on
-  # first load — same key as openaiApiKeyExistingSecret above, just under the
-  # name that package's __init__ looks for (os.getenv("ANTHROPIC_API_KEY")).
-  # Registering the pipe Function itself is still a manual post-install step
-  # (docs/chatbot.md §11.4) — Open WebUI has no declarative path for custom
-  # Function code — but this at least means the API key doesn't also have to
-  # be retyped by hand into the Valve UI.
-  - name: ANTHROPIC_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: openwebui-secrets
-        key: OPENAI_API_KEY
   # The image is built with its static assets under /app/backend/open_webui/static,
   # owned by root (same root-default-build-args issue podSecurityContext below
   # works around for the container's own UID). Boot logs under runAsUser 1000
@@ -279,19 +281,27 @@ extraEnvVars:
           }
         }
       ]
-  # Restricted to Sonnet for now, not the full Claude lineup Anthropic's
-  # /v1/models would otherwise list. OPENAI_API_CONFIGS is keyed by the index
-  # of openaiBaseApiUrl above ("0", since there's only the one); model_ids
-  # replaces the fetched model list outright rather than filtering it, so
-  # this is also what stops Opus/Haiku from ever reaching the picker, not
-  # just which one loads first. Same ENABLE_PERSISTENT_CONFIG=false note as
-  # TOOL_SERVER_CONNECTIONS above applies: this is live on every read, not a
+  # Restricted to one model. This matters far more against OpenRouter than it
+  # did against Anthropic: OpenRouter's /v1/models lists several hundred models
+  # from every lab it fronts, and the key can bill against any of them, so
+  # without this the picker would offer the entire catalogue — including models
+  # costing 50x what GLM 5.3 Flash does — to every promoted user.
+  #
+  # OPENAI_API_CONFIGS is keyed by the index of openaiBaseApiUrl above ("0",
+  # since there's only the one); model_ids replaces the fetched model list
+  # outright rather than filtering it. Same ENABLE_PERSISTENT_CONFIG=false note
+  # as TOOL_SERVER_CONNECTIONS above applies: this is live on every read, not a
   # one-time seed, so a widened value in Settings -> Admin -> Models would not
   # survive a restart either.
+  #
+  # The id is OpenRouter's slug, vendor prefix and all — `z-ai/glm-5.3-flash`,
+  # not `glm-5.3-flash`. It must match the id the init Job upserts into the
+  # pricing table (platform/helm/manifests/open-webui-token-tracking-init-job.yaml)
+  # or the tracked pipe cannot price the model and refuses the request.
   - name: OPENAI_API_CONFIGS
-    value: '{"0":{"enable":true,"model_ids":["claude-sonnet-5"]}}'
+    value: '{"0":{"enable":true,"model_ids":["z-ai/glm-5.3-flash"]}}'
   - name: DEFAULT_MODELS
-    value: "health-data-analyst,claude-sonnet-5"
+    value: "health-data-analyst,z-ai/glm-5.3-flash"
   # ENABLE_OLLAMA_API is already rendered by `ollama.enabled: false` above —
   # repeating it here would be a duplicate env entry, not a stronger one.
   #
@@ -317,7 +327,7 @@ extraEnvVars:
   # and covers numpy/pandas/matplotlib, which is what chart generation needs.
   #
   # Still requires a one-time post-install step: Admin -> Settings -> Models ->
-  # claude-sonnet-5 -> enable the "Code Interpreter" capability checkbox. That
+  # z-ai/glm-5.3-flash -> enable the "Code Interpreter" capability checkbox. That
   # flag lives on the model row in Postgres, not behind ENABLE_PERSISTENT_CONFIG,
   # so it's a normal persistent UI setting and won't reset on pod restart.
   - name: ENABLE_CODE_INTERPRETER

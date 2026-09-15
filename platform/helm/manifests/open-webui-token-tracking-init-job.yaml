@@ -1,7 +1,8 @@
 # ADR-0022: one-time (but idempotent) setup for `openwebui-token-tracking` —
 # migrates Open WebUI's own Postgres database to add the credit-tracking
-# tables, and upserts pricing for claude-sonnet-5, which the package's own
-# bundled pricing table doesn't know about (it only ships Claude 3.5 entries).
+# tables, and upserts pricing for z-ai/glm-5.3-flash, which the package's own
+# bundled pricing table doesn't know about (it ships neither OpenRouter slugs
+# nor any GLM model).
 #
 # Not a Helm hook: Open WebUI is installed straight from the upstream
 # `open-webui/open-webui` chart (platform/helm/Makefile's `open-webui`
@@ -18,11 +19,21 @@
 # Both CLI commands below are safe to re-run: `init` uses SQLAlchemy `merge`
 # (upsert) for settings and pricing, and `pricing upsert` is upsert by name.
 #
-# Pricing note: input/output credit costs below are last-known Anthropic
-# Sonnet per-million-token rates ($3 / $15), *not* verified current pricing —
-# check https://www.anthropic.com/pricing before this Job first runs against
-# prod and update if they've changed. 1000 credits = 1 USD (the package's
-# documented convention; see docs/chatbot.md §11.4).
+# Pricing note: the credit costs below are OpenRouter's listed standard (non-
+# batch) rates for z-ai/glm-5.3-flash as of 2026-09-15 — $0.075 / $0.25 per
+# million tokens — read from https://openrouter.ai/api/v1/models. 1000 credits
+# = 1 USD (the package's documented convention; see docs/chatbot.md §11.4), so
+# $0.075/MTok is 75 credits per 1,000,000 input tokens. OpenRouter reprices
+# models without notice and its per-request fee is not modelled here, so treat
+# these as an estimate for rationing, not billing; re-check that endpoint when
+# the numbers matter (ADR-0023 carries this as an accepted drift risk, the same
+# one ADR-0022 named for Anthropic's rates).
+#
+# `--provider openrouter` is load-bearing in two directions: the tracked pipe
+# lists only models whose pricing row matches its PROVIDER Valve, and Open WebUI
+# prefixes the pipe's model ids with the Function's own id. Function named
+# `OpenRouter` -> id `openrouter` -> PROVIDER Valve `openrouter` -> this flag.
+# Any mismatch and the pipe shows an empty model list (docs/chatbot.md §11.4).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -60,11 +71,11 @@ spec:
             - |
               set -eu
               owui-token-tracking init
-              owui-token-tracking pricing upsert claude-sonnet-5 \
-                --provider anthropic \
-                --name "Claude Sonnet 5" \
-                --input-cost-credits 3000 --per-input-tokens 1000000 \
-                --output-cost-credits 15000 --per-output-tokens 1000000
+              owui-token-tracking pricing upsert z-ai/glm-5.3-flash \
+                --provider openrouter \
+                --name "GLM 5.3 Flash" \
+                --input-cost-credits 75 --per-input-tokens 1000000 \
+                --output-cost-credits 250 --per-output-tokens 1000000
               echo "token tracking init complete"
           resources:
             requests:

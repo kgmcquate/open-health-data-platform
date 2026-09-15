@@ -114,14 +114,15 @@ kubectl -n app create secret generic hub-api-secrets \
   --from-literal=STRIPE_SECRET_KEY= \
   --from-literal=OIDC_CLIENT_SECRET=
 
-# Open WebUI (ADR-0017). OPENAI_API_KEY is the *Anthropic* key: Open WebUI has
-# no native Anthropic client and reaches https://api.anthropic.com/v1 through
-# its OpenAI-compatible surface. GOOGLE_CLIENT_SECRET belongs to Open WebUI's
-# own OAuth client — redirect URI
+# Open WebUI (ADR-0017). OPENAI_API_KEY holds the *OpenRouter* key (ADR-0023):
+# OpenRouter is OpenAI-compatible at https://openrouter.ai/api/v1, and this
+# surface runs z-ai/glm-5.3-flash there rather than Claude direct — hub-api's
+# ANTHROPIC_API_KEY is a different key for a different service now.
+# GOOGLE_CLIENT_SECRET belongs to Open WebUI's own OAuth client — redirect URI
 # https://chat.open-health-data-platform.org/oauth/google/callback — not to any
 # of the oauth2-proxy walls.
 kubectl -n app create secret generic openwebui-secrets \
-  --from-literal=OPENAI_API_KEY="$ANTHROPIC_API_KEY" \
+  --from-literal=OPENAI_API_KEY="$OPENROUTER_API_KEY" \
   --from-literal=GOOGLE_CLIENT_SECRET="$OPENWEBUI_OIDC_CLIENT_SECRET"
 
 # oauth2-proxy (ADR-0007) — merge the Google client creds into the Secret

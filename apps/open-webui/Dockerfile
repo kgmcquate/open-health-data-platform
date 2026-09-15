@@ -18,5 +18,8 @@ FROM ghcr.io/open-webui/open-webui:0.11.3
 # Exact version pinned deliberately: this package's own bundled pricing table
 # (src/openwebui_token_tracking/resources/models.json) does not know about
 # every model we run, which is why the init Job also upserts pricing for
-# claude-sonnet-5 explicitly (platform/helm/manifests/open-webui-token-tracking-init-job.yaml).
+# z-ai/glm-5.3-flash explicitly (platform/helm/manifests/open-webui-token-tracking-init-job.yaml).
+# This version is also where `pipes/openai.py` (OpenAITrackedPipe, with its
+# API_BASE_URL/PROVIDER Valves) comes from — ADR-0023 routes OpenRouter through
+# it, so don't drop below it.
 RUN pip install --no-cache-dir openwebui-token-tracking==0.1.10

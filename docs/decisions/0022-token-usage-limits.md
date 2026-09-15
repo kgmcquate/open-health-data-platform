@@ -1,6 +1,11 @@
 # 0022 — Per-user/group token usage limits on Open WebUI
 
-**Status:** Accepted
+**Status:** Accepted. **Amended by
+[ADR-0023](0023-openrouter-glm-model-backend.md)**: the tracked pipe is now
+`OpenAITrackedPipe` against OpenRouter rather than `AnthropicTrackedPipe`, and
+the init Job prices `z-ai/glm-5.3-flash`. The mechanism below — credit
+accounting in Open WebUI's Postgres, enforced by a pipe Function, seeded by an
+idempotent Job — is unchanged.
 **Extends:** [ADR-0017](0017-open-webui-chat-ui.md) — same deployment, closes
 the one gap its Consequences section named but didn't solve: "Cost control is
 weaker on the new surface... the `pending` default role and the Anthropic

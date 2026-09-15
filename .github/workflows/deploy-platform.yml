@@ -163,12 +163,22 @@ jobs:
           # OAuth integration rather than an oauth2-proxy wall, its redirect URI
           # is https://chat.open-health-data-platform.org/oauth/google/callback,
           # and it is the only credential standing in front of a metered
-          # Anthropic key. Set OPENWEBUI_OIDC_CLIENT_ID / _SECRET in the repo;
+          # OpenRouter key. Set OPENWEBUI_OIDC_CLIENT_ID / _SECRET in the repo;
           # they fall back to Dagster's client, which works only if that client
           # also lists the chat redirect URI.
           OPENWEBUI_OIDC_CLIENT_ID: ${{ secrets.OPENWEBUI_OIDC_CLIENT_ID || secrets.DAGSTER_OIDC_CLIENT_ID }}
           OPENWEBUI_OIDC_CLIENT_SECRET: ${{ secrets.OPENWEBUI_OIDC_CLIENT_SECRET || secrets.DAGSTER_OIDC_CLIENT_SECRET }}
+          # hub-api's own agent, still Anthropic direct (docs/chatbot.md §4).
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Open WebUI's model backend since ADR-0023: an OpenRouter key
+          # (sk-or-v1-...), not an Anthropic one. Deliberately a separate repo
+          # secret from ANTHROPIC_API_KEY above — the two surfaces bill
+          # different providers now, and giving the public chat host its own key
+          # means its spend can be capped and rotated at OpenRouter without
+          # touching hub-api. Create at https://openrouter.ai/settings/keys with
+          # a credit limit on it, then:
+          #   gh secret set OPENROUTER_API_KEY
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           # JWT for the dedicated "openwebui-mcp" OpenMetadata Bot (read-only
           # Data Consumer role) — deliberately not OPENMETADATA_JWT below,
           # which backs the pipeline's/hub-api's broader-permission bot. Chat
@@ -231,13 +241,15 @@ jobs:
             --from-literal=OHDP_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
             --from-literal=OHDP_GITHUB_TOKEN="$HUB_GITHUB_ISSUES_TOKEN" \
             --from-literal=OHDP_TOOLS_AUTH_TOKEN="$TOOLS_AUTH_TOKEN"
-          # Open WebUI's externally-issued half. OPENAI_API_KEY is the Anthropic
-          # key: Open WebUI has no native Anthropic client and talks to
-          # https://api.anthropic.com/v1 through its OpenAI-compatible surface
-          # (values/open-webui.yaml). The generated half — DATABASE_URL and
-          # WEBUI_SECRET_KEY — is the `openwebui-db` Secret from platform-base.
+          # Open WebUI's externally-issued half. The Secret entry is named
+          # OPENAI_API_KEY but holds the *OpenRouter* key (ADR-0023): OpenRouter
+          # is OpenAI-compatible at https://openrouter.ai/api/v1, and that name
+          # is what values/open-webui.yaml's openaiApiKeyExistingSecretKey and
+          # the token-tracking pipe's API_KEY Valve both read. The generated
+          # half — DATABASE_URL and WEBUI_SECRET_KEY — is the `openwebui-db`
+          # Secret from platform-base.
           upsert app openwebui-secrets \
-            --from-literal=OPENAI_API_KEY="$ANTHROPIC_API_KEY" \
+            --from-literal=OPENAI_API_KEY="$OPENROUTER_API_KEY" \
             --from-literal=GOOGLE_CLIENT_SECRET="$OPENWEBUI_OIDC_CLIENT_SECRET"
 
           # Open WebUI's MCP connection to the OpenMetadata catalog

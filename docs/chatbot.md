@@ -4,7 +4,8 @@
 and §3.5's CI-tested FQN round-trip are not; §5's Vega-Lite charts and §8's
 ticket flow are not. See §9 for what each step's state actually is. A second chat
 surface — Open WebUI over an MCP server for Cube — now runs alongside this one
-([ADR-0017](decisions/0017-open-webui-chat-ui.md)); see §11.
+([ADR-0017](decisions/0017-open-webui-chat-ui.md), model backend since
+[ADR-0023](decisions/0023-openrouter-glm-model-backend.md)); see §11.
 
 **Audience:** the implementing agent. Read [ARCHITECTURE.md](ARCHITECTURE.md) §1, §5, §6 and
 [ADR-0016](decisions/0016-chat-agent-tool-surface.md) first.
@@ -367,7 +368,7 @@ deployed from its official Helm chart, calling the semantic layer through
 ```
 chat.ohdp.org -> Traefik -> open-webui (Google SSO, its own)
                               |-> mcp-cube (ClusterIP) -> cube -> Snowflake
-                              \-> api.anthropic.com/v1  (OpenAI-compatible)
+                              \-> openrouter.ai/api/v1  (GLM 5.3 Flash, ADR-0023)
 
 app.ohdp.org  -> Traefik -> oauth2-proxy-app -> hub-api   (§1-§10, unchanged)
 ```
@@ -380,22 +381,27 @@ surface with its safety properties intact — `CubeQuery` is validated in
 
 It does **not** get: the quota gate (§6), the `chat_turns` log that is also the
 eval set (§7), the Europe PMC tools and their citation check (§2.3), or
-OpenMetadata context (§3). Nor does Anthropic's OpenAI-compatible endpoint expose
-extended thinking. **Those are the reasons hub-api is still deployed**, and why
+OpenMetadata context (§3). The two surfaces also no longer run the same model:
+since [ADR-0023](decisions/0023-openrouter-glm-model-backend.md) this one is
+GLM 5.3 Flash over OpenRouter, while hub-api's loop is Claude Opus 5 over the
+Anthropic SDK with extended thinking (§4). **Those are the reasons hub-api is
+still deployed**, and why
 "which surface should exist in six months" is a question for evidence rather than
 this document.
 
 ### 11.2 Post-install steps that are not in the chart
 
-The MCP tool server registration and the model restriction to Sonnet are now
+The MCP tool server registration and the restriction to a single model are now
 seeded declaratively from `values/open-webui.yaml` (`TOOL_SERVER_CONNECTIONS`
 and `OPENAI_API_CONFIGS`/`DEFAULT_MODELS`) rather than clicked through the
 UI — but both are Open WebUI `PersistentConfig` values: the env var only
 writes the initial row into Open WebUI's own database on first boot. After
 that, whatever an admin sets in Settings is what persists across restarts,
-chart upgrades included. If mcp-cube isn't showing four tools, or a model
-outside Sonnet is reachable, check Settings first before assuming the chart
-value isn't applying — it may simply have already been overridden there. See
+chart upgrades included. If mcp-cube isn't showing four tools, or a model other
+than `z-ai/glm-5.3-flash` is reachable, check Settings first before assuming the
+chart value isn't applying — and note that the second of those matters more
+under OpenRouter than it did under Anthropic, since one key there reaches
+several hundred models at every price point (ADR-0023) — it may simply have already been overridden there. See
 `charts/mcp-cube/templates/NOTES.txt` for the tool count.
 
 One step remains manual, because Open WebUI has no env var for it at all:
@@ -413,8 +419,8 @@ this one surface departs from ADR-0007's pattern. Password sign-in is off; OAuth
 sign-up is on; every new account lands in `DEFAULT_USER_ROLE=pending` and sees
 nothing until an admin promotes it. **That pending role is the whole access
 policy**, standing in for the email allowlist the other three walls use, and it is
-what separates a public hostname from a metered Anthropic key. There is no quota
-gate behind it.
+what separates a public hostname from a metered OpenRouter key. There is no
+quota gate behind it.
 
 ### 11.4 Token usage limits (ADR-0022)
 
@@ -433,31 +439,53 @@ lives with for MCP tool-server registration:
 
   ```python
   """
-  title: Anthropic Pipe
+  title: OpenRouter Pipe
   author: (you)
   requirements: openwebui-token-tracking
   version: 0.1.0
   """
-  from openwebui_token_tracking.pipes.anthropic import AnthropicTrackedPipe
+  from openwebui_token_tracking.pipes.openai import OpenAITrackedPipe
 
-  Pipe = AnthropicTrackedPipe
+  Pipe = OpenAITrackedPipe
   ```
 
-  Name the Function `Anthropic` — matching `provider` in the pricing table is
-  required and case-insensitive. Its `ANTHROPIC_API_KEY` Valve defaults from
-  the pod's own `ANTHROPIC_API_KEY` env var (`values/open-webui.yaml`, same
-  secret as `openaiApiKeyExistingSecret`), so it doesn't need to be retyped —
-  confirm the Valve picked it up before enabling the Function.
+  `OpenAITrackedPipe`, not `AnthropicTrackedPipe` — since ADR-0023 the backend
+  is OpenRouter, which is OpenAI-compatible, and this pipe exists for exactly
+  that case (its docstring: "providers that are fully compliant with OpenAI's
+  API specification... can also be used with this pipe by setting the respective
+  values in the Valves").
+
+  Name the Function `OpenRouter`. That name becomes the Function id
+  (`openrouter`), which Open WebUI prefixes onto every model the pipe lists,
+  and the pipe strips `{PROVIDER}.` back off before pricing the request — so
+  three things must agree or the pipe shows an empty model list and nothing
+  works: the Function name, the `PROVIDER` Valve, and `--provider` in the init
+  Job's `pricing upsert`. All three are `openrouter`.
+
+  Then set its Valves:
+
+  | Valve | Value | Default from env? |
+  |---|---|---|
+  | `API_KEY` | the OpenRouter key | yes — `OPENAI_API_KEY`, already in the pod |
+  | `API_BASE_URL` | `https://openrouter.ai/api/v1` | **no** — type it in |
+  | `PROVIDER` | `openrouter` | **no** — type it in |
+
+  `API_KEY` defaults from the pod's own `OPENAI_API_KEY` env var, which the
+  chart renders from `openaiApiKeyExistingSecret` (`values/open-webui.yaml`) —
+  confirm it picked that up rather than retyping it. The other two default to
+  OpenAI's own endpoint and provider name, and the package reads no env var for
+  either, so they are hand-entered. Leaving `API_BASE_URL` at its default sends
+  chat traffic to `api.openai.com` with an OpenRouter key and fails 401.
 
 - **Hide the untracked model.** Once the Function is enabled it registers a
-  new selectable model (`claude-sonnet-5`, pulled from the pricing table the
-  init Job seeds). The existing plain `claude-sonnet-5` OpenAI-API model is
-  still directly selectable and bypasses tracking entirely — set its
+  new selectable model (`openrouter.z-ai/glm-5.3-flash`, pulled from the
+  pricing table the init Job seeds). The plain `z-ai/glm-5.3-flash` OpenAI-API
+  model is still directly selectable and bypasses tracking entirely — set its
   visibility to Private/admin-only in Settings → Admin → Models so regular
   users can only reach the model through the tracked pipe.
 
 - **Re-point the `health-data-analyst` custom model.** It's currently built
-  on top of the untracked `claude-sonnet-5` base model
+  on top of the untracked `z-ai/glm-5.3-flash` base model
   (`models/health-data-analyst-*.json`) — re-import it with its base model
   changed to the tracked pipe's model, or it's a second bypass.
 
@@ -472,7 +500,10 @@ lives with for MCP tool-server registration:
 
   Every user already gets the base allowance seeded by the init Job
   (`token_tracking_base_settings`, 1000 credits/day = $1 at the package's
-  1000-credits-per-USD convention) — credit groups are additive on top of
+  1000-credits-per-USD convention — which buys far more conversation against
+  GLM 5.3 Flash at $0.075/$0.25 per MTok than it did against Sonnet at $3/$15,
+  so revisit the number rather than assuming it still bites) — credit groups
+  are additive on top of
   that, not a replacement for it.
 
 This only covers Open WebUI's surface. hub-api's own quota gate (§6) is

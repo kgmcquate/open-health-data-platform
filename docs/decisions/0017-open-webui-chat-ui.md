@@ -1,6 +1,9 @@
 # 0017 — Open WebUI as a chat UI, with our own Cube MCP server
 
-**Status:** Accepted
+**Status:** Accepted, except for its model backend — **superseded in part by
+[ADR-0023](0023-openrouter-glm-model-backend.md)**, which moves this surface off
+Anthropic's OpenAI-compatible endpoint to OpenRouter running GLM 5.3 Flash. The
+deployment, tool surface, SSO and `pending` default role below are unchanged.
 **Extends:** [ADR-0016](0016-chat-agent-tool-surface.md) — the Cube tool surface is
 unchanged; this ADR gives it a second transport and a second front end.
 **Relates to:** [ADR-0007](0007-oauth2-proxy-google-sso.md), [ADR-0015](0015-streamlit-over-superset.md)
