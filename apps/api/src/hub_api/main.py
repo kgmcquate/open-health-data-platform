@@ -31,6 +31,7 @@ from fastapi.responses import FileResponse
 
 from hub_api import db
 from hub_api.chat import router as chat_router
+from hub_api.dashboards import dashboards_router
 from hub_api.issues import tools_app
 from ohdp_shared import configure_logging, get_logger, settings
 
@@ -69,6 +70,12 @@ app.include_router(chat_router)
 # the reason the chat model cannot see `/api/chat` as a callable tool
 # (hub_api.issues). The hub's own page calls the same route through the same
 # oauth2-proxy wall, so there is one implementation behind both surfaces.
+# The dashboard tools join the same sub-app rather than getting one of their
+# own, because Open WebUI reads one spec per registered tool server and every
+# operation in it becomes a tool. Keeping them together means one URL, one
+# bearer token and one place to check what the chat model can actually call.
+tools_app.include_router(dashboards_router)
+
 app.mount("/tools", tools_app)
 
 

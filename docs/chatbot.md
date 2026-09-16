@@ -1,9 +1,10 @@
 # Chatbot — design (M3)
 
 **Status:** M3.0-M3.2 and a first M3.4 are built and deployable. §3.3's personas
-and §3.5's CI-tested FQN round-trip are not; §5's Vega-Lite charts and §8's
-ticket flow are not. See §9 for what each step's state actually is. A second chat
-surface — Open WebUI over an MCP server for Cube — now runs alongside this one
+and §3.5's CI-tested FQN round-trip are not. §5's charts and §8's ticket flow
+now are — both on the Open WebUI surface rather than the one this document was
+written for. See §9 for what each step's state actually is. That second surface —
+Open WebUI over an MCP server for Cube — runs alongside this one
 ([ADR-0017](decisions/0017-open-webui-chat-ui.md), model backend since
 [ADR-0023](decisions/0023-openrouter-glm-model-backend.md)); see §11.
 
@@ -209,23 +210,35 @@ nothing to scope. Persona is selected by hub-api and passed explicitly.
 
 ## 5. Visualizations
 
-Two paths, staged.
+**Built, on the Open WebUI surface** ([ADR-0025](decisions/0025-dashboards-as-code-in-chat.md)).
+A dashboard is a spec, not a picture: a name, a title, and up to six panels, each
+one a validated `CubeQuery` plus a `Chart` naming which returned column goes on
+which axis. `render_dashboard` on hub-api's `/tools` app runs the queries and
+answers with the rendered HTML under `Content-Type: text/html` and
+`Content-Disposition: inline`, which is what makes Open WebUI display a tool
+result as an interactive iframe rather than as markup in the transcript.
 
-**M3 — inline, ephemeral.** The agent emits a **validated chart spec** (Vega-Lite) alongside
-the result set; `hub-web` renders it in the chat thread. No write path, no deploy, and the
-generated query is shown next to the chart. The spec is schema-validated and its data is bound
-to the rows we just returned — the model never supplies data values, only encodings.
+The model supplies encodings and never data values — a `Panel` has nowhere to
+put a number — and it writes neither HTML nor Vega-Lite, because `Chart` is a
+closed enum that `ohdp_agent.dashboard` compiles. That closes the hole an
+arbitrary Vega-Lite spec would open: `data.url` is a fetch issued from inside
+the reader's browser.
 
-**M4 — durable, reviewable.** A "save as dashboard" action writes an
-`apps/streamlit/pages/NN_<slug>.py` file and opens a PR. This is exactly the AI-authored
-dashboard workflow ADR-0015 chose Streamlit for, and it inherits git review for free. By then
-Streamlit should read Cube rather than Snowflake directly, so a saved dashboard and the chat
-answer that spawned it cannot disagree about a number.
+This replaces the code-interpreter path the model's system prompt used to
+describe. Under the `pyodide` engine a saved matplotlib figure lands in a
+browser-side virtual filesystem that nothing reads, so no image ever appeared.
 
-The chat UI stays in `hub-web`, not Streamlit — Streamlit sits behind a single-operator
-oauth2-proxy wall (ADR-0015) and has no relationship to tiers, quota, or billing.
+**Durable, and reviewable as code.** `apps/api/src/ohdp_agent/dashboards/*.yaml`
+holds the dashboards that were kept, and every rendered card carries its own
+YAML source so keeping one is a copy-and-PR rather than a retype.
+`open_saved_dashboard` re-runs a saved spec against current data — it stores
+questions, not answers, so it cannot go stale and cannot disagree with the
+semantic layer.
 
----
+Streamlit (ADR-0015) still queries Snowflake directly. Teaching it to render the
+same spec files through Cube is the step that would make a saved dashboard and
+the chat answer that produced it provably the same numbers; it needs a Cube
+client and secret in that chart, so it is its own decision.
 
 ## 6. Safety
 
@@ -283,10 +296,13 @@ guardrails, two callers.
 Two things are worth knowing before changing it:
 
 **The spec is deliberately narrow.** `/tools` is a *mounted sub-app*, so its `/openapi.json`
-lists exactly one operation. Open WebUI turns every operation in the spec it reads into a
-callable tool — pointing it at hub-api's root spec would hand the chat model `POST /api/chat`,
-a chat endpoint able to invoke itself. There is no per-operation allowlist on the Open WebUI
-side, so that narrowing *is* the access control, and `test_issues.py` asserts it.
+lists only what is deliberately put there — `report_issue` plus ADR-0025's three dashboard
+operations, and nothing else. Open WebUI turns every operation in the spec it reads into a
+callable tool, so pointing it at hub-api's root spec would hand the chat model `POST
+/api/chat`, a chat endpoint able to invoke itself. There is no per-operation allowlist on the
+Open WebUI side, so that narrowing *is* the access control. `test_issues.py` asserts the
+exact set, not a subset: adding a route to the mounted app hands the chat model a tool, and
+that should be a decision rather than a side effect.
 
 **There are two identities, and only one of them is a person.** A browser arrives through
 oauth2-proxy carrying `X-Forwarded-Email` and its issues are attributed to that address. Open
@@ -325,9 +341,9 @@ Each step should be demoable and independently reviewable.
 | **M3.1** | **Done.** `ohdp_agent`: Cube tools over REST, OM MCP client, Europe PMC tools. Unit-tested with no model in the loop. |
 | **M3.2** | **Done, with two deviations** recorded at the top of `ohdp_agent/loop.py`: a manual loop rather than the SDK tool runner, and one phase rather than two (no user gate between plan and execute). SSE, quota gate and Postgres logging are in. |
 | **M3.3** | **Not done.** Personas and Context Center seed content in `catalog/openmetadata/seed/`. Until this lands, `get_persona_context` 404s and the agent uses its built-in system prompt. |
-| **M3.4** | **Partly done.** A chat UI exists — one static page served by hub-api, not hub-web (see `hub_api/main.py` for why). Vega-Lite specs are **not** implemented; results render as a table plus the compiled SQL. |
+| **M3.4** | **Partly done.** A chat UI exists — one static page served by hub-api, not hub-web (see `hub_api/main.py` for why); there, results still render as a table plus the compiled SQL. Charts landed on the *Open WebUI* surface instead (§5, ADR-0025) — hub-api's own page does not call `render_dashboard`. |
 | **M3.5** | **Not done.** Every turn is logged to `chat_turns` in the shape §7 wants, so the eval set is accumulating; there is no harness and no seed question set. |
-| **M4** | Streamlit dashboard generation via PR; news retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces. |
+| **M4** | Streamlit rendering the ADR-0025 dashboard specs through Cube; news retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces, and dashboards-as-code landed with it (§5). |
 
 **Deployed as:** `app.open-health-data-platform.org`, behind an `oauth2-proxy` Google wall
 (`platform/helm/values/oauth2-proxy-app.yaml`) that owns the hostname; `charts/hub-api` has
@@ -377,7 +393,8 @@ app.ohdp.org  -> Traefik -> oauth2-proxy-app -> hub-api   (§1-§10, unchanged)
 
 It gets a real chat product for none of our code, and the full §2.2 Cube tool
 surface with its safety properties intact — `CubeQuery` is validated in
-`ohdp_mcp`, on our side of the wire.
+`ohdp_mcp`, on our side of the wire. It is also the only surface that draws
+charts: §5's dashboards render there and not on hub-api's own page.
 
 It does **not** get: the quota gate (§6), the `chat_turns` log that is also the
 eval set (§7), the Europe PMC tools and their citation check (§2.3), or
@@ -444,6 +461,7 @@ lives with for MCP tool-server registration:
   requirements: openwebui-token-tracking
   version: 0.1.0
   """
+
   from openwebui_token_tracking.pipes.openai import OpenAITrackedPipe
 
   Pipe = OpenAITrackedPipe
@@ -508,3 +526,23 @@ lives with for MCP tool-server registration:
 
 This only covers Open WebUI's surface. hub-api's own quota gate (§6) is
 separate and unaffected.
+
+### 11.5 Dashboards (ADR-0025)
+
+Nothing in the chart changes for this: `TOOL_SERVER_CONNECTIONS` already points
+at hub-api's `/tools` spec, and the three dashboard operations appear there as
+soon as hub-api is redeployed. Two manual steps do apply, both for the same
+reason as §11.2 — Open WebUI has no declarative path for either:
+
+- **Re-import the `health-data-analyst` model** (`models/health-data-analyst-*.json`).
+  Its system prompt is what routes charts to `render_dashboard`; the copy in
+  Open WebUI's database is authoritative, so an unimported change has no effect
+  and the model keeps writing matplotlib into a void.
+- **Leave `IFRAME_CSP` unset.** The embed loads Vega from `cdn.jsdelivr.net`,
+  which the CSP in Open WebUI's hardening guide blocks outright. Tighten it by
+  allowlisting that origin in `script-src`, never by pasting the example.
+
+The per-user **iframe Sandbox Allow Same Origin** setting stays off. The
+dashboard reports its own height by `postMessage` rather than relying on the
+parent measuring it, which is the whole reason it works under the default
+sandbox.

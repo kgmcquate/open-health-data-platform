@@ -2,7 +2,7 @@
 
 No GitHub: the API is a transport stub. What these tests protect is everything
 around the call — that the two identity paths stay distinct, that the spec Open
-WebUI reads exposes one operation and not the chat endpoint, that a duplicate
+WebUI reads exposes only the intended operations and not the chat endpoint, that a duplicate
 does not become a second issue, and that a pasted credential does not reach a
 public repository.
 """
@@ -107,15 +107,16 @@ def test_web_user_is_attributed_to_the_verified_email(
 
 def test_unauthenticated_caller_is_refused(client: TestClient, github: FakeGitHub) -> None:
     assert client.post("/tools/report_issue", json=REPORT).status_code == 401
-    assert client.post(
-        "/tools/report_issue", json=REPORT, headers={"Authorization": "Bearer wrong"}
-    ).status_code == 401
+    assert (
+        client.post(
+            "/tools/report_issue", json=REPORT, headers={"Authorization": "Bearer wrong"}
+        ).status_code
+        == 401
+    )
     assert github.created == []
 
 
-def test_duplicate_title_returns_the_existing_issue(
-    client: TestClient, github: FakeGitHub
-) -> None:
+def test_duplicate_title_returns_the_existing_issue(client: TestClient, github: FakeGitHub) -> None:
     github.existing = [
         {
             "number": 7,
@@ -188,12 +189,24 @@ def test_unconfigured_deployment_refuses_instead_of_half_working(
     assert response.status_code == 503
 
 
-def test_tool_spec_exposes_only_report_issue(client: TestClient) -> None:
+def test_tool_spec_exposes_only_the_allowlisted_tools(client: TestClient) -> None:
     """The narrowing that keeps `/api/chat` out of the model's hands.
 
     Open WebUI turns every operation in the spec it reads into a callable tool,
-    so this assertion is the access control, not a tidiness check.
+    so this assertion is the access control, not a tidiness check. It is an
+    exact set rather than a subset check on purpose: a route added to the
+    mounted app is a tool handed to the chat model, and that should be a
+    decision someone made here rather than a side effect of a new endpoint.
     """
     spec = client.get("/tools/openapi.json").json()
-    assert list(spec["paths"]) == ["/report_issue"]
+    assert {
+        operation["operationId"]
+        for methods in spec["paths"].values()
+        for operation in methods.values()
+    } == {
+        "report_issue",
+        "render_dashboard",
+        "list_saved_dashboards",
+        "open_saved_dashboard",
+    }
     assert spec["paths"]["/report_issue"]["post"]["operationId"] == "report_issue"
