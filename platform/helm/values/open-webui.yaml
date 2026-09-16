@@ -170,6 +170,8 @@ extraEnvVars:
   # Anthropic key. The first account created becomes the admin.
   - name: DEFAULT_USER_ROLE
     value: "pending"
+  - name: BYPASS_MODEL_ACCESS_CONTROL
+    value: "true"
   - name: WEBUI_NAME
     value: "Open Health Data Platform"
   # Pre-registers the mcp-cube tool server so it no longer has to be added by
