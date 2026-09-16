@@ -35,7 +35,6 @@ wanted anyway for provenance (§6, "every answer shows its work").
 
 from __future__ import annotations
 
-import html
 import json
 import re
 from typing import Annotated, Any, Literal
@@ -450,7 +449,33 @@ def _json_for_html(value: Any) -> str:
 
 
 def _esc(text: str | None) -> str:
-    return html.escape(text or "", quote=True)
+    """Escape for HTML text content, in a form that survives the chat client.
+
+    Two departures from `html.escape(..., quote=True)`, both forced by how Open
+    WebUI hands an embed to its own frontend. `ToolCallDisplay.svelte` and
+    `ConsecutiveDetailsGroup.svelte` HTML-entity-**decode** the JSON string
+    carrying this document *before* parsing it.
+
+    **Quotes are left raw.** A `&quot;` decodes to a bare `"` inside a JSON
+    string literal, so `JSON.parse` fails; their `parseJSONString` returns the
+    raw text instead of raising, the `Array.isArray(...)` guard rejects it, and
+    the embed is dropped with no error anywhere — the dashboard simply never
+    appears. A raw `"` is valid in HTML text content and crosses the wire as
+    `\\"`, which the decode pass does not touch.
+
+    **`&`, `<` and `>` are escaped twice.** That same pass would undo a single
+    escape and hand the frontend live markup assembled from model-supplied
+    titles and warehouse values. Escaping twice leaves exactly one level after
+    the decode, which renders as the literal character. Should the client ever
+    stop decoding, this degrades to a visible `&lt;` rather than to injected
+    markup — the safe direction to fail in.
+
+    Nothing escaped here may be interpolated into an HTML *attribute*; every
+    call site is text content, which is what makes leaving quotes raw sound.
+    `test_dashboard.py` replays the decode-then-parse round trip, so a future
+    edit that reintroduces `&quot;` fails there rather than in front of a user.
+    """
+    return (text or "").replace("&", "&amp;amp;").replace("<", "&amp;lt;").replace(">", "&amp;gt;")
 
 
 def _table_html(rows: list[dict[str, Any]], columns: list[str]) -> str:

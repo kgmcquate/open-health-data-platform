@@ -16,6 +16,7 @@ picture, which is why they are asserted rather than eyeballed:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -295,3 +296,61 @@ def test_a_rejected_panel_query_returns_cubes_own_reason(
     )
     assert response.status_code == 400
     assert "ed_visits.nope" in response.json()["detail"]
+
+
+# --- the handoff to Open WebUI's frontend ----------------------------------
+#
+# The embed does not travel to the browser as an HTTP body. Open WebUI puts it
+# on a `function_call_output` item, `structuredOutput.ts` JSON-stringifies it
+# into a token attribute, and `ToolCallDisplay.svelte` /
+# `ConsecutiveDetailsGroup.svelte` then run `parseJSONString(decode(attr))` —
+# an HTML-entity decode *before* the JSON parse. These two tests replay that
+# round trip, because everything it can break, it breaks silently: their
+# `parseJSONString` returns the raw string rather than raising, and the
+# `Array.isArray(...)` guard drops the embed with no error on any surface.
+
+
+def _through_open_webui(document: str) -> Any:
+    """What the frontend ends up with, given `document` as the embed."""
+    import html as html_module
+
+    attribute = json.dumps([document])  # stringifyAttribute()
+    decoded = html_module.unescape(attribute)  # decode() from html-entities
+    try:
+        return json.loads(decoded)  # parseJSONString()
+    except json.JSONDecodeError:
+        return decoded  # their catch: the raw string, not an array
+
+
+def test_the_embed_survives_decode_before_parse() -> None:
+    """The bug that made the dashboard silently not appear at all.
+
+    `html.escape(..., quote=True)` emits `&quot;` for every quote in the
+    embedded Cube query and YAML source. The decode pass turns each one into a
+    bare `"` inside a JSON string literal, and the whole array stops parsing.
+    """
+    spec = DashboardSpec.model_validate(SPEC)
+    document = render_html(spec, [PanelData(rows=ROWS, row_count=2)])
+
+    assert "&quot;" not in document
+    survived = _through_open_webui(document)
+    assert isinstance(survived, list), "the embed was dropped before it reached the iframe"
+    assert survived[0] == document
+
+
+def test_markup_in_a_title_cannot_survive_the_decode_as_markup() -> None:
+    """The other half: that decode also *undoes* a single level of escaping.
+
+    Titles and captions are model-supplied and cell values come from the
+    warehouse, so escaping them once and letting the host decode it would hand
+    the frontend live markup.
+    """
+    spec = DashboardSpec.model_validate(
+        {**SPEC, "panels": [{**SPEC["panels"][0], "title": "<script>alert(1)</script>"}]}
+    )
+    document = render_html(spec, [PanelData(rows=ROWS, row_count=2)])
+
+    delivered = _through_open_webui(document)
+    assert isinstance(delivered, list)
+    assert "<script>alert(1)</script>" not in delivered[0]
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in delivered[0]

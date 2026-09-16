@@ -542,6 +542,12 @@ reason as §11.2 — Open WebUI has no declarative path for either:
   which the CSP in Open WebUI's hardening guide blocks outright. Tighten it by
   allowlisting that origin in `script-src`, never by pasting the example.
 
+One upstream behaviour is worth knowing before editing the renderer: Open WebUI
+entity-**decodes** the JSON string carrying an embed before parsing it, so an
+`&quot;` anywhere in the document silently destroys the whole embed and a single
+level of escaping is silently undone. ADR-0025's consequences explain what
+`_esc` does about it; `test_dashboard.py` pins it.
+
 The per-user **iframe Sandbox Allow Same Origin** setting stays off. The
 dashboard reports its own height by `postMessage` rather than relying on the
 parent measuring it, which is the whole reason it works under the default

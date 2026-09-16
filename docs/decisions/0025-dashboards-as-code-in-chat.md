@@ -86,6 +86,23 @@ model's output is a fetch issued from inside the reader's browser.
   are provably the same numbers. That needs a Cube client and a Cube secret in
   the Streamlit chart, so it is a separate decision rather than a consequence of
   this one.
+- **The embed HTML must contain no `&quot;`, and must escape `&`, `<` and `>`
+  twice.** This is the one genuinely surprising constraint, and it cost a
+  release to find. The embed does not reach the browser as an HTTP body: Open
+  WebUI puts it on a `function_call_output` item, `structuredOutput.ts`
+  JSON-stringifies it into a token attribute, and `ToolCallDisplay.svelte` and
+  `ConsecutiveDetailsGroup.svelte` then evaluate `parseJSONString(decode(attr))`
+  — an HTML-entity decode *before* the JSON parse. A `&quot;` in the document
+  therefore decodes to a bare `"` inside a JSON string literal, `JSON.parse`
+  fails, their `parseJSONString` returns the raw string rather than raising, and
+  the `Array.isArray(...)` guard drops the embed. Nothing logs, nothing errors,
+  and the dashboard simply never appears — while the model is still told its
+  "Embedded UI result is active and visible to the user." The same decode also
+  undoes one level of escaping, so a single escape would hand the frontend live
+  markup built from model-supplied titles and warehouse values. `_esc` therefore
+  leaves quotes raw (valid in text content, and JSON-safe) and escapes the three
+  markup characters twice. `test_dashboard.py` replays the round trip so a
+  regression fails there rather than in front of a user.
 - Open WebUI pins matter more now: the embed contract is upstream behaviour, not
   an API we control. It is exercised by `test_dashboard.py` only on our side of
   the wire — the header pair and the HTML — so an upstream change to
