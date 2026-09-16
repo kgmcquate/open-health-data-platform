@@ -1,0 +1,78 @@
+# A worked example, and the pattern to copy for a new one.
+#
+# Everything here is a question put to the semantic layer, never an answer:
+# reopening this dashboard runs both queries again, so it shows the current
+# week without anyone editing the file.
+#
+# The two panels are deliberately not the same cut of the same data. The first
+# asks which pathogen is driving ED visits over a season; the second asks where
+# the burden is right now. A dashboard that answers one question twice is a
+# chart with a spare.
+name: respiratory-season
+title: Respiratory season — share of emergency department visits
+description: >-
+  NSSP's share of emergency department visits attributed to each respiratory
+  pathogen, from CDC. These are percentages of all ED visits, so they are
+  averaged and never summed, and the four pathogen categories overlap —
+  "Combined" is CDC's own union of the other three, which is why each panel
+  below picks a side of that line rather than mixing them.
+
+panels:
+  - title: ED visit share by pathogen, last 26 weeks
+    # `Combined` is excluded rather than plotted: it is the sum of the three
+    # series beside it, so leaving it in draws a fourth line that is guaranteed
+    # to sit above the others and explains nothing.
+    query:
+      measures:
+        - respiratory__ed_visit_share_weekly.avg_percent_of_ed_visits
+      dimensions:
+        - respiratory__ed_visit_share_weekly.pathogen
+      time_dimensions:
+        - dimension: respiratory__ed_visit_share_weekly.week_end
+          granularity: week
+          date_range: last 26 weeks
+      filters:
+        - member: respiratory__ed_visit_share_weekly.pathogen
+          operator: notEquals
+          values: [Combined]
+      limit: 500
+    chart:
+      type: line
+      x: respiratory__ed_visit_share_weekly.week_end
+      y: respiratory__ed_visit_share_weekly.avg_percent_of_ed_visits
+      color: respiratory__ed_visit_share_weekly.pathogen
+      x_title: Week ending
+      y_title: Share of ED visits (%)
+      color_title: Pathogen
+    caption: >-
+      Smoothed national mean across reporting states. Three separate series —
+      a week can be high for more than one pathogen at once.
+
+  - title: Where the burden is now — combined share by state, last 4 weeks
+    # No granularity on the time dimension, so the four weeks collapse into one
+    # mean per state rather than becoming a second axis nobody asked for.
+    query:
+      measures:
+        - respiratory__ed_visit_share_weekly.avg_percent_of_ed_visits
+      dimensions:
+        - respiratory__ed_visit_share_weekly.state
+      time_dimensions:
+        - dimension: respiratory__ed_visit_share_weekly.week_end
+          date_range: last 4 weeks
+      filters:
+        - member: respiratory__ed_visit_share_weekly.pathogen
+          operator: equals
+          values: [Combined]
+      order:
+        respiratory__ed_visit_share_weekly.avg_percent_of_ed_visits: desc
+      limit: 10
+    chart:
+      type: horizontal_bar
+      x: respiratory__ed_visit_share_weekly.state
+      y: respiratory__ed_visit_share_weekly.avg_percent_of_ed_visits
+      x_title: State
+      y_title: Share of ED visits (%), all respiratory causes
+    caption: >-
+      The ten highest states over the last four reporting weeks. States differ
+      in how completely they report, so a low bar can mean low burden or thin
+      reporting.

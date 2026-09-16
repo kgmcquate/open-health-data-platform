@@ -275,7 +275,7 @@ extraEnvVars:
           },
           "info": {
             "id":"ohdp-tools",
-            "name":"Report an Issue"
+            "name":"Dashboards and Issue Reporting"
           }
         },
         {
@@ -352,19 +352,30 @@ extraEnvVars:
   # receives; setting it again as the model's system prompt in Settings ->
   # Admin -> Models is a post-install step (docs/chatbot.md §11).
 
-  # Code Interpreter: lets the model write Python (matplotlib/plotly) and have
-  # the result — including a rendered image — come back inline in the chat
-  # turn. This is the actual mechanism for "graphics in chat"; it is unrelated
-  # to Streamlit, which needs its own running server and can't render inside a
-  # chat bubble (see values/streamlit*.yaml / ADR-0015 for that surface).
+  # Code Interpreter: lets the model write Python and have the result come back
+  # inline in the chat turn.
+  #
+  # This is **no longer how charts get drawn** (ADR-0025). Under the pyodide
+  # engine below, a figure saved with plt.savefig() lands in a browser-side
+  # virtual filesystem that nothing reads, so the image never appeared — which
+  # is what the model's old system prompt was asking it to do. Dashboards now
+  # come from hub-api's render_dashboard tool, whose response Open WebUI embeds
+  # as an iframe. This stays enabled because arithmetic over a result set is
+  # still a reasonable thing for it to do; it is just not the graphics path.
+  #
+  # Leaving IFRAME_CSP unset is load-bearing for that replacement: the
+  # dashboard embed loads Vega from cdn.jsdelivr.net, and the hardening guide's
+  # example CSP would block it. Tightening it means allowlisting that origin in
+  # script-src, not copying the example.
   #
   # Engine is pyodide (WASM, runs in the visitor's browser) rather than
   # jupyter (a real Python kernel we'd have to run as a pod). Jupyter is more
   # capable — arbitrary pip installs, network access — but this node is
   # already at its memory ceiling (ARCHITECTURE.md §4, see ollama/pipelines/
   # tika/terminals all disabled above for the same reason), and it's arbitrary
-  # code execution facing chat users. Pyodide costs this deployment nothing
-  # and covers numpy/pandas/matplotlib, which is what chart generation needs.
+  # code execution facing chat users. Pyodide costs this deployment nothing and
+  # covers numpy/pandas, which is what is left for it to do now that charts go
+  # through render_dashboard.
   #
   # Still requires a one-time post-install step: Admin -> Settings -> Models ->
   # z-ai/glm-5.3-flash -> enable the "Code Interpreter" capability checkbox. That
