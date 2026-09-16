@@ -1,0 +1,103 @@
+# platform-base — the cluster foundation. No out-of-band values: everything is
+# static or generated on first install and preserved on every upgrade.
+
+# The platform namespaces (ARCHITECTURE.md). Each is created only if it does not
+# already exist, so `helm ... --create-namespace -n infra` does not collide with
+# the `infra` entry here.
+namespaces:
+  - app
+  - data
+  - bi
+  - meta
+  - infra
+
+# Let's Encrypt ClusterIssuer. Rendered only when cert-manager's CRDs are
+# already installed (see templates/cluster-issuer.yaml).
+clusterIssuer:
+  enabled: true
+  name: letsencrypt-prod
+  email: kgmcquate@gmail.com
+  ingressClass: traefik
+
+# Internally-generated secrets. Generated once with randAlphaNum, then read back
+# from the live cluster on every subsequent render so they never rotate
+# unexpectedly. Length is the generated password length in characters.
+generatedSecrets:
+  passwordLength: 32
+
+# Non-secret env for the Dagster pipeline image and its launched runs
+# (rendered into ConfigMap data/ohdp-pipeline-config).
+pipelineConfig:
+  OHDP_ENVIRONMENT: "prod"
+  OHDP_LOG_JSON: "true"
+  # Spaces holds Postgres backups and Dagster's compute logs; only the
+  # lakehouse's table files are on AWS S3 (ADR-0019).
+  OHDP_SPACES_BUCKET: "ohdp-warehouse"
+  OHDP_SPACES_ENDPOINT_URL: "https://nyc3.digitaloceanspaces.com"
+  OHDP_SPACES_REGION: "nyc3"
+  # The Iceberg lakehouse (ADR-0019). Snowflake is the catalog, and both dlt
+  # and DuckDB write table data and metadata on the credentials Horizon vends.
+  # The AWS config here is for dlt's own bookkeeping objects (_dlt_loads,
+  # _dlt_pipeline_state, stored schemas), which its filesystem client writes to
+  # the external volume's bucket with plain fsspec: hence the bucket and an IAM
+  # key (OHDP_AWS_ACCESS_KEY_ID / OHDP_AWS_SECRET_ACCESS_KEY, in
+  # `ohdp-pipeline-secrets`). DuckDB has no AWS key at all.
+  #
+  # No catalog endpoint here: it is derived from OHDP_SNOWFLAKE_ACCOUNT
+  # (ohdp_shared.settings.horizon_catalog_uri). No namespace names either:
+  # those are derived per medallion layer by ohdp_ingestion.naming and dbt's
+  # generate_schema_name.sql.
+  OHDP_AWS_REGION: "us-east-1"
+  OHDP_LAKEHOUSE_BUCKET: "ohdp-lakehouse"
+  # The Snowflake account is now load-bearing for the *pipeline* too, not just
+  # for Cube and Streamlit: it is what the Horizon REST endpoint is addressed
+  # by. OHDP_SNOWFLAKE_ROLE likewise — it is half of the OAuth2 scope.
+  # The token itself (OHDP_SNOWFLAKE_PAT) is in `ohdp-pipeline-secrets`.
+  OHDP_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
+  OHDP_SNOWFLAKE_USER: "OHDP_PIPELINE"
+  OHDP_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
+  OHDP_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
+  # OpenMetadata's own REST API (the JWT half is OHDP_OPENMETADATA_JWT, in
+  # ohdp-pipeline-secrets) and its Dagster connector's GraphQL source — routed
+  # through graphql-authz-proxy, not dagster-webserver directly (see
+  # dagster_graphql_url in packages/shared/src/ohdp_shared/settings.py).
+  OHDP_OPENMETADATA_URL: "http://openmetadata.meta.svc.cluster.local:8585"
+  OHDP_DAGSTER_GRAPHQL_URL: "http://gqlproxy-graphql-authz-proxy.data.svc.cluster.local:80"
+  # Cube's in-cluster Service DNS (release name must be "cube" — see
+  # platform/helm/charts/cube/values.yaml — same address hub-api's own
+  # OHDP_CUBE_API_URL points at). The JWT half (OHDP_CUBE_API_SECRET) comes
+  # from the cube-secret Secret, not this ConfigMap.
+  OHDP_CUBE_API_URL: "http://cube.data.svc.cluster.local:4000"
+
+postgres:
+  image: postgres:16.4-bookworm
+  # DOKS default StorageClass. k3s used local-path.
+  storageClass: do-block-storage
+  storageSize: 40Gi
+  # ARCHITECTURE.md §4 budgets 1 GB.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  # The three logical databases (ARCHITECTURE.md §2, §9 — one instance, do not
+  # split). Each gets an owner role with the matching generated password.
+  #
+  # The `polaris` database went with the Polaris catalog (ADR-0011), and
+  # `superset` with the Superset->Streamlit swap (ADR-0015) — Streamlit has no
+  # metastore, so it never needed one. Dropping an entry from this list stops
+  # it being *created*; an existing database is left in place, so reclaim the
+  # disk with a manual `DROP DATABASE <name>` once you are satisfied nothing
+  # wants it.
+  #
+  # The init script above runs only on an *empty* data directory, so adding an
+  # entry here does nothing on a cluster that already has a Postgres volume.
+  # templates/db-bootstrap-job.yaml closes that gap: it runs on every
+  # install/upgrade and creates whatever is missing, idempotently.
+  databases:
+    - dagster
+    - openmetadata
+    - app
+    - openwebui

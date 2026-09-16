@@ -1,0 +1,13 @@
+apiVersion: v2
+name: cubestore
+description: Cube Store — standalone pre-aggregation cache for Cube Core (ADR-0024)
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - ohdp
+  - cube
+  - cubestore
+  - pre-aggregations
+maintainers:
+  - name: kgmcquate

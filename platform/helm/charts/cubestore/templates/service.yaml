@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cubestore.fullname" . }}
+  labels:
+    {{- include "cubestore.labels" . | nindent 4 }}
+spec:
+  # Headless, like postgres's Service — a StatefulSet with a single stable
+  # member, addressed directly rather than load-balanced.
+  clusterIP: None
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: cubestore
+      protocol: TCP
+      name: cubestore
+  selector:
+    {{- include "cubestore.selectorLabels" . | nindent 4 }}

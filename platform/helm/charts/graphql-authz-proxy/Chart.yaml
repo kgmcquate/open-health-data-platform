@@ -1,0 +1,13 @@
+apiVersion: v2
+name: graphql-authz-proxy
+description: >-
+  Read-only enforcement in front of the publicly exposed Dagster webserver.
+  Wraps github.com/kgmcquate/graphql-authz-proxy.
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/kgmcquate/graphql-authz-proxy
+sources:
+  - https://github.com/kgmcquate/graphql-authz-proxy
+maintainers:
+  - name: kgmcquate

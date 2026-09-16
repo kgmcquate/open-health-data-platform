@@ -1,0 +1,17 @@
+platform-base is installed.
+
+Namespaces:      {{ join ", " .Values.namespaces }}
+Generated secrets (created once, preserved on upgrade):
+  infra/postgres-secret            postgres + 4 database passwords
+  data/dagster-postgresql-secret   mirror of the dagster password
+  meta/openmetadata-db-auth        mirror of the openmetadata password
+  meta/openmetadata-fernet-secret  OpenMetadata fernet key
+  data/cube-secret                 hub-api <-> Cube shared secret
+  app/hub-api-db                   assembled OHDP_APP_DATABASE_URL
+
+Postgres: StatefulSet postgres in namespace infra, {{ .Values.postgres.storageSize }} on {{ .Values.postgres.storageClass }}.
+  Watch it come up:  kubectl -n infra rollout status statefulset/postgres
+
+Still needed before the data platform will run:
+  - Traefik + cert-manager + ClusterIssuer   (make traefik cert-manager cluster-issuer)
+  - External secrets ohdp-pipeline-secrets / hub-api-secrets  (see helm/README.md)

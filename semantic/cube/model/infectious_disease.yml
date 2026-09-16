@@ -1,0 +1,166 @@
+# Notifiable disease surveillance (NNDSS) and wastewater monitoring (NWSS).
+# Dimensions and their descriptions come straight from dbt's column docs
+# (globals.py / cube-dbt) -- edit descriptions in
+# data/dbt/models/curated/infectious_disease/_curated_infectious_disease__models.yml,
+# not here. Measures are hand-written: dbt documents columns, it does not declare
+# aggregations.
+#
+# Three cubes, three grains -- disease x reporting area x MMWR week, state x week
+# x pathogen, and pathogen x state x week.
+{% set nndss = dbt_model('infectious_disease__nndss_weekly') %}
+{% set activity = dbt_model('infectious_disease__wastewater_activity_weekly') %}
+{% set detection = dbt_model('infectious_disease__wastewater_detection_weekly') %}
+
+{% set nndss_measures = [
+    'current_week_cases', 'previous_52_week_max', 'cumulative_ytd_cases',
+    'cumulative_ytd_cases_prior_year', 'cumulative_ytd_change', 'ingest_ts',
+] %}
+{% set activity_measures = [
+    'sites_reporting', 'population_covered', 'avg_activity_level',
+    'pop_weighted_activity_level', 'avg_activity_rank', 'max_activity_rank',
+    'ingest_ts',
+] %}
+{% set detection_measures = [
+    'samples_tested', 'samples_detected', 'sites_reporting',
+    'population_with_detection', 'ingest_ts',
+] %}
+
+cubes:
+  - {{ nndss.as_cube() }}
+
+    dimensions:
+      {{ nndss.as_dimensions(skip=nndss_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ nndss.sql_table }}'
+
+    # ADR-0024: full copy in Cube Store, re-aggregated there at query time —
+    # inherits refresh_key above unchanged.
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      - name: total_cases
+        sql: '{CUBE}."current_week_cases"'
+        type: sum
+        description: >-
+          Reported cases in the selected weeks. The weekly count is additive
+          across diseases, reporting areas and weeks -- this is the measure to use
+          for "how many cases".
+
+      - name: peak_weekly_cases
+        sql: '{CUBE}."current_week_cases"'
+        type: max
+        description: "Highest single weekly case count in the current selection."
+
+      - name: latest_cumulative_ytd
+        sql: '{CUBE}."cumulative_ytd_cases"'
+        type: max
+        description: >-
+          Year-to-date cases at the latest week in the selection. A MAX, not a
+          SUM: the source column already accumulates, so summing it across weeks
+          multiplies the same cases many times over.
+
+      - name: latest_cumulative_ytd_prior_year
+        sql: '{CUBE}."cumulative_ytd_cases_prior_year"'
+        type: max
+        description: The same year-to-date figure at the equivalent point of the previous MMWR year.
+
+      - name: max_previous_52_week
+        sql: '{CUBE}."previous_52_week_max"'
+        type: max
+        description: {{ nndss.column('previous_52_week_max').description }}
+
+      - name: reporting_area_count
+        sql: "{CUBE}.\"reporting_area\""
+        type: count_distinct
+        description: "Number of distinct reporting jurisdictions in the current filter."
+
+  - {{ activity.as_cube() }}
+
+    dimensions:
+      {{ activity.as_dimensions(skip=activity_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ activity.sql_table }}'
+
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      # Activity level is a normalised index, so every measure here is an average
+      # or a max -- summing an index across states or weeks means nothing.
+      - name: avg_activity_level
+        sql: '{CUBE}."avg_activity_level"'
+        type: avg
+        description: >-
+          Mean wastewater viral activity level across the selection. An index, not
+          a concentration; filter to one pathogen to read it.
+
+      - name: avg_pop_weighted_activity_level
+        sql: '{CUBE}."pop_weighted_activity_level"'
+        type: avg
+        description: {{ activity.column('pop_weighted_activity_level').description }}
+
+      - name: peak_activity_rank
+        sql: '{CUBE}."max_activity_rank"'
+        type: max
+        description: >-
+          Highest CDC activity band reached in the selection, 1 (Very Low) to 5
+          (Very High).
+
+      - name: avg_activity_rank
+        sql: '{CUBE}."avg_activity_rank"'
+        type: avg
+        description: {{ activity.column('avg_activity_rank').description }}
+
+      - name: population_covered
+        sql: '{CUBE}."population_covered"'
+        type: sum
+        description: >-
+          Population served by reporting sewersheds. Additive across sites within
+          one state-week; summing across weeks counts the same people repeatedly,
+          so pair it with a single week.
+
+      - name: state_week_count
+        type: count
+        description: "Number of state-weeks in the current filter -- a coverage check, not a KPI."
+
+  - {{ detection.as_cube() }}
+
+    dimensions:
+      {{ detection.as_dimensions(skip=detection_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ detection.sql_table }}'
+
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      - name: samples_tested
+        sql: '{CUBE}."samples_tested"'
+        type: sum
+        description: {{ detection.column('samples_tested').description }}
+
+      - name: samples_detected
+        sql: '{CUBE}."samples_detected"'
+        type: sum
+        description: {{ detection.column('samples_detected').description }}
+
+      - name: detection_rate
+        sql: "100.0 * {samples_detected} / nullif({samples_tested}, 0)"
+        type: number
+        format: percent
+        description: >-
+          Percentage of wastewater samples in which the pathogen was detected.
+          Computed as sum(detected)/sum(tested) rather than as an average of
+          per-row rates, so it stays correct at every level of rollup.
+
+      - name: sites_with_detection
+        sql: '{CUBE}."sites_reporting"'
+        type: sum
+        description: Sewershed sites contributing samples. Additive within a week.

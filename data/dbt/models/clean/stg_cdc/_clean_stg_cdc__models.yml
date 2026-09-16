@@ -1,0 +1,201 @@
+version: 2
+
+# Every model here is macros/socrata_current_rows.sql over one RAW.cdc table:
+# latest row per Socrata :id, dlt bookkeeping dropped. Columns stay as CDC
+# publishes them -- almost all of them arrive as text, because Socrata's SODA
+# API serialises every field as a string -- so only the dedupe key is
+# documented and tested here. Typing, renaming and unit handling are `core`'s
+# job (see curated/core/core__*.sql).
+
+models:
+  - name: stg_cdc__nndss_weekly
+    description: >
+      NNDSS weekly provisional counts of nationally notifiable infectious diseases, by reporting area and MMWR week.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__wastewater_viral_activity
+    description: >
+      NWSS wastewater viral activity level (WVAL) per sewershed per week, for SARS-CoV-2, Influenza A and RSV.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__wastewater_measles
+    description: >
+      NWSS per-sample measles (MeV) wastewater PCR results, one row per sample per site.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__wastewater_h5
+    description: >
+      NWSS per-sample Influenza A(H5) wastewater PCR results, one row per sample per site.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__wastewater_sars_cov_2_metrics
+    description: >
+      NWSS public SARS-CoV-2 wastewater metrics per sewershed: 15-day percent change and detection proportion.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__ed_visit_trajectories
+    description: >
+      NSSP emergency department visit percentages for COVID-19, influenza and RSV, by state / health service area and week.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__ed_visits_mental_health
+    description: >
+      NSSP mental health-related emergency department visit rates per 100,000 visits, by condition, demographic and month.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__rsv_net
+    description: >
+      RSV-NET laboratory-confirmed RSV hospitalization rates and clinical characteristics, by season and demographic stratum.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__hospitalization_metrics
+    description: >
+      NHSN weekly hospital admissions, bed occupancy and ICU metrics for COVID-19 and influenza, by jurisdiction.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__drug_overdose_deaths
+    description: >
+      VSRR provisional 12-month-ending counts of drug overdose deaths, by state, month and drug-class indicator.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__chronic_disease_indicators
+    description: >
+      U.S. Chronic Disease Indicators (CDI): state-level prevalence, rate and count indicators across 18 chronic-disease topics.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__places_county
+    description: >
+      PLACES 2025 release: model-based county-level prevalence estimates for chronic disease, prevention and risk-behaviour measures.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__nutrition_activity_obesity
+    description: >
+      BRFSS nutrition, physical activity and obesity / weight-status prevalence, by state and demographic stratum.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__alzheimers_healthy_aging
+    description: >
+      BRFSS Alzheimer's disease and healthy aging indicators, by state and age group.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__flu_vaccination_coverage
+    description: >
+      Seasonal influenza vaccination coverage estimates for ages 6 months and older, by geography and demographic dimension.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]
+
+  - name: stg_cdc__child_vaccination_coverage
+    description: >
+      Childhood vaccination coverage (0-35 months) by vaccine, dose, geography and demographic dimension.
+      One row per Socrata :id.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: socrata_id
+        description: Socrata system row id; unique after dedup.
+        data_tests: [unique, not_null]

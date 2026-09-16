@@ -1,0 +1,156 @@
+name: Deploy infra (Terraform)
+
+# Creates real, billed DigitalOcean resources. Defaults to `plan`;
+# `apply` and `destroy` must be chosen deliberately and `destroy` additionally
+# requires typing the confirmation string.
+
+on:
+  pull_request:
+    paths:
+      - "platform/terraform/**"
+      - ".github/workflows/deploy-infra.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to run.
+        type: choice
+        options: [plan, apply, destroy, delete-heavy-nodepool]
+        default: plan
+      confirm:
+        description: For destroy only — type the project name (e.g. ohdp) to confirm.
+        type: string
+        default: ""
+
+concurrency:
+  # Never let two applies touch the same state.
+  group: terraform-infra
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: platform/terraform
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+  TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+  DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+  # Cloudflare DNS for the platform hostnames. The provider reads the token from
+  # CLOUDFLARE_API_TOKEN directly. loadbalancer_ip is blank until deploy-platform
+  # has provisioned the Traefik LB — the records are skipped until it is set,
+  # then this workflow is re-run to create them.
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+  # DigitalOcean Spaces credentials for the S3-compatible state backend. The
+  # AWS_* pair here is the *backend's* — the terraform-managed AWS account uses
+  # TF_VAR_aws_* below, because both are "S3" and one env pair cannot serve two
+  # endpoints (ADR-0019, platform/terraform/versions.tf).
+  SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+  SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+  # The lakehouse's storage (ADR-0019): admin credentials that create the S3
+  # bucket and the IAM identities — including the pipeline's own key, which
+  # this stack issues rather than reads. The *catalog* is Snowflake, below.
+  TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  # Filled in only for the second apply, once Snowflake has generated them —
+  # see platform/terraform/README.md. Unset, the role Snowflake assumes for the
+  # external volume exists but trusts nothing.
+  TF_VAR_snowflake_storage_aws_iam_user_arn: ${{ secrets.SNOWFLAKE_STORAGE_AWS_IAM_USER_ARN }}
+  TF_VAR_snowflake_storage_aws_external_id: ${{ secrets.SNOWFLAKE_STORAGE_AWS_EXTERNAL_ID }}
+  # Snowflake, which is the Iceberg catalog (ADR-0019). The provider reads
+  # user/role/key from the environment; only the account identifier is a
+  # variable. SNOWFLAKE_ROLE must be able to create account-level objects
+  # (database, role, user, network policy, external volume, programmatic access
+  # token) — ACCOUNTADMIN unless you have made a narrower one.
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+  SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+  TF_VAR_snowflake_organization_name: ${{ secrets.SNOWFLAKE_ORGANIZATION_NAME }}
+  TF_VAR_snowflake_account_name: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+          terraform_wrapper: false
+
+      - name: Guard destroy
+        if: inputs.action == 'destroy' || inputs.action == 'delete-heavy-nodepool'
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "ohdp" ]; then
+            echo "::error::destroy requires 'confirm' to be the project name."
+            exit 1
+          fi
+          echo "::warning::Destroying all infrastructure. State bucket is not managed here and survives."
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: |
+          set -euo pipefail
+          terraform init
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        if: inputs.action != 'destroy' && inputs.action != 'delete-heavy-nodepool'
+        id: plan
+        run: terraform plan -out=tfplan -detailed-exitcode || [ $? -eq 2 ]
+
+      - name: Plan (destroy)
+        if: inputs.action == 'destroy'
+        run: terraform plan -destroy -out=tfplan
+
+      - name: Plan (delete heavy node pool)
+        if: inputs.action == 'delete-heavy-nodepool'
+        run: terraform plan -destroy -target='digitalocean_kubernetes_node_pool.heavy' -out=tfplan
+
+      - name: Show plan
+        run: |
+          terraform show -no-color tfplan | tee plan.txt
+          {
+            echo "### terraform ${{ inputs.action || 'plan' }}"
+            echo '```terraform'
+            head -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply
+        if: github.event_name == 'workflow_dispatch' && (inputs.action == 'apply' || inputs.action == 'delete-heavy-nodepool')
+        run: terraform apply -auto-approve tfplan
+
+      - name: Destroy
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Outputs
+        if: inputs.action == 'apply'
+        run: |
+          echo "cluster_id=$(terraform output -raw cluster_id)"
+          echo "cluster_endpoint=$(terraform output -raw cluster_endpoint)"
+          echo "lakehouse_catalogs=$(terraform output -json lakehouse_catalogs)"
+          echo "lakehouse_bucket=$(terraform output -raw lakehouse_bucket)"
+          echo "horizon_catalog_uri=$(terraform output -raw horizon_catalog_uri)"
+          echo ""
+          echo "Fetch the kubeconfig and store it as the KUBECONFIG_B64 secret:"
+          echo "  terraform output -raw kubeconfig | base64"
+          echo ""
+          echo "Publish the pipeline's catalog token and IAM key for deploy-platform.yml:"
+          terraform output -raw snowflake_pipeline_pat_command
+          terraform output -raw aws_pipeline_key_commands
+          echo ""
+          echo "Then finish the external volume's trust policy —"
+          echo "see platform/terraform/README.md, 'The second apply'."

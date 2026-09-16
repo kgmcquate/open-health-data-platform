@@ -1,0 +1,18 @@
+{{- /*
+Create each platform namespace only when it is not already present. This keeps
+`helm upgrade --install platform-base -n infra --create-namespace` from
+colliding with the `infra` entry, and stops `helm uninstall` from deleting a
+namespace that still holds data (Postgres PVC, secrets).
+*/ -}}
+{{- range $ns := .Values.namespaces }}
+{{- if not (lookup "v1" "Namespace" "" $ns) }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels:
+    {{- include "platform-base.labels" $ | nindent 4 }}
+    kubernetes.io/metadata.name: {{ $ns }}
+---
+{{- end }}
+{{- end }}

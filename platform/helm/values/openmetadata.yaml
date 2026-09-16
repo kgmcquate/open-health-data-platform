@@ -1,0 +1,179 @@
+# Values for the upstream chart: open-metadata/openmetadata
+#
+#   helm repo add open-metadata https://helm.open-metadata.org
+#   helm upgrade --install openmetadata open-metadata/openmetadata -n meta \
+#     -f platform/helm/values/openmetadata.yaml
+#
+# NOTE: we deliberately do NOT install `openmetadata-dependencies`. That chart
+# bundles MySQL, Airflow and OpenSearch. We already have Postgres (§9: one
+# instance, four databases) and no Airflow (Dagster orchestrates), so it would
+# add ~2 GB of duplicate infrastructure to a node with no room for it.
+# OpenSearch is installed separately — see values/opensearch.yaml.
+
+replicaCount: 1
+
+image:
+  repository: docker.getcollate.io/openmetadata/server
+  pullPolicy: IfNotPresent
+
+openmetadata:
+  config:
+    logLevel: INFO
+    clusterName: ohdp
+
+    # ---------------------------------------------------------------------
+    # Postgres, not the chart's default MySQL.
+    # ---------------------------------------------------------------------
+    database:
+      enabled: true
+      host: postgres.infra.svc.cluster.local
+      port: 5432
+      driverClass: org.postgresql.Driver
+      dbScheme: postgresql
+      databaseName: openmetadata
+      dbParams: "sslmode=disable"
+      auth:
+        username: openmetadata
+        password:
+          # A secret we create out of band. NOT `openmetadata-db-secret` — the
+          # chart templates a Secret of that exact name for the non-secret DB
+          # config (host/port/user), and Helm will not merge our key into it.
+          secretRef: openmetadata-db-auth
+          secretKey: openmetadata-postgres-password
+      # maxSize was 20, which OM's own background workers (search index retry,
+      # audit log consumer, workflow/change-event consumers, job recovery)
+      # keep pinned at 100% by themselves, starving real API requests and
+      # causing 30s HikariCP timeouts (SQLTransientConnectionException) that
+      # show up as slow/hung responses in the UI. Postgres has plenty of
+      # headroom (max_connections=100, ~44 in use across all DBs), so raise
+      # the app-side cap instead of trying to shrink worker concurrency.
+      maxSize: 50
+      minSize: 10
+      initialSize: 10
+
+    # ---------------------------------------------------------------------
+    # Search. Single node, 1 shard, 0 replicas (§4).
+    # ---------------------------------------------------------------------
+    elasticsearch:
+      enabled: true
+      searchType: opensearch
+      host: opensearch-cluster-master.meta.svc.cluster.local
+      port: 9200
+      scheme: http
+      auth:
+        enabled: false
+
+    # ---------------------------------------------------------------------
+    # Auth. Every authenticated user is a viewer; the catalog is a read surface
+    # for the platform, not a place users edit (§5).
+    # Fill clientId/authority from the hosted IdP once it exists (M2).
+    # ---------------------------------------------------------------------
+    authorizer:
+      enabled: true
+      className: "org.openmetadata.service.security.DefaultAuthorizer"
+      containerRequestFilter: "org.openmetadata.service.security.JwtFilter"
+      initialAdmins:
+        - "kgmcquate"
+      principalDomain: "gmail.com"
+      enforcePrincipalDomain: false
+
+    # Google SSO. Public (PKCE) client — the OAuth client ID is not a secret,
+    # so it lives here; there is no client secret in this flow. The client is a
+    # "Web application" OAuth client in Google Cloud console with redirect URI
+    # https://catalog.open-health-data-platform.org/callback.
+    authentication:
+      enabled: true
+      provider: "google"
+      clientType: "public"          # PKCE, no client secret to store. Switch to "confidential" if want to use secret
+      publicKeys:
+        - "https://www.googleapis.com/oauth2/v3/certs"
+        - "http://openmetadata:8585/api/v1/system/config/jwks"
+      authority: "https://accounts.google.com"
+      clientId: "794040254723-nsc8s54o5f60irflb846dm31oi546n94.apps.googleusercontent.com"
+      callbackUrl: "https://catalog.open-health-data-platform.org/callback"
+      jwtPrincipalClaims:
+        - "email"
+        - "preferred_username"
+        - "sub"
+
+    fernetkey:
+      # Never commit a real key. Create the secret out of band.
+      value: ""
+      secretRef: openmetadata-fernet-secret
+      secretKey: fernetKey
+
+    # No Airflow. Dagster owns orchestration (§2); leaving this enabled makes
+    # the UI advertise ingestion pipelines that cannot run.
+    #
+    # `enabled: false` alone is not enough (still true on chart 2.0.x) — the
+    # deployment and its run-db-migrations initContainer still mount
+    # AIRFLOW_PASSWORD from a secret named `airflow-secrets`, which we never
+    # create. Blanking the airflow auth secretRef makes the chart drop that env
+    # var entirely.
+    pipelineServiceClientConfig:
+      enabled: false
+      airflow:
+        auth:
+          enabled: false
+          password:
+            secretRef: ""
+            secretKey: ""
+
+service:
+  type: ClusterIP
+  port: 8585
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: catalog.open-health-data-platform.org
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: openmetadata-tls
+      hosts:
+        - catalog.open-health-data-platform.org
+
+# §4 budgets 2 GB. This is a JVM — the limit must leave room above the heap or
+# the pod is OOMKilled by the kernel rather than throwing a Java OOM.
+resources:
+  requests:
+    cpu: 250m
+    memory: 1536Mi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+extraEnvs:
+  - name: OPENMETADATA_HEAP_OPTS
+    value: "-Xmx1400m -Xms1400m"
+  # Semantic (natural-language) search. Not yet exposed as first-class chart
+  # values on 2.0.1 (no `openmetadata.config.elasticsearch.naturalLanguageSearch`
+  # / `.llmConfiguration` keys in the chart's templates), so set the app's own
+  # env vars directly — see conf/openmetadata.yaml in the OM server image.
+  # DJL runs the embedding model locally inside the server JVM (no external API
+  # key/account), unlike the other providers (openai/google/bedrock). It's
+  # independent of `llmConfiguration.enabled`/LLM_ENABLED, which only gates
+  # chat-completion features we're not using here.
+  - name: SEMANTIC_SEARCH_ENABLED
+    value: "true"
+  - name: EMBEDDING_PROVIDER
+    value: "djl"
+
+# The image's USER is the name `openmetadata`, not a UID, so `runAsNonRoot`
+# alone fails admission ("cannot verify user is non-root"). Pin the UID/GID —
+# the openmetadata user is 1000 in docker.getcollate.io/openmetadata/server.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsUser: 1000
+  capabilities:
+    drop: ["ALL"]

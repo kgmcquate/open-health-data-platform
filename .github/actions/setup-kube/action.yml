@@ -1,0 +1,66 @@
+name: Setup kube tooling
+description: Install helm + kubectl and authenticate against the cluster from a base64 kubeconfig.
+
+inputs:
+  kubeconfig:
+    description: Base64-encoded kubeconfig (secrets.KUBECONFIG_B64).
+    required: true
+  helm-version:
+    description: Helm version to install.
+    required: false
+    default: v3.16.3
+  kubectl-version:
+    description: kubectl version to install.
+    required: false
+    default: v1.31.3
+  verify:
+    description: Contact the cluster and fail if unreachable.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install helm
+      uses: azure/setup-helm@v4
+      with:
+        version: ${{ inputs.helm-version }}
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v4
+      with:
+        version: ${{ inputs.kubectl-version }}
+
+    - name: Write kubeconfig
+      shell: bash
+      # Passed as an env var rather than interpolated into the script body, so
+      # the credential never lands in the rendered step script on disk.
+      env:
+        KUBECONFIG_B64: ${{ inputs.kubeconfig }}
+      run: |
+        set -euo pipefail
+        if [ -z "${KUBECONFIG_B64}" ]; then
+          echo "::error::KUBECONFIG_B64 is empty. Set it in .env (act) or repo secrets."
+          exit 1
+        fi
+        # Written under RUNNER_TEMP, not the workspace, so it cannot be committed
+        # or swept into a later docker build context.
+        mkdir -p "${RUNNER_TEMP}"
+        umask 077
+        printf '%s' "${KUBECONFIG_B64}" | base64 -d > "${RUNNER_TEMP}/kubeconfig"
+        if ! grep -q 'clusters:' "${RUNNER_TEMP}/kubeconfig"; then
+          echo "::error::decoded kubeconfig does not look like a kubeconfig — check the base64 is unwrapped (no newlines)."
+          exit 1
+        fi
+        echo "KUBECONFIG=${RUNNER_TEMP}/kubeconfig" >> "$GITHUB_ENV"
+
+    - name: Verify cluster reachable
+      if: inputs.verify == 'true'
+      shell: bash
+      env:
+        KUBECONFIG: ${{ runner.temp }}/kubeconfig
+      run: |
+        set -euo pipefail
+        kubectl version --output=json | jq -r '.serverVersion.gitVersion // "unknown"' \
+          | xargs -I{} echo "server: {}"
+        kubectl get nodes

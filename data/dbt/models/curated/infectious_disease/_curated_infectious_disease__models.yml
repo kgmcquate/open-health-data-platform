@@ -1,0 +1,232 @@
+version: 2
+
+# Notifiable disease surveillance (NNDSS) and wastewater pathogen monitoring
+# (NWSS). Dimensions and their descriptions are read from the column docs below
+# by cube-dbt -- semantic/cube/model/infectious_disease.yml renders them, so this
+# file is the source of truth for those descriptions, not the Cube model.
+
+models:
+  - name: infectious_disease__nndss_weekly
+    description: >
+      NNDSS weekly provisional case counts for nationally notifiable infectious
+      diseases, jurisdictions only (census-division and national rollup rows are
+      excluded so counts can be summed safely). One row per disease x reporting
+      area x MMWR week.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (disease,
+          reporting_area, mmwr_year, mmwr_week) hashed into one opaque
+          column. It carries the grain -- `unique` on it asserts exactly
+          what unique_combination_of_columns used to -- and is the
+          primary key Cube joins and pre-aggregates on, which is what
+          keeps the natural-key columns themselves public dimensions.
+          See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: disease
+        description: Notifiable condition as NNDSS labels it (e.g. "Measles, Total", "Chlamydia trachomatis infection").
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: reporting_area
+        description: Reporting jurisdiction -- a state, territory, or New York City.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: mmwr_year
+        description: MMWR (CDC epidemiological) year.
+        data_type: integer
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: mmwr_week
+        description: MMWR week number, 1-53. A week number, not a date -- CDC does not publish the week's calendar date in this table.
+        data_type: integer
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: current_week_cases
+        description: >-
+          Cases reported for this MMWR week. Additive across diseases and
+          reporting areas.
+        data_type: integer
+      - name: previous_52_week_max
+        description: Highest weekly count seen in the previous 52 weeks; CDC's own outbreak-context baseline.
+        data_type: integer
+      - name: cumulative_ytd_cases
+        description: >-
+          Cases year-to-date in the current MMWR year. Already cumulative -- never
+          sum this across weeks.
+        data_type: integer
+      - name: cumulative_ytd_cases_prior_year
+        description: Cases year-to-date at the same point in the previous MMWR year.
+        data_type: integer
+      - name: cumulative_ytd_change
+        description: Year-over-year change in year-to-date cases; CDC's headline comparison for a notifiable disease.
+        data_type: integer
+      - name: current_week_flag
+        description: CDC's suppression or footnote marker for the current-week count, if any.
+        data_type: varchar
+      - name: cumulative_ytd_flag
+        description: CDC's suppression or footnote marker for the year-to-date count, if any.
+        data_type: varchar
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: infectious_disease__wastewater_activity_weekly
+    description: >
+      NWSS wastewater viral activity rolled up from sewershed sites to one row
+      per state x week x pathogen, for SARS-CoV-2, Influenza A and RSV.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state_abbr, pathogen,
+          week_end) hashed into one opaque column. It carries the grain
+          -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: state_abbr
+        description: Two-letter state or territory postal code.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: pathogen
+        description: Pathogen monitored -- SARS-CoV-2, Influenza A virus, or RSV.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["SARS-CoV-2", "Influenza A virus", "RSV"]
+        config:
+          meta:
+            grain: true
+      - name: week_end
+        description: Last day of the reporting week.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: sites_reporting
+        description: Number of distinct sewershed sites reporting in the state that week.
+        data_type: integer
+      - name: population_covered
+        description: Total population served by the reporting sewersheds.
+        data_type: integer
+      - name: avg_activity_level
+        description: >-
+          Unweighted mean wastewater viral activity level across the state's
+          sites. A normalised index, not a concentration.
+        data_type: double
+      - name: pop_weighted_activity_level
+        description: >-
+          Mean activity level weighted by each site's population served -- the
+          more representative state figure when site coverage is uneven.
+        data_type: double
+      - name: avg_activity_rank
+        description: Mean of CDC's activity band as an ordinal 1-5 (Very Low to Very High).
+        data_type: double
+      - name: max_activity_rank
+        description: Highest activity band reached by any site in the state that week, 1-5.
+        data_type: integer
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: infectious_disease__wastewater_detection_weekly
+    description: >
+      Weekly wastewater detection counts for the two pathogens cdc.gov currently
+      features -- measles and Influenza A(H5). One row per pathogen x state x
+      week, with an explicit tested/detected pair so the detection rate stays
+      correct at any rollup.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (pathogen, state_abbr,
+          week_start) hashed into one opaque column. It carries the
+          grain -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: pathogen
+        description: Pathogen assayed -- Measles or Influenza A(H5).
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Measles", "Influenza A(H5)"]
+        config:
+          meta:
+            grain: true
+      - name: state_abbr
+        description: Two-letter state or territory postal code.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: week_start
+        description: Monday of the week the samples were collected in.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: samples_tested
+        description: Wastewater samples assayed for the pathogen that week. The denominator of the detection rate.
+        data_type: integer
+      - name: samples_detected
+        description: Samples in which the pathogen was detected. The numerator of the detection rate.
+        data_type: integer
+      - name: sites_reporting
+        description: Distinct sewershed sites contributing samples that week.
+        data_type: integer
+      - name: population_with_detection
+        description: Population served by sewersheds that recorded at least one detection.
+        data_type: integer
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

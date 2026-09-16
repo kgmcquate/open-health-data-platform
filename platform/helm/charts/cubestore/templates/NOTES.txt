@@ -1,0 +1,11 @@
+cubestore {{ .Chart.Version }} deployed as {{ include "cubestore.fullname" . }}.
+
+In-cluster only: {{ include "cubestore.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+No ingress, no auth — this is Cube Core's pre-aggregation cache, reached only
+by the `cube` chart's CUBEJS_CUBESTORE_HOST/PORT (ADR-0024). Deploy this
+chart before (or together with) `cube` — cube fails readiness if it can't
+reach Cube Store.
+
+Verify it's up before debugging a cube CrashLoopBackOff:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/name={{ include "cubestore.name" . }}

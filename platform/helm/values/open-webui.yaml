@@ -1,0 +1,505 @@
+# Values for the upstream chart: open-webui/open-webui
+#
+#   helm upgrade --install open-webui open-webui/open-webui -n app \
+#     -f platform/helm/values/open-webui.yaml --set sso.google.clientId=...
+#
+# The chat UI (ADR-0017). Open WebUI owns chat.open-health-data-platform.org and
+# reaches the semantic layer through mcp-cube — our FastMCP server over Cube
+# Core's REST API, because Cube Core ships no MCP server of its own (ADR-0016).
+#
+#   Cloudflare -> Traefik -> Ingress(chat.ohdp) -> THIS -> mcp-cube -> cube -> Snowflake
+#                                                       -> openrouter.ai
+#
+# This is a *second* chat surface, not a replacement: hub-api keeps its own UI,
+# quota gate, Europe PMC literature tools and `chat_turns` logging at
+# app.open-health-data-platform.org (docs/chatbot.md). What Open WebUI gains is a
+# real chat product — conversation history, model switching, file upload, RAG —
+# for none of our code. What it gives up is everything hub-api enforces *around*
+# the model: there is no quota gate here, and no per-turn eval log. Both of
+# those are reasons this host's sign-up is gated (see DEFAULT_USER_ROLE below),
+# and the reason retiring hub-api is a separate decision, not a consequence of
+# this one.
+
+# ---------------------------------------------------------------------------
+# Image: our own build, not the upstream chart's default. ADR-0022 — the only
+# thing added on top of ghcr.io/open-webui/open-webui is the
+# `openwebui-token-tracking` pip package (apps/open-webui/Dockerfile), so that
+# per-user/group token limits don't depend on a runtime `pip install` on every
+# pod restart. `tag` is supplied via `--set` at deploy time
+# (platform/helm/Makefile's `open-webui` target), the same way hub-api/
+# streamlit/cube/pipeline are.
+# ---------------------------------------------------------------------------
+image:
+  repository: ghcr.io/kgmcquate/ohdp-open-webui
+  tag: ""
+
+# ---------------------------------------------------------------------------
+# Subcharts. All off: the node runs near its memory ceiling (ARCHITECTURE.md §4)
+# and none of these earn their GB here.
+#   ollama    — local inference on a 32 GB shared node is not happening; the
+#               model is GLM 5.3 Flash, over OpenRouter's API (ADR-0023).
+#   pipelines — a second Python service whose job is filtering/transforming
+#               requests. Nothing needs it, and leaving it on silently
+#               repoints openaiBaseApiUrl at the pipelines Service.
+#   tika      — document text extraction for RAG. Revisit with a use case.
+# ---------------------------------------------------------------------------
+ollama:
+  enabled: false
+pipelines:
+  enabled: false
+tika:
+  enabled: false
+terminals:
+  enabled: false
+
+# Websockets stay on, but with Open WebUI's in-memory manager instead of the
+# bundled Redis. Redis exists to fan websocket events out across replicas; at
+# replicaCount 1 it is a second pod and ~100Mi for nothing (ARCHITECTURE.md §4).
+# Adding a replica means turning both of these back on, not just bumping the
+# count.
+websocket:
+  enabled: true
+  manager: ""
+  redis:
+    enabled: false
+
+replicaCount: 1
+
+# ---------------------------------------------------------------------------
+# Model backend: OpenRouter (ADR-0023), running Z.ai's GLM 5.3 Flash.
+#
+# Open WebUI speaks OpenAI's API shape and Ollama's, and OpenRouter is natively
+# OpenAI-compatible at /v1 — no compatibility layer in between, unlike the
+# Anthropic endpoint this replaces. One key reaches every model OpenRouter
+# fronts, so changing which model this surface runs is a `model_ids` edit in
+# OPENAI_API_CONFIGS below rather than a new provider, a new key and a new
+# base URL.
+#
+# The key in `openwebui-secrets` is an *OpenRouter* key (sk-or-v1-...), not an
+# Anthropic one. The Secret entry keeps the name OPENAI_API_KEY because two
+# things read it under that name: this chart, which renders it into the pod as
+# $OPENAI_API_KEY, and ADR-0022's tracked pipe, whose API_KEY Valve defaults
+# from os.getenv("OPENAI_API_KEY"). That is why there is no key env var of our
+# own in extraEnvVars below — where ADR-0022 needed one for
+# AnthropicTrackedPipe, ADR-0023's OpenAITrackedPipe finds the chart's. Its
+# other two Valves (API_BASE_URL, PROVIDER) have no env fallback in the package
+# and are still typed in by hand at registration (docs/chatbot.md §11.4): they
+# must match openaiBaseApiUrl below and the `--provider` of the init Job's
+# pricing rows, or the pipe lists no models.
+#
+# hub-api still bills ANTHROPIC_API_KEY directly for its own agent — ADR-0023
+# changes this surface only.
+# ---------------------------------------------------------------------------
+enableOpenaiApi: true
+openaiBaseApiUrl: "https://openrouter.ai/api/v1"
+openaiApiKeyExistingSecret: openwebui-secrets
+openaiApiKeyExistingSecretKey: OPENAI_API_KEY
+
+# Left empty on purpose: the chart's `databaseUrl` renders the password into the
+# manifest and into `helm get values`. DATABASE_URL arrives from the
+# `openwebui-db` Secret below instead (generated by platform-base).
+databaseUrl: ""
+
+extraEnvFrom:
+  # openwebui-db      — generated by platform-base: DATABASE_URL, WEBUI_SECRET_KEY
+  - secretRef:
+      name: openwebui-db
+
+extraEnvVars:
+  # Always use Env vars instead of values stored in DB.
+  - name: ENABLE_PERSISTENT_CONFIG
+    value: "false"
+  - name: ENABLE_PASSWORD_AUTH
+    value: "false"
+  # The image is built with its static assets under /app/backend/open_webui/static,
+  # owned by root (same root-default-build-args issue podSecurityContext below
+  # works around for the container's own UID). Boot logs under runAsUser 1000
+  # otherwise fill up with "Permission denied" while the app tries to copy the
+  # frontend's favicon/logo/loader into that directory — harmless (wrapped in
+  # try/except upstream, so it never stops startup) but noisy. Repointing
+  # STATIC_DIR at the persistence volume, which fsGroup 1000 below already owns,
+  # gives it somewhere it can actually write, at the cost of that volume being
+  # slightly less "uploads and RAG cache only" than the persistence comment says.
+  - name: STATIC_DIR
+    value: "/app/backend/data/static"
+  # No password accounts. Google is the only way in, so the login form would be
+  # a dead end that still accepts credential stuffing.
+  - name: ENABLE_LOGIN_FORM
+    value: "false"
+  - name: ENABLE_SIGNUP
+    value: "false"
+  - name: ENABLE_CALENDAR
+    value: "false"
+  - name: ENABLE_CHANNELS
+    value: "false"
+  - name: "ENABLE_AUTOMATIONS"
+    value: "false"
+  - name: "ENABLE_NOTES"
+    value: "false"
+  - name: "ENABLE_MEMORIES"
+    value: "true"
+  - name: "ENABLE_MEMORY_SYSTEM_CONTEXT"
+    value: "true"
+  - name: DEFAULT_PROMPT_SUGGESTIONS
+    value: >-
+      [
+        {
+          "title": ["Explore", "Chronic disease trends"],
+          "content": "What datasets do we have on chronic disease prevalence, and how has it changed over time across states?"
+        },
+        {
+          "title": ["Compare", "Health outcomes by region"],
+          "content": "Compare a key health outcome (e.g. obesity, diabetes, or life expectancy) across US regions using the latest available data."
+        },
+        {
+          "title": ["Summarize", "Available data and metrics"],
+          "content": "Give me a summary of the available data and metrics."
+        },
+        {
+          "title": ["Find", "Vaccination coverage data"],
+          "content": "What vaccination coverage data is available in the catalog, and which populations or geographies does it cover?"
+        }
+      ]
+  - name: ENABLE_TOOL_PERMISSIONS
+    value: "true"
+  # The gate. `sso.enableSignup` below lets any Google account create an
+  # account here — `pending` means that account can sign in and see nothing
+  # until an admin promotes it. Open WebUI has no email allowlist of the kind
+  # values/oauth2-proxy-app.yaml uses, so this is the equivalent control, and
+  # it is the one thing standing between a public hostname and a metered
+  # Anthropic key. The first account created becomes the admin.
+  - name: DEFAULT_USER_ROLE
+    value: "user"
+  - name: BYPASS_MODEL_ACCESS_CONTROL
+    value: "true"
+  - name: WEBUI_NAME
+    value: "Open Health Data Platform"
+  # Pre-registers the mcp-cube tool server so it no longer has to be added by
+  # hand through Settings -> Admin -> Integrations after every fresh install
+  # (docs/chatbot.md §11.2 step 1, now obsolete). With ENABLE_PERSISTENT_CONFIG
+  # =false above, this is not just a first-boot seed — Config.get() resolves
+  # from this env var on every read, so the DB row is never authoritative and
+  # editing this value + restarting the pod is the only way to change it. A
+  # change made through Settings -> Admin -> Integrations will not survive a
+  # restart.
+  #
+  # The bearer token can't live inline here: it's Kubernetes Secret
+  # mcp-cube-secret/OHDP_MCP_AUTH_TOKEN (the same secret mcp-cube itself
+  # reads), and this values file is not a place for cluster secrets.
+  # $(MCP_CUBE_TOKEN) is Kubernetes' own env-var interpolation ("dependent
+  # environment variables"): it substitutes the value of the MCP_CUBE_TOKEN
+  # entry defined just above it in this same list, so the token never appears
+  # in the chart, `helm get values`, or git.
+  - name: MCP_CUBE_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: mcp-cube-secret
+        key: OHDP_MCP_AUTH_TOKEN
+  # OpenMetadata's own MCP server (native to OM 2.0.1, unlike Cube — no wrapper
+  # needed). openmetadata-mcp-secret is NOT generated by platform-base like the
+  # other secrets in this file — it's externally issued, like openwebui-secrets
+  # above, so deploy-platform.yml's "External secrets" step upserts it from the
+  # OPENWEBUI_OPENMETADATA_MCP_TOKEN repo secret. That token is the JWT for a
+  # dedicated OpenMetadata Bot ("openwebui-mcp", read-only Data Consumer role)
+  # — there's no API for creating it, so it's a one-time manual step via
+  # Settings -> Bots in the OM UI, then `gh secret set
+  # OPENWEBUI_OPENMETADATA_MCP_TOKEN`. Deliberately not OPENMETADATA_JWT
+  # (broader-permission bot backing hub-api/the pipeline) and not the personal
+  # access token from this repo's .mcp.json — that one is scoped to a human's
+  # own Admin account, and every chat user would otherwise be querying the
+  # catalog as that person.
+  - name: OM_MCP_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: openmetadata-mcp-secret
+        key: OM_MCP_BOT_TOKEN
+  # `url` must be the full MCP endpoint, /mcp included. `path` is not a typo
+  # left for OpenAPI parity — connect_mcp_server() (utils/middleware.py) dials
+  # `url` verbatim for type "mcp" and never appends `path` the way it does for
+  # "openapi"; got bitten by this once already (url without /mcp connected
+  # but every tool call 404'd against the service root).
+  #
+  # OpenMetadata is reached at its internal Service (openmetadata.meta, port
+  # 8585 per values/openmetadata.yaml) rather than through the public
+  # catalog.open-health-data-platform.org ingress — cluster-internal traffic
+  # has no reason to leave the cluster and come back through Cloudflare/Traefik.
+  # Shared bearer for hub-api's /tools app (the third connection below). Lives
+  # in hub-api-secrets because hub-api is the service that issues it; reading a
+  # sibling's Secret by name is the same arrangement as MCP_CUBE_TOKEN above,
+  # and works because both Deployments are in `app`.
+  - name: TOOLS_AUTH_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: hub-api-secrets
+        key: OHDP_TOOLS_AUTH_TOKEN
+  # The third entry is type "openapi", not "mcp" — issue reporting is a plain
+  # REST endpoint on hub-api so that the hub's own chat page can call the exact
+  # same route, with one set of guardrails behind both surfaces.
+  #
+  # Its `url` ends at /tools, the *mount point*, and `path` is the spec file.
+  # This is the case the mcp note below is contrasted against: for "openapi"
+  # Open WebUI joins url + path to fetch the spec, then resolves each operation
+  # against `url`. Pointing it at hub-api's root /openapi.json instead would
+  # register every hub-api route as a tool — including POST /api/chat, a chat
+  # endpoint the chat model could then invoke on itself. The narrow spec is the
+  # access control; there is no per-operation allowlist on this side.
+  #
+  # `config.access_grants` is a second, independent access-control layer from
+  # the model's own — has_connection_access() (utils/access_control/__init__.py)
+  # gates every call through a tool-server connection (mcp or openapi) on this
+  # list, regardless of who can see the health-data-analyst model itself or
+  # BYPASS_MODEL_ACCESS_CONTROL above. An empty/missing list means "private,
+  # admin-only": non-admin users pass the model check, see the tool attached in
+  # the UI, then get silently denied when it's actually called (a "Access
+  # denied to tool server ..." warning server-side, nothing user-visible).
+  # Public-read here mirrors the grant already on the model itself
+  # (models/health-data-analyst-*.json's access_grants).
+  - name: TOOL_SERVER_CONNECTIONS
+    value: >-
+      [
+        {
+          "url":"http://hub-api.app.svc.cluster.local:8000/tools",
+          "path":"openapi.json",
+          "type":"openapi",
+          "auth_type":"bearer",
+          "key":"$(TOOLS_AUTH_TOKEN)",
+          "config": {
+            "enable":true,
+            "access_grants": [
+              {
+                "principal_type":"user",
+                "principal_id":"*",
+                "permission":"read"
+              }
+            ]
+          },
+          "info": {
+            "id":"ohdp-tools",
+            "name":"Report an Issue"
+          }
+        },
+        {
+          "url":"http://mcp-cube.app.svc.cluster.local:8000/mcp",
+          "path":"/mcp",
+          "type":"mcp",
+          "auth_type":"bearer",
+          "key":"$(MCP_CUBE_TOKEN)",
+          "config": {
+            "enable":true,
+            "access_grants": [
+              {
+                "principal_type":"user",
+                "principal_id":"*",
+                "permission":"read"
+              }
+            ]
+          },
+          "info": {
+            "id":"mcp-cube",
+            "name":"Cube Semantic Layer"
+          }
+        },
+        {
+          "url":"http://openmetadata.meta.svc.cluster.local:8585/mcp",
+          "path":"/mcp",
+          "type":"mcp",
+          "auth_type":"bearer",
+          "key":"$(OM_MCP_TOKEN)",
+          "config": {
+            "enable":true,
+            "access_grants": [
+              {
+                "principal_type":"user",
+                "principal_id":"*",
+                "permission":"read"
+              }
+            ]
+          },
+          "info":{
+            "id":"openmetadata",
+            "name":"OpenMetadata Catalog"
+          }
+        }
+      ]
+  # Restricted to one model. This matters far more against OpenRouter than it
+  # did against Anthropic: OpenRouter's /v1/models lists several hundred models
+  # from every lab it fronts, and the key can bill against any of them, so
+  # without this the picker would offer the entire catalogue — including models
+  # costing 50x what GLM 5.3 Flash does — to every promoted user.
+  #
+  # OPENAI_API_CONFIGS is keyed by the index of openaiBaseApiUrl above ("0",
+  # since there's only the one); model_ids replaces the fetched model list
+  # outright rather than filtering it. Same ENABLE_PERSISTENT_CONFIG=false note
+  # as TOOL_SERVER_CONNECTIONS above applies: this is live on every read, not a
+  # one-time seed, so a widened value in Settings -> Admin -> Models would not
+  # survive a restart either.
+  #
+  # The id is OpenRouter's slug, vendor prefix and all — `z-ai/glm-5.3-flash`,
+  # not `glm-5.3-flash`. It must match the id the init Job upserts into the
+  # pricing table (platform/helm/manifests/open-webui-token-tracking-init-job.yaml)
+  # or the tracked pipe cannot price the model and refuses the request.
+  - name: OPENAI_API_CONFIGS
+    value: '{"0":{"enable":true,"model_ids":["z-ai/glm-5.3-flash"]}}'
+  - name: DEFAULT_MODELS
+    value: "health-data-analyst"
+  # ENABLE_OLLAMA_API is already rendered by `ollama.enabled: false` above —
+  # repeating it here would be a duplicate env entry, not a stronger one.
+  #
+  # There is no env var for a global, user-unoverridable system prompt, so
+  # ARCHITECTURE.md §10.2's "population-level, not clinical decision support"
+  # disclaimer cannot be pinned from this file the way hub-api pins it in code.
+  # mcp-cube ships it in the MCP server's `instructions`, which every client
+  # receives; setting it again as the model's system prompt in Settings ->
+  # Admin -> Models is a post-install step (docs/chatbot.md §11).
+
+  # Code Interpreter: lets the model write Python (matplotlib/plotly) and have
+  # the result — including a rendered image — come back inline in the chat
+  # turn. This is the actual mechanism for "graphics in chat"; it is unrelated
+  # to Streamlit, which needs its own running server and can't render inside a
+  # chat bubble (see values/streamlit*.yaml / ADR-0015 for that surface).
+  #
+  # Engine is pyodide (WASM, runs in the visitor's browser) rather than
+  # jupyter (a real Python kernel we'd have to run as a pod). Jupyter is more
+  # capable — arbitrary pip installs, network access — but this node is
+  # already at its memory ceiling (ARCHITECTURE.md §4, see ollama/pipelines/
+  # tika/terminals all disabled above for the same reason), and it's arbitrary
+  # code execution facing chat users. Pyodide costs this deployment nothing
+  # and covers numpy/pandas/matplotlib, which is what chart generation needs.
+  #
+  # Still requires a one-time post-install step: Admin -> Settings -> Models ->
+  # z-ai/glm-5.3-flash -> enable the "Code Interpreter" capability checkbox. That
+  # flag lives on the model row in Postgres, not behind ENABLE_PERSISTENT_CONFIG,
+  # so it's a normal persistent UI setting and won't reset on pod restart.
+  - name: ENABLE_CODE_INTERPRETER
+    value: "true"
+  - name: CODE_INTERPRETER_ENGINE
+    value: "pyodide"
+
+  - name: ENABLE_WEB_SEARCH
+    value: "true"
+  - name: WEB_SEARCH_ENGINE
+    value: "duckduckgo"
+  - name: WEB_SEARCH_DOMAIN_FILTER_LIST
+    value: >-
+      wikipedia.org,
+      github.com,
+      cdc.gov
+  - name: WEB_SEARCH_RESULT_COUNT
+    value: "5"
+# ---------------------------------------------------------------------------
+# Google SSO — Open WebUI's own, not an oauth2-proxy wall.
+#
+# The other three public surfaces (Dagster, Streamlit, the hub app) sit behind
+# oauth2-proxy because they have no user model worth integrating with. Open WebUI
+# does: accounts, roles, per-user conversation history, per-user tool grants. A
+# proxy wall in front of it would authenticate the user twice and leave Open
+# WebUI believing every visitor was the same anonymous person.
+#
+# clientId is passed with --set from the Makefile (repo secret
+# OPENWEBUI_OIDC_CLIENT_ID) rather than written here — it is not a secret, but
+# keeping both halves in one place is what makes it obvious they must come from
+# the same Google client.
+#
+# That client must list
+#   https://chat.open-health-data-platform.org/oauth/google/callback
+# among its authorized redirect URIs, or login fails with redirect_uri_mismatch.
+# That is a Google Cloud console edit, not a deploy step.
+# ---------------------------------------------------------------------------
+sso:
+  enabled: true
+  # Distinct from ENABLE_SIGNUP above: this is what lets a Google login create
+  # an account at all. It has to be on, because with no password form there is
+  # no other way for a first user to exist. DEFAULT_USER_ROLE=pending is what
+  # makes that safe.
+  enableSignup: true
+  # Deliberately off. Merging by email lets anyone who controls an address at a
+  # provider take over a local account with the same address.
+  mergeAccountsByEmail: false
+  google:
+    enabled: true
+    clientId: ""
+    clientExistingSecret: openwebui-secrets
+    clientExistingSecretKey: GOOGLE_CLIENT_SECRET
+
+# ---------------------------------------------------------------------------
+# Ingress. Owns the hostname outright — no oauth2-proxy in front (see above).
+# WEBUI_URL, and therefore the OAuth redirect URI, is derived by the chart from
+# `ingress.host` + `ingress.tls`, so those two values are load-bearing.
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  class: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  host: chat.open-health-data-platform.org
+  tls: true
+  existingSecret: openwebui-tls
+
+# Conversation history and settings live in Postgres; this volume holds uploads,
+# RAG vector data and the cache. Small on purpose — it is not the source of
+# truth for anything, but losing it loses uploaded files.
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClass: do-block-storage
+  accessModes:
+    - ReadWriteOnce
+
+# ARCHITECTURE.md §4: limits are mandatory on every pod. Open WebUI is a Python
+# service plus a bundled sentence-transformers embedding model for RAG, which is
+# where the memory goes. 1Gi was the original guess and it was wrong: the first
+# real boot OOMKilled repeatedly (exit 137) while pulling/loading
+# sentence-transformers/all-MiniLM-L6-v2 at startup — that load, not steady-state
+# serving, is the actual peak. 2Gi is the observed-safe ceiling.
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+# The chart ships these empty. Open WebUI runs migrations on boot and the first
+# start after an image bump can take a while, so startup gets a long leash while
+# liveness stays tight.
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 20
+  periodSeconds: 5
+  failureThreshold: 60
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 20
+  failureThreshold: 3
+readinessProbe:
+  # /health/db, not /health: this instance's state is in Postgres, and a pod
+  # that cannot reach it should leave the Service rather than serve errors.
+  httpGet:
+    path: /health/db
+    port: http
+  periodSeconds: 10
+  failureThreshold: 3
+
+podSecurityContext:
+  # The public ghcr.io/open-webui/open-webui image is built with its UID/GID
+  # build args left at their default of 0 (root) — runAsNonRoot alone leaves
+  # kubelet checking the image's own (root) user and refusing to start it
+  # with CreateContainerConfigError. Pinning runAsUser overrides that.
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  # Open WebUI writes its cache and RAG index under /app/backend/data at
+  # runtime — the same exception cube/values.yaml documents for the same reason.
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]

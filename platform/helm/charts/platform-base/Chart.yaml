@@ -1,0 +1,16 @@
+apiVersion: v2
+name: platform-base
+description: >-
+  Cluster foundation we own: the platform namespaces, the internally-generated
+  secrets (Postgres passwords, OpenMetadata fernet key, Cube secret), and the
+  single shared Postgres StatefulSet. Everything here is either static or
+  self-generating — no out-of-band values. External secrets (Stripe, OIDC, Spaces
+  keys, source API keys) are injected separately by deploy-platform.yml, not this chart.
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - ohdp
+  - bootstrap
+maintainers:
+  - name: kgmcquate

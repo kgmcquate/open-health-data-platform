@@ -1,0 +1,80 @@
+# K-12 learning modality during the pandemic. Dimensions and their descriptions
+# come from dbt's column docs via cube-dbt — edit them in
+# data/dbt/models/curated/education/_curated_education__models.yml.
+#
+# The mart pre-splits each district-week's students across three modality
+# columns, so the shares below are plain SUM ratios rather than filtered
+# counts — they stay correct whether the query groups by week, state or both.
+{% set model = dbt_model('education__learning_modality_weekly') %}
+
+{% set measure_cols = [
+    'student_count', 'operational_schools',
+    'students_in_person', 'students_hybrid', 'students_remote', 'ingest_ts',
+] %}
+
+cubes:
+  - {{ model.as_cube() }}
+
+    dimensions:
+      {{ model.as_dimensions(skip=measure_cols) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ model.sql_table }}'
+
+    # ADR-0024: full copy in Cube Store, re-aggregated there at query time —
+    # inherits refresh_key above unchanged.
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      - name: total_students
+        sql: '{CUBE}."student_count"'
+        type: sum
+        description: {{ model.column('student_count').description }}
+
+      - name: total_operational_schools
+        sql: '{CUBE}."operational_schools"'
+        type: sum
+        description: {{ model.column('operational_schools').description }}
+
+      - name: students_in_person
+        sql: '{CUBE}."students_in_person"'
+        type: sum
+        description: {{ model.column('students_in_person').description }}
+
+      - name: students_hybrid
+        sql: '{CUBE}."students_hybrid"'
+        type: sum
+        description: {{ model.column('students_hybrid').description }}
+
+      - name: students_remote
+        sql: '{CUBE}."students_remote"'
+        type: sum
+        description: {{ model.column('students_remote').description }}
+
+      - name: pct_students_in_person
+        sql: "SUM({CUBE}.\"students_in_person\") / NULLIF(SUM({CUBE}.\"student_count\"), 0)"
+        type: number
+        description: >-
+          Share of students in fully in-person instruction, computed from summed
+          counts so it holds at any grain.
+
+      - name: pct_students_remote
+        sql: "SUM({CUBE}.\"students_remote\") / NULLIF(SUM({CUBE}.\"student_count\"), 0)"
+        type: number
+        description: >-
+          Share of students in fully remote instruction, computed from summed
+          counts so it holds at any grain.
+
+      - name: pct_students_hybrid
+        sql: "SUM({CUBE}.\"students_hybrid\") / NULLIF(SUM({CUBE}.\"student_count\"), 0)"
+        type: number
+        description: >-
+          Share of students in hybrid instruction, computed from summed counts
+          so it holds at any grain.
+
+      - name: districts_reporting
+        sql: '{CUBE}."district_nces_id"'
+        type: count_distinct
+        description: "Distinct districts reporting in the current filter — a coverage check."

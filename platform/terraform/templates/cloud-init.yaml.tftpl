@@ -1,0 +1,77 @@
+#cloud-config
+# Bootstraps a single-node k3s server. See ARCHITECTURE.md §4 and ADR-0005.
+#
+# Deliberately minimal: k3s ships Traefik (ingress), local-path (PVCs) and
+# ServiceLB, which is everything the topology needs. cert-manager, namespaces
+# and the application charts are applied afterwards with Helm, not here.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - ca-certificates
+  - unattended-upgrades
+  - fail2ban
+
+write_files:
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+  - path: /etc/sysctl.d/99-k3s.conf
+    content: |
+      # OpenSearch requires a raised map count or it refuses to start.
+      vm.max_map_count=262144
+      fs.inotify.max_user_instances=1024
+      fs.inotify.max_user_watches=524288
+
+  - path: /usr/local/bin/install-k3s.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+
+      # Reserve headroom for the OS and kubelet, and evict before the kernel OOM
+      # killer starts picking victims. The node runs close to its memory ceiling
+      # by design (ARCHITECTURE.md §4), so these are load-bearing.
+      INSTALL_K3S_EXEC=$(cat <<'ARGS'
+      server
+        --write-kubeconfig-mode=0600
+        --secrets-encryption
+        --disable-cloud-controller
+        --kubelet-arg=system-reserved=cpu=500m,memory=1Gi
+        --kubelet-arg=kube-reserved=cpu=250m,memory=512Mi
+        --kubelet-arg=eviction-hard=memory.available<512Mi,nodefs.available<10%
+        --kubelet-arg=image-gc-high-threshold=70
+        --kubelet-arg=image-gc-low-threshold=60
+      ARGS
+      )
+      # Collapse the heredoc to a single line and append the TLS SANs.
+      INSTALL_K3S_EXEC="$(echo "$INSTALL_K3S_EXEC" | tr '\n' ' ' | tr -s ' ')"
+      %{~ for san in tls_sans ~}
+      INSTALL_K3S_EXEC="$INSTALL_K3S_EXEC --tls-san ${san}"
+      %{~ endfor ~}
+      export INSTALL_K3S_EXEC
+      %{~ if k3s_version != "" ~}
+      export INSTALL_K3S_VERSION="${k3s_version}"
+      %{~ endif ~}
+
+      curl -sfL https://get.k3s.io | sh -
+
+      # Block until the API server answers, so `terraform apply` finishing means
+      # the cluster is genuinely usable.
+      for _ in $(seq 1 60); do
+        if k3s kubectl get --raw='/readyz' >/dev/null 2>&1; then
+          break
+        fi
+        sleep 5
+      done
+
+      k3s kubectl wait --for=condition=Ready node --all --timeout=300s
+      touch /var/lib/k3s-bootstrap-complete
+
+runcmd:
+  - sysctl --system
+  - /usr/local/bin/install-k3s.sh

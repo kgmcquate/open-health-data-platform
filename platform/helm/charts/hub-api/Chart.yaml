@@ -1,0 +1,11 @@
+apiVersion: v2
+name: hub-api
+description: FastAPI backend — chat orchestration, entitlements, Stripe webhooks
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - ohdp
+  - fastapi
+maintainers:
+  - name: kgmcquate

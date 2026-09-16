@@ -1,0 +1,19 @@
+graphql-authz-proxy deployed as {{ include "gqlproxy.fullname" . }}.
+
+Enforcing on:  {{ .Values.upstream.url }}{{ .Values.upstream.graphqlPath }}
+Default group for unrecognised users: {{ join ", " .Values.authz.defaultGroups }}
+
+Verify the allowlist actually denies a mutation before trusting it:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "gqlproxy.fullname" . }} 8080:{{ .Values.service.port }}
+
+  curl -s localhost:8080/graphql -H 'Content-Type: application/json' \
+    -d '{"query":"mutation { terminatePipelineExecution(runId:\"x\") { __typename } }"}'
+  # expect: 403 with "Access denied"
+
+  curl -s localhost:8080/graphql -H 'Content-Type: application/json' \
+    -d '{"query":"query { version }"}'
+  # expect: 200
+
+If a legitimate UI query 403s, the proxy logs the rejected field name. Confirm it
+is read-only, then add it to authz.groups[public-viewer] — never widen to "*".

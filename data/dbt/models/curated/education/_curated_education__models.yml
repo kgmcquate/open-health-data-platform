@@ -1,0 +1,78 @@
+version: 2
+
+models:
+  - name: education__learning_modality_weekly
+    description: >
+      K-12 district learning modality by week across the 2020-2021 and
+      2021-2022 school years. One row per district x week, with the district's
+      students split across three modality columns so each can be summed
+      directly.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (district_nces_id,
+          week) hashed into one opaque column. It carries the grain --
+          `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: school_year
+        description: School year the row belongs to ("2020-2021" or "2021-2022").
+        data_type: varchar
+      - name: district_nces_id
+        description: NCES local education agency identifier; the district key.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: district_name
+        description: Name of the school district.
+        data_type: varchar
+      - name: city
+        description: City the district is headquartered in.
+        data_type: varchar
+      - name: state
+        description: US state postal code.
+        data_type: varchar
+      - name: week
+        description: Monday starting the reported week. The time dimension for this mart.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: learning_modality
+        description: Reported instruction mode for the week -- In Person, Hybrid or Remote.
+        data_type: varchar
+      - name: student_count
+        description: >-
+          Students enrolled in the district that week. Equals the sum of the
+          three modality columns below.
+        data_type: integer
+      - name: operational_schools
+        description: Schools in the district operating that week.
+        data_type: integer
+      - name: students_in_person
+        description: student_count when the week's modality was In Person, else 0.
+        data_type: integer
+      - name: students_hybrid
+        description: student_count when the week's modality was Hybrid, else 0.
+        data_type: integer
+      - name: students_remote
+        description: student_count when the week's modality was Remote, else 0.
+        data_type: integer
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

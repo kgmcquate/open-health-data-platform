@@ -1,0 +1,227 @@
+# Values for the upstream chart: dagster/dagster
+#
+#   helm repo add dagster https://dagster-io.github.io/helm
+#   helm upgrade --install dagster dagster/dagster -n data -f platform/helm/values/dagster.yaml
+#
+# We do NOT vendor a Dagster chart. Upstream owns the CRD-free but fiddly
+# webserver/daemon/run-launcher wiring, and reimplementing it means re-doing that
+# work on every upgrade. See ADR-0006.
+
+global:
+  # Managed out of band; must contain key `postgresql-password`.
+  postgresqlSecretName: "dagster-postgresql-secret"
+  dagsterHome: /opt/dagster/dagster_home
+
+generatePostgresqlPasswordSecret: false
+generateCeleryConfigSecret: false
+
+# ---------------------------------------------------------------------------
+# Postgres: the single shared instance (ARCHITECTURE.md §2, §9 — do not split).
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: false
+  postgresqlHost: "postgres.infra.svc.cluster.local"
+  postgresqlUsername: dagster
+  postgresqlDatabase: dagster
+  service:
+    port: 5432
+
+# ---------------------------------------------------------------------------
+# Webserver. No ingress here on purpose: traffic reaches it only through
+# oauth2-proxy -> graphql-authz-proxy (§5). Exposing this Service directly
+# would bypass the read-only control entirely.
+# ---------------------------------------------------------------------------
+dagsterWebserver:
+  replicaCount: 1
+  # Sized against measured behaviour, not the result size. A single
+  # logsForRun(limit: 1000) costs ~78 MiB of webserver heap even when the run has
+  # ~50 events and the response is 17 KB — the cost is in executing the query,
+  # not in what comes back, so it does not shrink for small runs. Idle is
+  # ~220 MiB, and the run-logs page issues several of these at once, which is how
+  # 768Mi and then 1Gi both got OOMKilled mid-request. At 2Gi there is room for
+  # roughly twenty concurrent log queries.
+  #
+  # The limit is what grows; the request stays at 512Mi, so scheduling is
+  # unchanged and this still fits the nodes it already lands on.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  # Belt and braces. The proxy is the real control (§5) — this only hides the
+  # mutating affordances in the UI — but there is no reason to leave them on.
+  enableReadOnly: false
+  # The UI polls GraphQL continuously and is publicly exposed; a few hundred idle
+  # viewers put real load on Postgres (§5). Cap any single statement.
+  dbStatementTimeout: 15000
+  logLevel: INFO
+  service:
+    type: ClusterIP
+    port: 80
+  # Needed to read compute logs back out of Spaces (see computeLogManager
+  # below) — same secret the run launcher already gets, whole-secret injection.
+  envSecrets:
+    - name: ohdp-pipeline-secrets
+
+ingress:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# Daemon: schedules, sensors, run queue.
+# ---------------------------------------------------------------------------
+dagsterDaemon:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 384Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  # Same Spaces creds as the webserver above, for computeLogManager below.
+  envSecrets:
+    - name: ohdp-pipeline-secrets
+
+# ---------------------------------------------------------------------------
+# Run launcher. Each run becomes an ephemeral Job — this is what gives us the
+# memory-capped, concurrency-1 dbt build pod in §3/§4 without a second scheduler.
+# ---------------------------------------------------------------------------
+runLauncher:
+  type: K8sRunLauncher
+  config:
+    k8sRunLauncher:
+      # Each run executes the pipeline code — same image as the user deployment
+      # below. `make dagster TAG=` sets the tag on both.
+      image:
+        repository: "ghcr.io/kgmcquate/ohdp-pipeline"
+        tag: ""
+        pullPolicy: IfNotPresent
+      loadInclusterConfig: true
+      envSecrets:
+        # AWS + Spaces credentials, source API keys, OpenMetadata JWT.
+        # Referenced by name only — never inlined into run config or tags,
+        # which render in the public UI (§5).
+        # The AWS pair is what dlt, pyiceberg's SigV4 signer and DuckDB's S3
+        # secret all authenticate the lakehouse with (ADR-0019).
+        - name: ohdp-pipeline-secrets
+        # platform-base's generated hub-api<->Cube shared secret (same Secret
+        # Cube itself reads CUBEJS_API_SECRET from) — needed by
+        # openmetadata_cube_metrics_sync to sign its Cube API JWT.
+        - name: cube-secret
+      envConfigMaps:
+        - name: ohdp-pipeline-config
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          # Matches the healthdata_gov cadence jobs' own `run_tags` override
+          # (data/src/ohdp_orchestration/jobs/healthdata_gov.py) — that value
+          # only actually reaches the pod for schedule/sensor-launched runs;
+          # UI-launched and ad hoc asset-materialization runs fall back to
+          # this default, so it has to cover the same large-job case. §4's
+          # 1.5 GB pipeline-pod budget is stale against this — needs a
+          # follow-up doc update.
+          cpu: "4"
+          memory: 6Gi
+      runK8sConfig:
+        jobSpecConfig:
+          ttlSecondsAfterFinished: 3600
+
+# ---------------------------------------------------------------------------
+# Concurrency. maxConcurrentRuns: 1 is load-bearing — two concurrent dbt builds
+# racing the same models/tables is exactly what §3 forbids. Iceberg's per-table
+# ACID means neither could half-write a table, but one would still lose.
+# ---------------------------------------------------------------------------
+concurrency:
+  enabled: true
+  runs:
+    maxConcurrentRuns: 6
+
+# Bound Postgres growth; run history is backed up nightly but need not be eternal.
+retention:
+  enabled: true
+  schedule:
+    purgeAfterDays: 30
+  sensor:
+    purgeAfterDays:
+      failure: 30
+      skipped: 7
+      started: 30
+      success: 7
+
+# ---------------------------------------------------------------------------
+# Code location. Built from data/ — see ADR-0004 for the import-name remap.
+# ---------------------------------------------------------------------------
+dagster-user-deployments:
+  enabled: true
+  deployments:
+    - name: "ohdp-pipeline"
+      image:
+        repository: "ghcr.io/kgmcquate/ohdp-pipeline"
+        tag: "" # set per deploy; never "latest" (§5, reproducibility)
+        pullPolicy: IfNotPresent
+      dagsterApiGrpcArgs:
+        - "--module-name"
+        - "ohdp_orchestration.definitions"
+      port: 3030
+      includeConfigInLaunchedRuns:
+        enabled: false
+      envSecrets:
+        - name: ohdp-pipeline-secrets
+        # See runLauncher.config.k8sRunLauncher.envSecrets above — same reason.
+        - name: cube-secret
+      envConfigMaps:
+        - name: ohdp-pipeline-config
+      resources:
+        requests:
+          cpu: 50m
+          # Loading ohdp_orchestration.definitions imports OpenMetadata ingestion
+          # (dbt, Snowflake, Postgres source models) at module-load time; 256Mi/384Mi
+          # OOMKilled the code server mid-import (grpc-health-check readiness probe
+          # then times out because the server never comes up).
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+
+# Run logs are world-readable. Keep the level at INFO and make sure the
+# redaction filter in packages/shared/src/ohdp_shared/logging.py is installed in
+# the pipeline image's logging config (§5).
+pythonLogs:
+  pythonLogLevel: INFO
+
+# Compute (stdout/stderr) logs, browsable in the (publicly exposed, §5)
+# webserver UI — including dlt's, which logs via its own stdlib logger rather
+# than context.log and so never reaches the structured/redacted event stream.
+# Audited before enabling this: dlt's Socrata source sends its app token as a
+# header, never a URL query param (ohdp_ingestion/healthdata_gov/source.py),
+# and dlt runs at its unconfigured default log level (WARNING) everywhere in
+# this repo; the Snowflake PAT reaches DuckDB and pyiceberg as a DuckDB secret
+# and pyiceberg config respectively, neither of which echoes them, and the
+# lakehouse dbt assets never pass --debug. Re-audit before lowering dlt's log
+# level, adding --debug to the dbt component, or routing any other subprocess
+# through this — a raw traceback from a connection failure is the one path not
+# covered above.
+#
+# Still on Spaces after ADR-0019: this log manager takes no access-key config,
+# it reads AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY off the process environment,
+# and those stay the Spaces pair. The lakehouse does not compete for them —
+# dlt takes its S3 credentials as explicit config (OHDP_AWS_*), and the catalog
+# is reached with a Snowflake token, not an AWS signature.
+computeLogManager:
+  type: S3ComputeLogManager
+  config:
+    s3ComputeLogManager:
+      bucket: "ohdp-compute-logs" # must match compute_logs_bucket in terraform
+      region: "nyc3"
+      endpointUrl: "https://nyc3.digitaloceanspaces.com"
+      skipEmptyFiles: true
+
+serviceAccount:
+  create: true
+
+telemetry:
+  enabled: false

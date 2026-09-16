@@ -1,0 +1,263 @@
+version: 2
+
+models:
+  - name: respiratory__hospital_load
+    description: >
+      Weekly, per-state rollup of hospital load. Cube's respiratory_hospital_load
+      cube (semantic/cube/model/respiratory_hospital_load.yml) reads its
+      dimensions and measure descriptions from the column docs below via
+      cube-dbt — this file is the source of truth for those, not the Cube model.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state, week) hashed
+          into one opaque column. It carries the grain -- `unique` on it
+          asserts exactly what unique_combination_of_columns used to --
+          and is the primary key Cube joins and pre-aggregates on, which
+          is what keeps the natural-key columns themselves public
+          dimensions. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: state
+        description: US state postal code.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+
+      - name: week
+        description: Week start (Monday), truncated from report_date.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+
+      - name: avg_covid_inpatients
+        description: >-
+          Mean daily COVID-19 inpatients for the state, averaged over the week.
+        data_type: double
+
+      - name: avg_occupancy
+        description: >-
+          Mean daily inpatient bed occupancy ratio (beds used divided by beds
+          staffed) for the state, averaged over the week.
+        data_type: double
+
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: respiratory__ed_visit_share_weekly
+    description: >
+      NSSP share of emergency department visits attributed to each respiratory
+      pathogen, by state and week. One row per state x week x pathogen. Values
+      are percentages of all ED visits -- average them, never sum them. The four
+      pathogen values are not mutually exclusive: "Combined" is CDC's own union
+      of the other three.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state, week_end,
+          pathogen) hashed into one opaque column. It carries the grain
+          -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: state
+        description: State or territory name as NSSP publishes it.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: week_end
+        description: Last day of the reporting week.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: pathogen
+        description: >-
+          Respiratory pathogen -- COVID-19, Influenza, RSV, or Combined (CDC's
+          union of the three; summing across pathogen double-counts).
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["COVID-19", "Influenza", "RSV", "Combined"]
+        config:
+          meta:
+            grain: true
+      - name: percent_of_ed_visits
+        description: Percentage of the week's emergency department visits attributed to the pathogen.
+        data_type: double
+      - name: percent_of_ed_visits_smoothed
+        description: CDC's smoothed version of the same percentage; preferred for trend lines.
+        data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: respiratory__rsv_hospitalization_weekly
+    description: >
+      RSV-NET laboratory-confirmed RSV hospitalisation rates for the all-ages,
+      all-sex, all-race stratum. One row per state x season x week. Filtered to
+      the observed weekly rate -- the source multiplexes weekly, cumulative and
+      monthly rates plus clinical-characteristic percentages through one column.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state_abbr, season,
+          week_end) hashed into one opaque column. It carries the grain
+          -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: state_abbr
+        description: Two-letter postal code of the RSV-NET surveillance site's state.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: season
+        description: RSV surveillance season (e.g. "2025-26").
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: week_end
+        description: Last day of the reporting week.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: hospitalization_rate_per_100k
+        description: >-
+          Laboratory-confirmed RSV hospitalisations per 100,000 population for the
+          week. A rate -- average it, never sum it.
+        data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: respiratory__hospital_burden_weekly
+    description: >
+      NHSN weekly hospital respiratory burden by jurisdiction, national row
+      excluded. One row per jurisdiction x week. Admissions are counts and are
+      additive; the bed percentages are ratios and must be averaged.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (jurisdiction,
+          week_end) hashed into one opaque column. It carries the grain
+          -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: jurisdiction
+        description: Two-letter state or territory code (the national "USA" row is excluded).
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: week_end
+        description: Last day of the reporting week.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: admissions_covid
+        description: Confirmed COVID-19 hospital admissions during the week, all ages. Additive.
+        data_type: double
+      - name: admissions_covid_adult
+        description: Confirmed adult COVID-19 hospital admissions during the week.
+        data_type: double
+      - name: admissions_covid_pediatric
+        description: Confirmed paediatric COVID-19 hospital admissions during the week.
+        data_type: double
+      - name: admissions_influenza
+        description: Confirmed influenza hospital admissions during the week, all ages. Additive.
+        data_type: double
+      - name: avg_daily_admissions_covid
+        description: Mean daily confirmed COVID-19 admissions across the week.
+        data_type: double
+      - name: avg_daily_admissions_influenza
+        description: Mean daily confirmed influenza admissions across the week.
+        data_type: double
+      - name: pct_inpatient_beds_covid
+        description: Mean percentage of staffed inpatient beds occupied by COVID-19 patients.
+        data_type: double
+      - name: pct_icu_beds_covid
+        description: Mean percentage of staffed ICU beds occupied by COVID-19 patients.
+        data_type: double
+      - name: pct_inpatient_beds_influenza
+        description: Mean percentage of staffed inpatient beds occupied by influenza patients.
+        data_type: double
+      - name: pct_icu_beds_influenza
+        description: Mean percentage of staffed ICU beds occupied by influenza patients.
+        data_type: double
+      - name: pct_inpatient_beds_occupied
+        description: Mean percentage of staffed inpatient beds occupied by any patient.
+        data_type: double
+      - name: pct_icu_beds_occupied
+        description: Mean percentage of staffed ICU beds occupied by any patient.
+        data_type: double
+      - name: pct_days_reporting
+        description: >-
+          Percentage of the week's days on which hospitals reported. Reporting
+          became voluntary in May 2024, so a drop in admissions after that date
+          may be a drop in reporting -- read this column alongside any trend.
+        data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

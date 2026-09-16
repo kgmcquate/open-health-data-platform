@@ -1,0 +1,199 @@
+"""The issue-reporting tool, exercised through the mounted /tools app.
+
+No GitHub: the API is a transport stub. What these tests protect is everything
+around the call — that the two identity paths stay distinct, that the spec Open
+WebUI reads exposes one operation and not the chat endpoint, that a duplicate
+does not become a second issue, and that a pasted credential does not reach a
+public repository.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+
+from hub_api import issues
+from hub_api.main import app
+
+TOKEN = "tools-token"
+REPO = "kgmcquate/open-health-data-platform"
+
+
+class FakeGitHub:
+    """Stands in for api.github.com. Records what would have been created."""
+
+    def __init__(self, existing: list[dict[str, Any]] | None = None) -> None:
+        self.existing = existing or []
+        self.created: list[dict[str, Any]] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json=self.existing)
+        payload = json.loads(request.content)
+        self.created.append(payload)
+        number = 100 + len(self.created)
+        return httpx.Response(
+            201,
+            json={"number": number, "html_url": f"https://github.com/{REPO}/issues/{number}"},
+        )
+
+
+@pytest.fixture(autouse=True)
+def _configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(issues.settings, "github_token", "gh-token", raising=False)
+    monkeypatch.setattr(issues.settings, "github_issues_repo", REPO, raising=False)
+    monkeypatch.setattr(issues.settings, "tools_auth_token", TOKEN, raising=False)
+    # The rate limiter is module state; a leaked window from one test would
+    # 429 the next one for an hour.
+    issues._recent_reports.clear()
+
+
+@pytest.fixture
+def github(monkeypatch: pytest.MonkeyPatch) -> FakeGitHub:
+    fake = FakeGitHub()
+    real_client = httpx.AsyncClient
+
+    def patched(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        kwargs["transport"] = httpx.MockTransport(fake.handler)
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(issues.httpx, "AsyncClient", patched)
+    return fake
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(app)
+
+
+REPORT = {
+    "title": "Air quality averages look wrong for Montana",
+    "body": "The 2023 average is an order of magnitude above every neighbouring state.",
+    "kind": "data-quality",
+}
+
+
+def test_chatbot_files_anonymously(client: TestClient, github: FakeGitHub) -> None:
+    response = client.post(
+        "/tools/report_issue", json=REPORT, headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["duplicate"] is False
+
+    (created,) = github.created
+    assert "source:chatbot" in created["labels"]
+    assert issues.LABEL in created["labels"]
+    # The bearer token says the *caller* is Open WebUI; it says nothing about
+    # which human typed, and the issue must not imply otherwise.
+    assert "anonymous chat user" in created["body"]
+
+
+def test_web_user_is_attributed_to_the_verified_email(
+    client: TestClient, github: FakeGitHub
+) -> None:
+    response = client.post(
+        "/tools/report_issue", json=REPORT, headers={"X-Forwarded-Email": "a@example.org"}
+    )
+    assert response.status_code == 200
+
+    (created,) = github.created
+    assert "source:web" in created["labels"]
+    assert "a@example.org" in created["body"]
+
+
+def test_unauthenticated_caller_is_refused(client: TestClient, github: FakeGitHub) -> None:
+    assert client.post("/tools/report_issue", json=REPORT).status_code == 401
+    assert client.post(
+        "/tools/report_issue", json=REPORT, headers={"Authorization": "Bearer wrong"}
+    ).status_code == 401
+    assert github.created == []
+
+
+def test_duplicate_title_returns_the_existing_issue(
+    client: TestClient, github: FakeGitHub
+) -> None:
+    github.existing = [
+        {
+            "number": 7,
+            "title": "Air-quality averages look wrong for Montana!",
+            "html_url": f"https://github.com/{REPO}/issues/7",
+        }
+    ]
+    response = client.post(
+        "/tools/report_issue", json=REPORT, headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "number": 7,
+        "url": f"https://github.com/{REPO}/issues/7",
+        "duplicate": True,
+    }
+    assert github.created == []
+
+
+def test_credentials_are_redacted_before_publication(
+    client: TestClient, github: FakeGitHub
+) -> None:
+    leaked = "ghp_" + "a" * 36
+    client.post(
+        "/tools/report_issue",
+        json={**REPORT, "body": f"I ran the export and got an error. My token is {leaked}."},
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    (created,) = github.created
+    assert leaked not in created["body"]
+    assert "[redacted]" in created["body"]
+
+
+def test_long_report_is_truncated_not_rejected(client: TestClient, github: FakeGitHub) -> None:
+    response = client.post(
+        "/tools/report_issue",
+        json={**REPORT, "body": "transcript. " * 1000},
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert response.status_code == 200
+    # The footer is appended after truncation, so the body exceeds MAX_BODY by
+    # exactly that much and no more.
+    (created,) = github.created
+    assert "…" in created["body"]
+    assert len(created["body"]) < issues.MAX_BODY + 400
+
+
+def test_rate_limit_stops_a_flood(client: TestClient, github: FakeGitHub) -> None:
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    for n in range(issues.RATE_LIMIT):
+        body = {**REPORT, "title": f"Distinct problem number {n} in the warehouse"}
+        assert client.post("/tools/report_issue", json=body, headers=headers).status_code == 200
+
+    refused = client.post(
+        "/tools/report_issue",
+        json={**REPORT, "title": "One problem too many in the warehouse"},
+        headers=headers,
+    )
+    assert refused.status_code == 429
+    assert len(github.created) == issues.RATE_LIMIT
+
+
+def test_unconfigured_deployment_refuses_instead_of_half_working(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(issues.settings, "github_token", "", raising=False)
+    response = client.post(
+        "/tools/report_issue", json=REPORT, headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert response.status_code == 503
+
+
+def test_tool_spec_exposes_only_report_issue(client: TestClient) -> None:
+    """The narrowing that keeps `/api/chat` out of the model's hands.
+
+    Open WebUI turns every operation in the spec it reads into a callable tool,
+    so this assertion is the access control, not a tidiness check.
+    """
+    spec = client.get("/tools/openapi.json").json()
+    assert list(spec["paths"]) == ["/report_issue"]
+    assert spec["paths"]["/report_issue"]["post"]["operationId"] == "report_issue"

@@ -1,0 +1,186 @@
+.DEFAULT_GOAL := help
+SHELL := /usr/bin/env bash
+
+HELM ?= helm
+KUBECTL ?= kubectl
+VALUES := values
+CHARTS := charts
+
+# Image tag for dagster + hub-api. Defaults to the current commit — the same
+# `sha-<12>` tag build-images.yml pushes on merge to main. Override to roll
+# back to an older build: `make dagster TAG=sha-0123456789ab`.
+TAG ?= $(shell git rev-parse HEAD 2>/dev/null | cut -c1-12 | grep . | sed 's/^/sha-/')
+
+# Pin every upstream chart. `helm upgrade --install` otherwise silently pulls
+# whatever is newest and runs its migrations unattended. Re-resolve deliberately
+# after reading the upstream changelog (same rule as the proxy image digest).
+# OpenMetadata 2.0: chart values schema is unchanged from 1.13.x; the server
+# runs Flyway migrations from the `run-db-migrations` initContainer on upgrade.
+OPENSEARCH_VERSION      ?= 3.8.0
+OPENMETADATA_VERSION    ?= 2.0.1
+DAGSTER_VERSION         ?= 1.13.21
+TRAEFIK_VERSION         ?= 41.5.0
+CERT_MANAGER_VERSION    ?= v1.21.1
+OAUTH2_PROXY_VERSION    ?= 10.7.0
+OPENWEBUI_VERSION       ?= 16.5.0
+# Cube Store image tag (charts/cubestore is ours, but the image is upstream
+# cubejs/cubestore — same pin discipline as the upstream charts above, just
+# via image.tag instead of --version). Same v1.7 train as the cubejs/cube
+# base image pinned in semantic/cube/Dockerfile.
+CUBESTORE_VERSION       ?= v1.7.39
+
+.PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
+        install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \
+        streamlit oauth2-proxy-streamlit hub-api oauth2-proxy-app cube cubestore \
+        mcp-cube open-webui
+
+help: ## List targets
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+
+repos: ## Add and update upstream chart repos
+	$(HELM) repo add dagster https://dagster-io.github.io/helm
+	$(HELM) repo add open-metadata https://helm.open-metadata.org
+	$(HELM) repo add opensearch https://opensearch-project.github.io/helm-charts
+	$(HELM) repo add traefik https://traefik.github.io/charts
+	$(HELM) repo add jetstack https://charts.jetstack.io
+	$(HELM) repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
+	$(HELM) repo add open-webui https://helm.openwebui.com
+	$(HELM) repo update
+
+lint: ## Lint the charts we own
+	$(HELM) lint $(CHARTS)/platform-base
+	$(HELM) lint $(CHARTS)/hub-api --set image.tag=0.0.0-dev
+	$(HELM) lint $(CHARTS)/graphql-authz-proxy
+	$(HELM) lint $(CHARTS)/dagster-monitoring
+	$(HELM) lint $(CHARTS)/streamlit --set image.tag=0.0.0-dev
+	$(HELM) lint $(CHARTS)/cube --set image.tag=0.0.0-dev
+	$(HELM) lint $(CHARTS)/cubestore --set image.tag=$(CUBESTORE_VERSION)
+	$(HELM) lint $(CHARTS)/mcp-cube --set image.tag=0.0.0-dev
+
+template: ## Render the charts we own locally (catches template errors without a cluster)
+	$(HELM) template platform-base $(CHARTS)/platform-base >/dev/null && echo "platform-base OK"
+	$(HELM) template hub-api $(CHARTS)/hub-api --set image.tag=0.0.0-dev >/dev/null && echo "hub-api OK"
+	$(HELM) template gqlproxy $(CHARTS)/graphql-authz-proxy >/dev/null && echo "graphql-authz-proxy OK"
+	$(HELM) template dagster-monitoring $(CHARTS)/dagster-monitoring >/dev/null && echo "dagster-monitoring OK"
+	$(HELM) template streamlit $(CHARTS)/streamlit --set image.tag=0.0.0-dev >/dev/null && echo "streamlit OK"
+	$(HELM) template cube $(CHARTS)/cube --set image.tag=0.0.0-dev >/dev/null && echo "cube OK"
+	$(HELM) template cubestore $(CHARTS)/cubestore --set image.tag=$(CUBESTORE_VERSION) >/dev/null && echo "cubestore OK"
+	$(HELM) template mcp-cube $(CHARTS)/mcp-cube --set image.tag=0.0.0-dev >/dev/null && echo "mcp-cube OK"
+
+# --------------------------------------------------------------------------
+# Cluster foundation
+# --------------------------------------------------------------------------
+base: ## Namespaces, generated internal secrets, and the shared Postgres StatefulSet
+	$(HELM) upgrade --install platform-base $(CHARTS)/platform-base \
+		-n infra --create-namespace --wait --timeout 5m
+
+traefik: ## Install the Traefik ingress controller (provisions a DO load balancer)
+	$(HELM) upgrade --install traefik traefik/traefik --version $(TRAEFIK_VERSION) \
+		-n infra --create-namespace -f $(VALUES)/traefik.yaml --wait --timeout 5m
+
+cert-manager: ## Install cert-manager (HTTP-01 solver for Traefik)
+	$(HELM) upgrade --install cert-manager jetstack/cert-manager --version $(CERT_MANAGER_VERSION) \
+		-n infra --create-namespace -f $(VALUES)/cert-manager.yaml --wait --timeout 5m
+
+cluster-issuer: ## Create the letsencrypt-prod ClusterIssuer (re-renders platform-base once the CRDs exist)
+	$(HELM) upgrade platform-base $(CHARTS)/platform-base -n infra --wait --timeout 5m
+
+infra: base traefik cert-manager cluster-issuer ## Cluster foundation: platform-base, ingress, cert-manager, issuer
+
+# The external secrets (Spaces keys, source API keys, Stripe, OIDC, OM ingestion
+# JWT) are injected by .github/workflows/deploy-platform.yml from repo secrets —
+# not by a make target. For a manual/local deploy, see platform/helm/README.md.
+
+# --------------------------------------------------------------------------
+# Data platform
+#
+# There is no Iceberg catalog target: the catalog is Snowflake's Horizon
+# Catalog, provisioned by platform/terraform/snowflake.tf and reached over the
+# internet (ADR-0011). Nothing to install, nothing to bootstrap.
+# --------------------------------------------------------------------------
+opensearch: ## Install OpenSearch (must be green before OpenMetadata)
+	$(HELM) upgrade --install opensearch opensearch/opensearch --version $(OPENSEARCH_VERSION) \
+		-n meta --create-namespace -f $(VALUES)/opensearch.yaml --wait --timeout 10m
+
+openmetadata: ## Install OpenMetadata
+	$(HELM) upgrade --install openmetadata open-metadata/openmetadata --version $(OPENMETADATA_VERSION) \
+		-n meta --create-namespace -f $(VALUES)/openmetadata.yaml --wait --timeout 10m
+
+dagster: ## Install Dagster (TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install dagster dagster/dagster --version $(DAGSTER_VERSION) \
+		-n data --create-namespace -f $(VALUES)/dagster.yaml \
+		--set "dagster-user-deployments.deployments[0].image.tag=$(TAG)" \
+		--set "runLauncher.config.k8sRunLauncher.image.tag=$(TAG)" \
+		--wait --timeout 10m
+
+proxy: ## Install the GraphQL authz proxy in front of Dagster
+	$(HELM) upgrade --install gqlproxy $(CHARTS)/graphql-authz-proxy \
+		-n data --create-namespace --wait
+
+cubestore: ## Install Cube Store, Cube's pre-aggregation cache (ADR-0024) — deploy before cube
+	$(HELM) upgrade --install cubestore $(CHARTS)/cubestore \
+		-n data --create-namespace --set image.tag=$(CUBESTORE_VERSION) --wait --timeout 5m
+
+cube: cubestore ## Install Cube Core, the semantic layer (TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install cube $(CHARTS)/cube \
+		-n data --create-namespace --set image.tag=$(TAG) --wait --timeout 5m
+
+dagster-monitoring: ## Install the read-only Dagster monitoring dashboard (mounted at /monitoring, see values/oauth2-proxy.yaml)
+	$(HELM) upgrade --install dagster-monitoring $(CHARTS)/dagster-monitoring \
+		-n data --create-namespace --wait
+
+oauth2-proxy: ## Install the Google login wall in front of the authz proxy + dagster-monitoring (ADR-0007)
+	$(HELM) upgrade --install oauth2-proxy oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
+		-n data --create-namespace -f $(VALUES)/oauth2-proxy.yaml --wait --timeout 5m
+
+# --------------------------------------------------------------------------
+# Streamlit — a plain Deployment via our own chart (ADR-0015). No operator,
+# no metastore: dashboards are Python files in git, not stored objects.
+# --------------------------------------------------------------------------
+streamlit: ## Install Streamlit (TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install streamlit $(CHARTS)/streamlit \
+		-n bi --create-namespace --set image.tag=$(TAG) --wait --timeout 5m
+
+oauth2-proxy-streamlit: ## Install the Google login wall in front of Streamlit (kgmcquate@gmail.com only)
+	$(HELM) upgrade --install oauth2-proxy-streamlit oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
+		-n bi --create-namespace -f $(VALUES)/oauth2-proxy-streamlit.yaml --wait --timeout 5m
+
+hub-api: ## Install the FastAPI backend + chat UI (TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
+		-n app --create-namespace --set image.tag=$(TAG) --wait
+
+oauth2-proxy-app: ## Install the Google login wall in front of the hub app (chat UI + /api)
+	$(HELM) upgrade --install oauth2-proxy-app oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
+		-n app --create-namespace -f $(VALUES)/oauth2-proxy-app.yaml --wait --timeout 5m
+
+# --------------------------------------------------------------------------
+# Open WebUI — the chat UI (ADR-0017), and the Cube MCP server it calls.
+#
+# Deploy mcp-cube first: Open WebUI's tool-server connection is registered by
+# hand in its admin UI (there is no declarative env var for it), and doing that
+# against a Service that does not exist yet just means doing it twice.
+# --------------------------------------------------------------------------
+mcp-cube: ## Install the Cube MCP server (runs the hub-api image; TAG defaults to the current commit's sha-<12>)
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install mcp-cube $(CHARTS)/mcp-cube \
+		-n app --create-namespace --set image.tag=$(TAG) --wait --timeout 5m
+
+# OPENWEBUI_OIDC_CLIENT_ID is the Google client's ID — not a secret, but it must
+# be the same client whose secret is in the `openwebui-secrets` Secret, so it is
+# passed in rather than written into the values file. deploy-platform.yml
+# supplies it; for a manual deploy, export it first.
+open-webui: ## Install Open WebUI, the chat UI (needs OPENWEBUI_OIDC_CLIENT_ID; TAG defaults to the current commit's sha-<12>)
+	@test -n "$(OPENWEBUI_OIDC_CLIENT_ID)" || { \
+		echo "OPENWEBUI_OIDC_CLIENT_ID is empty — Google sign-in is the only way into this app"; exit 1; }
+	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
+	$(HELM) upgrade --install open-webui open-webui/open-webui --version $(OPENWEBUI_VERSION) \
+		-n app --create-namespace -f $(VALUES)/open-webui.yaml \
+		--set sso.google.clientId=$(OPENWEBUI_OIDC_CLIENT_ID) \
+		--set image.tag=$(TAG) \
+		--wait --timeout 10m
+
+install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)

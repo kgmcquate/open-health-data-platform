@@ -1,0 +1,69 @@
+# dbt v2 (Fusion), running the duckdb adapter, is the only compute engine for
+# the transformation layers (ADR-0019, which supersedes ADR-0014's
+# "Snowflake-only" and ADR-0012's native-Snowflake-tables decisions). DuckDB is
+# not a warehouse here: it holds nothing. Every relation is an Iceberg table in
+# S3, reached through Snowflake's Horizon Iceberg REST catalog (attached via
+# data/dbt/catalogs.yml), so the DuckDB database itself is `:memory:` and the
+# process is disposable.
+#
+# `dbt parse` (CI, the image, `data/tests/conftest.py`) only needs the profile
+# to render, not a live connection, so every env var below defaults to empty
+# when unset rather than erroring — `dbt build`/`dbt run` still fail loudly if
+# one is actually missing when a catalog is attached.
+#
+# Requires the project venv: `cd data && uv run dbt ...` — after `uv sync`,
+# run `./scripts/install_dbt_fusion.sh .venv` once to point the venv's `dbt`
+# at Fusion (a standalone binary, not a pip package — see that script).
+ohdp:
+  target: prod
+  outputs:
+    prod:
+      type: duckdb
+      # Nothing is persisted locally: models are committed to Iceberg through
+      # the catalogs.yml-attached catalogs, and intermediate state is scratch.
+      path: ":memory:"
+      # dbt v2's duckdb adapter requires this to literally be "memory" to
+      # match an in-memory `path` — it is not a per-layer fallback the way
+      # `database: CURATED` was under dbt-duckdb v1. Every model's actual
+      # database now comes from `+catalog_name` (dbt_project.yml) resolving
+      # against data/dbt/catalogs.yml, not from this field.
+      database: "memory"
+      schema: CORE
+      threads: 4
+
+      # dbt-duckdb v1's `table` materialization wrapped `CREATE ..._dbt_tmp` +
+      # `RENAME` in one BEGIN/COMMIT, which could fail against Horizon with
+      # "Catalog Error: This table (X__dbt_tmp) was modified already, can't
+      # be renamed!" (same bug class as
+      # https://github.com/duckdb/ducklake/issues/509) — `disable_transactions:
+      # true` used to work around it. dbt v2/Fusion writes through
+      # catalogs.yml natively instead of that macro-driven BEGIN/COMMIT path;
+      # a Phase 0 spike (dbt-v2-fusion-migration branch) ran six consecutive
+      # `dbt run`s against a real Horizon-backed scratch schema with neither
+      # this flag nor an `extensions:` list and hit the bug zero times, so
+      # both are dropped rather than carried forward unused. Re-add
+      # `disable_transactions` (if v2 grows an equivalent key) if this
+      # regresses in production.
+
+      secrets:
+        # OAuth2 client credentials for Horizon's REST catalog, shared by all
+        # three attachments. The programmatic access token is the client
+        # secret; DuckDB exchanges it at Horizon's token endpoint.
+        #
+        # `client_id` MUST be empty. Horizon authenticates the PAT alone
+        # (like `curl -u ":<PAT>"` — no username); a non-empty client_id
+        # (e.g. OHDP_SNOWFLAKE_USER) makes the token endpoint reject the
+        # *scope* with `invalid_scope`, not the credential itself, which is
+        # what made this so easy to misdiagnose as a bad `oauth2_scope`.
+        #
+        # `oauth2_scope` is not optional either — Snowflake's token endpoint
+        # rejects the exchange without `session:role:<ROLE>`, which is
+        # exactly the `invalid_scope` ADR-0012 burned a round on. Keep it in
+        # sync with ohdp_shared.settings.horizon_scope.
+        - type: iceberg
+          name: horizon_secret
+          client_id: ""
+          client_secret: "{{ env_var('OHDP_SNOWFLAKE_PAT', '') }}"
+          oauth2_server_uri: "https://{{ env_var('OHDP_SNOWFLAKE_ACCOUNT', '') }}.snowflakecomputing.com/polaris/api/catalog/v1/oauth/tokens"
+          oauth2_scope: "session:role:{{ env_var('OHDP_SNOWFLAKE_ROLE', '') }}"
+

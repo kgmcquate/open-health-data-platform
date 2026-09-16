@@ -1,0 +1,12 @@
+# Behind oauth2-proxy (the only ingress to this service, ADR-0015) — no need
+# for Streamlit's own CORS/XSRF story to do more than the defaults, but CORS
+# is off since nothing cross-origin should ever call this directly.
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8501
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false

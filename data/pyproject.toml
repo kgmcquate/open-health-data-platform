@@ -1,0 +1,111 @@
+[project]
+name = "ohdp-data"
+version = "0.0.0"
+description = "Ingestion, orchestration, and ML for the Open Health Data Platform"
+requires-python = ">=3.12"
+dependencies = [
+    "ohdp-shared @ file:///Users/kevinmcquate/projects/open-health-data-platform/packages/shared",
+    "dagster>=1.13",
+    "dagster-postgres>=0.24",
+    "dagster-dbt>=0.29",
+    "dagster-dlt>=0.29,<0.30",
+    "dagster-aws>=0.29",
+    # dbt v2 (Fusion) is NOT a pip dependency here (ADR-0019 migration) —
+    # `dbt-oss`/`dbt` install Python files under the same top-level `dbt/`
+    # namespace dbt-core owns, and dagster-dbt imports dbt-core's classes
+    # directly at import time (dagster_dbt.compat: `from dbt.contracts.results
+    # import ...`); installing both in one venv corrupts that shared
+    # namespace and breaks dagster_dbt entirely, not just Fusion (confirmed:
+    # ImportError on dagster_dbt import with both present). dbt-core itself
+    # stays as a transitive dependency regardless (required by dagster-dbt
+    # and, via collate-data-diff, openmetadata-ingestion's `snowflake`
+    # extra) — it's just never the engine that runs against Horizon anymore.
+    # The actual Fusion binary is installed separately, outside this venv
+    # (data/Dockerfile), and DbtCliResource is pointed at it by path.
+    #
+    # dbt-duckdb (v1's Python DuckDB adapter) is dropped: v2/Fusion writes
+    # through catalogs.yml natively and never uses it.
+    #
+    # Pinned exactly (not a floor) to match the DuckDB version the installed
+    # Fusion release embeds — used only to pre-bake DuckDB extensions at
+    # image build time (data/Dockerfile), not imported by application code.
+    # A mismatch doesn't break anything by itself, but silently defeats the
+    # pre-bake (Fusion falls back to fetching its own matching-version
+    # extensions at runtime) so bump this in lockstep with the Fusion pin.
+    "duckdb==1.5.4",
+    # filesystem+iceberg is how raw tables land in Snowflake's catalog
+    # (ADR-0019); s3/parquet are what that path reads and writes through.
+    "dlt[filesystem,parquet,pyiceberg,s3]>=1.30",
+    "sqlalchemy>=2.0.18",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "boto3>=1.35",
+    "pyarrow>=17.0",
+    "polars>=1.7",
+    "pyjwt>=2.9",
+    "openmetadata-ingestion[dagster,snowflake,dbt]>=2.0.1",
+]
+
+[tool.uv.sources]
+ohdp-shared = { path = "../packages/shared", editable = true }
+
+# dagster-dbt's sqlglot[rs] pin shifts across its own release history and never
+# lands on the exact 29.0.1 openmetadata-ingestion needs (via
+# collate-sqllineage==2.1.7) — confirmed unsatisfiable with plain `uv add`.
+# Force sqlglot to the band OM needs; dagster-dbt's own sqlglot usage is narrow
+# (dbt manifest parsing) and has tested fine against it in this project.
+[tool.uv]
+override-dependencies = ["sqlglot~=29.0.0"]
+
+[dependency-groups]
+dev = [
+    "dagster-webserver>=1.8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "types-PyYAML>=6.0",
+]
+ml = [
+    "numpy>=2.1",
+    "scipy>=1.14",
+    "statsmodels>=0.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# `dg` / Dagster components: defs are autoloaded from ohdp_orchestration.defs
+# (ADR-0008). definitions.py is the code-location entrypoint the Helm chart
+# targets; it calls dagster.components.load_defs on that package. [tool.dg] here
+# is only for the `dg` CLI.
+[tool.dg]
+directory_type = "project"
+
+[tool.dg.project]
+root_module = "ohdp_orchestration"
+defs_module = "ohdp_orchestration.defs"
+code_location_target_module = "ohdp_orchestration.definitions"
+code_location_name = "ohdp_orchestration.definitions"
+
+# src layout, matching packages/shared and apps/api. Directory names are the
+# import names — `ohdp_orchestration`, not `dagster`, so nothing shadows the
+# `dagster` library on sys.path (ADR-0004).
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ohdp_ingestion", "src/ohdp_orchestration", "src/ohdp_ml"]
+
+# Standalone uv project (no monorepo workspace). Lint/format config is the
+# repo-root ruff.toml; mypy + pytest are per-project.
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

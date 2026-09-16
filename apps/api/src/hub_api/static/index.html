@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Health Data Platform — Ask</title>
+<style>
+  /* One page, no build step, no dependencies. See hub_api/main.py for why this
+     lives here rather than in apps/web. */
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --ink: #1c1b19;
+    --muted: #6b6862;
+    --line: #e4e1db;
+    --accent: #1c5d4a;
+    --warn: #8a4b1f;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a; --panel: #1e1e23; --ink: #e8e6e1; --muted: #9a958c;
+      --line: #33333b; --accent: #6fc3a5; --warn: #d69a6a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    border-bottom: 1px solid var(--line); padding: 14px 20px;
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header .quota { margin-left: auto; color: var(--muted); font-size: 13px; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 20px 120px; }
+  .turn { margin-bottom: 32px; }
+  .question {
+    font-weight: 600; border-left: 3px solid var(--accent);
+    padding: 2px 0 2px 12px; margin-bottom: 16px;
+  }
+  .answer { white-space: pre-wrap; }
+  .answer.plan { color: var(--muted); }
+  details {
+    border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+    margin: 10px 0; padding: 8px 12px;
+  }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details[open] summary { margin-bottom: 8px; }
+  pre {
+    font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap;
+    word-break: break-word; margin: 0; color: var(--muted);
+  }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 13px; width: 100%; }
+  th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; }
+  .status { color: var(--muted); font-size: 13px; font-style: italic; }
+  .error { color: var(--warn); }
+  .warning { color: var(--warn); font-size: 13px; }
+  .disclaimer {
+    color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line);
+    margin-top: 16px; padding-top: 10px;
+  }
+  .composer {
+    position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg);
+    border-top: 1px solid var(--line); padding: 12px 20px;
+  }
+  .composer form { max-width: 820px; margin: 0 auto; display: flex; gap: 8px; }
+  textarea {
+    flex: 1; resize: none; font: inherit; color: inherit; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; min-height: 42px;
+  }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 6px; padding: 0 18px;
+    background: var(--accent); color: var(--bg); cursor: pointer;
+  }
+  button[disabled] { opacity: .5; cursor: default; }
+  .hint { max-width: 820px; margin: 6px auto 0; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Open Health Data Platform</h1>
+  <span class="sub">Ask about population-level public health data</span>
+  <span class="quota" id="quota"></span>
+</header>
+
+<main id="thread">
+  <p class="status">
+    Ask a question about the data in the warehouse. Every answer shows the metric
+    it used, the compiled SQL, and the rows it returned.
+  </p>
+</main>
+
+<div class="composer">
+  <form id="composer">
+    <textarea id="question" rows="1" placeholder="e.g. What respiratory illness data do you have, and at what grain?" autofocus></textarea>
+    <button type="submit" id="send">Ask</button>
+  </form>
+  <p class="hint">Population-level data. Not clinical decision support.</p>
+</div>
+
+<script>
+const thread = document.getElementById("thread");
+const form = document.getElementById("composer");
+const input = document.getElementById("question");
+const send = document.getElementById("send");
+const quota = document.getElementById("quota");
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function collapsible(summaryText, body, open) {
+  const d = el("details");
+  if (open) d.open = true;
+  d.appendChild(el("summary", null, summaryText));
+  d.appendChild(body);
+  return d;
+}
+
+// Rows are data returned by the warehouse. Everything is written with
+// textContent, never innerHTML — a value out of the warehouse is not markup.
+function table(rows) {
+  const wrap = el("div", "scroll");
+  if (!rows.length) { wrap.appendChild(el("p", "status", "No rows.")); return wrap; }
+  const t = el("table");
+  const head = el("tr");
+  const cols = Object.keys(rows[0]);
+  cols.forEach(c => head.appendChild(el("th", null, c)));
+  t.appendChild(head);
+  rows.slice(0, 100).forEach(r => {
+    const tr = el("tr");
+    cols.forEach(c => tr.appendChild(el("td", null, r[c] === null ? "—" : String(r[c]))));
+    t.appendChild(tr);
+  });
+  wrap.appendChild(t);
+  if (rows.length > 100) wrap.appendChild(el("p", "status", `Showing 100 of ${rows.length} rows.`));
+  return wrap;
+}
+
+async function refreshQuota() {
+  try {
+    const r = await fetch("/api/me");
+    if (!r.ok) return;
+    const me = await r.json();
+    quota.textContent = `${me.email} — ${me.questions_used}/${me.questions_allowed} questions this month`;
+  } catch { /* the header is a nicety; never block the page on it */ }
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const question = input.value.trim();
+  if (!question) return;
+  input.value = "";
+  send.disabled = true;
+
+  const turn = el("div", "turn");
+  turn.appendChild(el("div", "question", question));
+  const status = el("p", "status", "Thinking…");
+  turn.appendChild(status);
+  thread.appendChild(turn);
+  window.scrollTo(0, document.body.scrollHeight);
+
+  // The model's reasoning summary and its prose arrive as separate deltas and
+  // are appended into their own nodes, created lazily on the first delta.
+  let thinkingPre = null, answerP = null;
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({question}),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      status.className = "status error";
+      status.textContent = detail.detail || `Request failed (${response.status}).`;
+      send.disabled = false;
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      // SSE frames are separated by a blank line; a partial frame stays in the
+      // buffer until the rest of it arrives.
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop();
+      for (const frame of frames) {
+        const line = frame.split("\n").find(l => l.startsWith("data: "));
+        if (!line) continue;  // keepalive comment
+        const ev = JSON.parse(line.slice(6));
+
+        if (ev.type === "status") {
+          status.textContent = ev.message + "…";
+        } else if (ev.type === "thinking") {
+          if (!thinkingPre) {
+            thinkingPre = el("pre");
+            turn.appendChild(collapsible("Reasoning", thinkingPre, false));
+          }
+          thinkingPre.textContent += ev.text;
+        } else if (ev.type === "text") {
+          if (!answerP) { answerP = el("div", "answer"); turn.appendChild(answerP); }
+          answerP.textContent += ev.text;
+          status.remove();
+        } else if (ev.type === "tool_call") {
+          status.textContent = `Calling ${ev.name}…`;
+        } else if (ev.type === "tool_error") {
+          turn.appendChild(el("p", "warning", `${ev.name}: ${ev.message}`));
+        } else if (ev.type === "rows") {
+          const body = el("div");
+          body.appendChild(el("pre", null, JSON.stringify(ev.query, null, 2)));
+          body.appendChild(table(ev.rows));
+          if (ev.truncated) body.appendChild(el("p", "warning", "Results were truncated at the row limit."));
+          turn.appendChild(collapsible(`${ev.row_count} rows`, body, true));
+          answerP = null;  // prose after a result starts a new block
+        } else if (ev.type === "sql") {
+          turn.appendChild(collapsible("Compiled SQL", el("pre", null, ev.sql), false));
+        } else if (ev.type === "articles") {
+          const list = el("div");
+          ev.articles.forEach(a => {
+            const id = a.doi || a.pmid || a.pmcid;
+            list.appendChild(el("p", null, `${a.title} — ${a.journal} ${a.year} (${id})`));
+          });
+          turn.appendChild(collapsible(`${ev.articles.length} articles`, list, false));
+        } else if (ev.type === "warning") {
+          turn.appendChild(el("p", "warning", ev.message));
+        } else if (ev.type === "error") {
+          status.className = "status error";
+          status.textContent = ev.message;
+          turn.appendChild(status);
+        } else if (ev.type === "done") {
+          status.remove();
+          turn.appendChild(el("p", "disclaimer", ev.disclaimer));
+        }
+        window.scrollTo(0, document.body.scrollHeight);
+      }
+    }
+  } catch (err) {
+    status.className = "status error";
+    status.textContent = "The connection dropped before the answer finished.";
+  } finally {
+    send.disabled = false;
+    input.focus();
+    refreshQuota();
+  }
+});
+
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+});
+
+refreshQuota();
+</script>
+</body>
+</html>

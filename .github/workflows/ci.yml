@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # Repo-wide lint/format (ruff.toml at the root) — also covers the M2 catalog
+  # stubs that live outside the three uv projects.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uvx ruff@0.16.6 check .
+      - run: uvx ruff@0.16.6 format --check .
+
+  # Each Python project is now a standalone uv project (no monorepo workspace);
+  # ohdp-shared is a path dependency. Type-check and test each in place.
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [packages/shared, apps/api, data]
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups --frozen
+      - name: Install dbt v2 (Fusion)
+        if: matrix.project == 'data'
+        run: ./scripts/install_dbt_fusion.sh .venv
+      - name: Types
+        run: uv run mypy .
+      - name: Tests
+        run: |
+          if [ -d tests ]; then uv run pytest; else echo "no tests in ${{ matrix.project }}"; fi
+
+  dbt:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups --frozen
+      - run: ./scripts/install_dbt_fusion.sh .venv
+      - name: dbt parse (offline — compiles without attaching the catalog)
+        run: |
+          uv run dbt deps --project-dir dbt
+          uv run dbt parse --project-dir dbt --profiles-dir dbt
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Lint web (skips cleanly until scaffolded)
+        working-directory: apps/web
+        run: |
+          if [ -f next.config.js ] || [ -f next.config.mjs ] || [ -f next.config.ts ]; then
+            npm ci && npm run lint
+          else
+            echo "apps/web not scaffolded yet — skipping"
+          fi
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint charts
+        working-directory: platform/helm
+        run: |
+          helm lint charts/platform-base
+          helm lint charts/hub-api --set image.tag=0.0.0-dev
+          helm lint charts/graphql-authz-proxy
+      - name: Render charts
+        working-directory: platform/helm
+        run: |
+          helm template platform-base charts/platform-base >/dev/null
+          helm template hub-api charts/hub-api --set image.tag=0.0.0-dev >/dev/null
+          helm template gqlproxy charts/graphql-authz-proxy >/dev/null
+      - name: Upstream values files parse
+        working-directory: platform/helm
+        run: |
+          python3 -m pip install --quiet --break-system-packages pyyaml
+          for f in values/*.yaml; do
+            python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f" && echo "ok: $f"
+          done
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Format
+        run: terraform -chdir=platform/terraform fmt -check -recursive
+      - name: Validate
+        run: |
+          terraform -chdir=platform/terraform init -backend=false -input=false
+          terraform -chdir=platform/terraform validate
+
+  # deploy: added in M1 — build images, push, kubectl apply against the VM.

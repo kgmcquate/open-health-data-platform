@@ -1,0 +1,159 @@
+version: 2
+
+# Overdose and mental health. Dimensions and their descriptions are read from
+# the column docs below by cube-dbt -- semantic/cube/model/behavioral_health.yml
+# renders them, so this file is the source of truth for those descriptions, not
+# the Cube model.
+
+models:
+  - name: behavioral_health__overdose_deaths_monthly
+    description: >
+      VSRR provisional drug overdose deaths by state and month, excluding the
+      national row. Every value is a 12-month-ending rolling total, so the series
+      must never be summed over months -- consecutive rows describe largely the
+      same deaths.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (state_abbr,
+          month_start, indicator) hashed into one opaque column. It
+          carries the grain -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: state_abbr
+        description: Two-letter state postal code (the national "US" row is excluded).
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: state_name
+        description: Full state name.
+        data_type: varchar
+      - name: month_start
+        description: First day of the month the 12-month-ending window closes in.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: year
+        description: Calendar year the window closes in.
+        data_type: integer
+      - name: indicator
+        description: >-
+          What is counted -- an overall total ("Number of Drug Overdose Deaths")
+          or a drug class keyed by ICD-10 T-code ("Opioids (T40.0-T40.4,T40.6)").
+          Classes overlap each other and roll up into the total.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: is_drug_class
+        description: True for per-drug-class rows, false for the overall counts. Never add the two together.
+        data_type: boolean
+      - name: is_rolling_12_month
+        description: True where the value is a 12-month-ending total rather than a single month's deaths.
+        data_type: boolean
+      - name: deaths_12_month_ending
+        description: >-
+          Reported deaths in the 12 months ending in this month. A rolling total
+          -- take the latest or the max, never a sum across months.
+        data_type: double
+      - name: predicted_deaths_12_month_ending
+        description: >-
+          CDC's estimate of the same figure adjusted for incomplete reporting.
+          Higher than the reported count where investigations are still pending.
+        data_type: double
+      - name: percent_pending_investigation
+        description: Share of deaths still pending investigation; a completeness caveat on the reported count.
+        data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: behavioral_health__mental_health_ed_monthly
+    description: >
+      NSSP mental health-related emergency department visit rates per 100,000 ED
+      visits, by month, condition and demographic stratum. The seven conditions
+      overlap -- "Any Mental Health" contains the other six -- so never sum across
+      condition.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (condition,
+          month_start, stratification_category, stratification) hashed
+          into one opaque column. It carries the grain -- `unique` on it
+          asserts exactly what unique_combination_of_columns used to --
+          and is the primary key Cube joins and pre-aggregates on, which
+          is what keeps the natural-key columns themselves public
+          dimensions. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: condition
+        description: >-
+          Mental health condition category -- Any Mental Health, Anxiety
+          Disorders, Depressive Disorders, Bipolar Disorders, Schizophrenia
+          Spectrum Disorders, Trauma and Stressor-related Disorders, or Suspected
+          Suicide Attempts.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: month_start
+        description: First day of the reporting month.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: month_end
+        description: Last day of the reporting month.
+        data_type: date
+      - name: stratification_category
+        description: Demographic dimension the row breaks down by -- Age, Sex, RaceEthnicity, or Total.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: stratification
+        description: The specific stratum within stratification_category ("All" for the total row).
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: is_total
+        description: True for the unstratified total row; use it to exclude the total from a demographic breakdown.
+        data_type: boolean
+      - name: rate_per_100k_visits
+        description: >-
+          Visits for the condition per 100,000 emergency department visits. A
+          ratio -- average it, never sum it.
+        data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

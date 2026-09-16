@@ -1,0 +1,84 @@
+# Cube Store — Cube Core's pre-aggregation cache (ADR-0024). Standalone
+# single-process mode, not the router/worker split: every cube here is small,
+# low-cardinality public-health surveillance data, so there is no scaling
+# reason to run a cluster. Internal-only — no ingress, same as postgres
+# (platform-base/templates/postgres.yaml), which this chart's StatefulSet+PVC
+# shape otherwise mirrors.
+#
+# Release name must be "cubestore" — the `cube` chart's CUBEJS_CUBESTORE_HOST
+# (platform/helm/charts/cube/values.yaml) is derived from it.
+
+replicaCount: 1
+
+image:
+  repository: cubejs/cubestore
+  # Same v1.7 train as the pinned cubejs/cube:v1.7.37 base image
+  # (semantic/cube/Dockerfile) — never "latest" (see _helpers.tpl's
+  # cubestore.image fail-fast).
+  tag: "v1.7.39"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 3030
+
+persistence:
+  storageClassName: do-block-storage
+  size: 20Gi
+
+# Small footprint: 17 rollups over a handful of low-cardinality health
+# surveillance datasets, not a data warehouse. Raise if a pod OOMKills during
+# a big pre-aggregation rebuild.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+livenessProbe:
+  tcpSocket:
+    port: cubestore
+  initialDelaySeconds: 20
+  periodSeconds: 30
+
+readinessProbe:
+  tcpSocket:
+    port: cubestore
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  # Cube Store writes rollup Parquet files + its RocksDB metastore at
+  # runtime — same exception cube/streamlit document for the same reason.
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+# Non-secret config only. No CUBESTORE_WORKERS — that env var is what turns
+# this into a router/worker cluster; leaving it unset is what keeps this a
+# single standalone process.
+env: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

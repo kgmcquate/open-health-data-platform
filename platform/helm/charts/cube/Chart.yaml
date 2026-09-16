@@ -1,0 +1,12 @@
+apiVersion: v2
+name: cube
+description: Cube Core — the semantic layer (measures, dimensions, access control)
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+keywords:
+  - ohdp
+  - cube
+  - semantic-layer
+maintainers:
+  - name: kgmcquate

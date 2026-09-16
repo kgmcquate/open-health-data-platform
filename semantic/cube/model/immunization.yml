@@ -1,0 +1,76 @@
+# Vaccination coverage (CDC: seasonal influenza + childhood immunisation).
+# Dimensions and their descriptions come straight from dbt's column docs
+# (globals.py / cube-dbt) -- edit descriptions in
+# data/dbt/models/curated/immunization/_curated_immunization__models.yml, not
+# here. Measures are hand-written: dbt documents columns, it does not declare
+# aggregations.
+{% set coverage = dbt_model('immunization__coverage') %}
+
+{% set coverage_measures = [
+    'coverage_pct', 'coverage_ci_low', 'coverage_ci_high', 'coverage_ci_width',
+    'sample_size', 'ingest_ts',
+] %}
+
+cubes:
+  - {{ coverage.as_cube() }}
+
+    dimensions:
+      {{ coverage.as_dimensions(skip=coverage_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ coverage.sql_table }}'
+
+    # ADR-0024: full copy in Cube Store, re-aggregated there at query time —
+    # inherits refresh_key above unchanged.
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      # Coverage is a percentage of a population, so nothing here is a SUM.
+      # Averaging across geographies is unweighted: fine for comparing states,
+      # wrong for producing a national figure -- for that, filter
+      # geography_level to national_or_region, where CDC publishes the number
+      # directly.
+      - name: avg_coverage_pct
+        sql: '{CUBE}."coverage_pct"'
+        type: avg
+        description: >-
+          Mean vaccination coverage (%) across the selection. Unweighted -- filter
+          geography_level to 'national_or_region' for a true national figure
+          rather than averaging states.
+
+      - name: min_coverage_pct
+        sql: '{CUBE}."coverage_pct"'
+        type: min
+        description: Lowest coverage (%) in the selection -- the least-vaccinated group or area.
+
+      - name: max_coverage_pct
+        sql: '{CUBE}."coverage_pct"'
+        type: max
+        description: Highest coverage (%) in the selection.
+
+      - name: coverage_spread
+        sql: "{max_coverage_pct} - {min_coverage_pct}"
+        type: number
+        description: >-
+          Gap between the highest and lowest coverage in the selection -- the
+          equity measure: how unevenly a vaccine reaches different groups or
+          places.
+
+      - name: avg_coverage_ci_width
+        sql: '{CUBE}."coverage_ci_width"'
+        type: avg
+        description: {{ coverage.column('coverage_ci_width').description }}
+
+      - name: total_sample_size
+        sql: '{CUBE}."sample_size"'
+        type: sum
+        description: >-
+          Combined survey sample behind the selected estimates. Additive across
+          distinct strata; meaningless if strata overlap, so pair it with one
+          stratification_category.
+
+      - name: estimate_count
+        type: count
+        description: "Number of coverage estimates in the current filter -- a coverage check, not a KPI."

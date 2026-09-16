@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: access__treatment_sites
+    description: >
+      COVID-19 and influenza therapeutic dispensing sites from the ASPR
+      Treatments Locator, one row per provider site with geo coordinates and
+      per-drug stock flags. Site grain, so the same table drives both a map and
+      a per-state site count.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: site_id
+        description: Stable identifier for the dispensing site.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: provider_name
+        description: Name of the dispensing provider (pharmacy, clinic, health centre).
+        data_type: varchar
+      - name: city
+        description: City of the site.
+        data_type: varchar
+      - name: state
+        description: US state or territory postal code.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: zip_code
+        description: Postal code of the site.
+        data_type: varchar
+      - name: latitude
+        description: Site latitude, WGS84.
+        data_type: double
+      - name: longitude
+        description: Site longitude, WGS84.
+        data_type: double
+      - name: last_report_date
+        description: Date the site last self-reported its inventory.
+        data_type: date
+      - name: days_since_report
+        description: Days between the site's last inventory report and today.
+        data_type: integer
+      - name: is_stale_report
+        description: >-
+          True when the site has not reported inventory in more than 14 days.
+          Its stock flags are last-known values, not current availability.
+        data_type: boolean
+      - name: treats_covid
+        description: Site participates in the COVID-19 therapeutics programme.
+        data_type: boolean
+      - name: treats_flu
+        description: Site participates in the influenza therapeutics programme.
+        data_type: boolean
+      - name: has_home_delivery
+        description: Site offers home delivery of the therapeutic.
+        data_type: boolean
+      - name: has_paxlovid
+        description: Site reports Paxlovid (nirmatrelvir/ritonavir) in stock.
+        data_type: boolean
+      - name: has_lagevrio
+        description: Site reports Lagevrio (molnupiravir) in stock.
+        data_type: boolean
+      - name: has_veklury
+        description: Site reports Veklury (remdesivir) in stock.
+        data_type: boolean
+      - name: has_oseltamivir_tamiflu
+        description: Site reports branded Tamiflu (oseltamivir) in stock.
+        data_type: boolean
+      - name: has_oseltamivir_generic
+        description: Site reports generic oseltamivir in stock.
+        data_type: boolean
+      - name: has_baloxavir
+        description: Site reports baloxavir (Xofluza) in stock.
+        data_type: boolean
+      - name: has_any_covid_therapeutic
+        description: Site reports at least one COVID-19 therapeutic in stock.
+        data_type: boolean
+      - name: has_any_flu_therapeutic
+        description: Site reports at least one influenza antiviral in stock.
+        data_type: boolean
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

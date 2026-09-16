@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# uv: uv.lock IS committed — this is an application, not a library, and
+# reproducible builds depend on it.
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dagster scratch (dagster dev / definitions validate with no DAGSTER_HOME)
+.tmp_dagster_home_*/
+dagster_home/
+
+# dbt
+data/dbt/target/
+data/dbt/dbt_packages/
+data/dbt/logs/
+data/dbt/package-lock.yml
+.user.yml
+
+# Local kubeconfig dumps (see .env.example KUBECONFIG_B64)
+kubeconfig_base64
+kubeconfig*.yaml
+
+# Terraform (.terraform.lock.hcl IS committed — pin provider hashes)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+terraform.tfvars
+*.auto.tfvars
+override.tf
+override.tf.json
+
+# Helm — vendored subchart tarballs only. NOT platform/helm/charts/, which is ours.
+*.tgz
+platform/helm/charts/*/charts/
+platform/helm/charts/*/Chart.lock
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig
+*.kubeconfig
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local scratch
+scratch/
+tmp/
