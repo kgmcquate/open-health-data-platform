@@ -212,32 +212,30 @@ nothing to scope. Persona is selected by hub-api and passed explicitly.
 
 **Built, on the Open WebUI surface** ([ADR-0025](decisions/0025-dashboards-as-code-in-chat.md)).
 A dashboard is a spec, not a picture: a name, a title, and up to six panels, each
-one a validated `CubeQuery` plus a `Chart` naming which returned column goes on
-which axis. `render_dashboard` on hub-api's `/tools` app runs the queries and
-answers with the rendered HTML under `Content-Type: text/html` and
+one a validated `CubeQuery` plus a `vega` Vega-Lite spec that says how its rows
+are drawn. `render_dashboard` on hub-api's `/tools` app runs the queries, binds
+the rows, and answers with the rendered HTML under `Content-Type: text/html` and
 `Content-Disposition: inline`, which is what makes Open WebUI display a tool
 result as an interactive iframe rather than as markup in the transcript.
 
-The model supplies encodings and never data values — a `Panel` has nowhere to
-put a number — and it writes neither HTML nor Vega-Lite, because `Chart` is a
-closed enum that `ohdp_agent.dashboard` compiles. That closes the hole an
-arbitrary Vega-Lite spec would open: `data.url` is a fetch issued from inside
-the reader's browser.
+The model authors the Vega-Lite — `mark`, `encoding`, `transform`, `params` —
+but never the data. A `Panel` has nowhere to put a number and a `data` key in
+the `vega` spec is rejected at any depth by the `VegaSpec` validator, because
+`data.url` is a fetch issued from inside the reader's browser. The rows are
+bound by the server as `data.values` from the panel's query, which also escapes
+field references and resolves Cube's granularity suffix before the spec reaches
+the page.
 
 This replaces the code-interpreter path the model's system prompt used to
 describe. Under the `pyodide` engine a saved matplotlib figure lands in a
 browser-side virtual filesystem that nothing reads, so no image ever appeared.
 
-**Durable, and reviewable as code.** `apps/api/src/ohdp_agent/dashboards/*.yaml`
-holds the dashboards that were kept, and every rendered card carries its own
-YAML source so keeping one is a copy-and-PR rather than a retype.
-`open_saved_dashboard` re-runs a saved spec against current data — it stores
-questions, not answers, so it cannot go stale and cannot disagree with the
-semantic layer.
+The rendered card carries its own YAML source, so the spec it drew is always
+readable without the model retyping it.
 
 Streamlit (ADR-0015) still queries Snowflake directly. Teaching it to render the
-same spec files through Cube is the step that would make a saved dashboard and
-the chat answer that produced it provably the same numbers; it needs a Cube
+same spec files through Cube is the step that would make a rendered dashboard
+and the chat answer that produced it provably the same numbers; it needs a Cube
 client and secret in that chart, so it is its own decision.
 
 ## 6. Safety
