@@ -46,7 +46,13 @@ spec:
             {{- end }}
           volumeMounts:
             - name: data
-              mountPath: /cube/data
+              # cubejs/cubestore's default CUBESTORE_DATA_DIR is `.cubestore`
+              # resolved against its /cube WORKDIR — i.e. /cube/.cubestore, where
+              # it writes its RocksDB metastore and rollup Parquet files. Mounting
+              # at /cube/data (the old, wrong path) left those writes landing on
+              # the root overlay FS, which the non-root UID 10001 can't create a
+              # directory in — hence the PermissionDenied crash loop.
+              mountPath: /cube/.cubestore
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
