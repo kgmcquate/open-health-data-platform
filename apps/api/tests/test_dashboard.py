@@ -1,7 +1,7 @@
 """Dashboard specs, the Vega-Lite they compile to, and the embed contract.
 
-Three things here are load-bearing and none of them are visible in a rendered
-picture, which is why they are asserted rather than eyeballed:
+Two things here are load-bearing and neither is visible in a rendered picture,
+which is why they are asserted rather than eyeballed:
 
   - **The embed headers.** Open WebUI shows a tool result as an iframe only when
     the response carries `Content-Type: text/html` *and*
@@ -10,8 +10,6 @@ picture, which is why they are asserted rather than eyeballed:
   - **Field escaping.** Every Cube column contains a dot, and Vega-Lite reads an
     unescaped dot as nested-object access — so the chart renders empty, with no
     error anywhere.
-  - **Every committed spec parses.** A saved dashboard that no longer validates
-    should fail here, not in front of a user.
 """
 
 from __future__ import annotations
@@ -26,14 +24,12 @@ from pydantic import ValidationError
 from hub_api.main import app
 from ohdp_agent.cube import CubeError
 from ohdp_agent.dashboard import (
-    Chart,
     DashboardSpec,
     PanelData,
-    build_vega_spec,
+    bind_data,
     render_html,
     resolve_column,
 )
-from ohdp_agent.dashboards import list_saved, load_saved
 
 SPEC: dict[str, Any] = {
     "name": "ed-visits",
@@ -45,10 +41,12 @@ SPEC: dict[str, Any] = {
                 "measures": ["ed_visits.avg_percent"],
                 "time_dimensions": [{"dimension": "ed_visits.week_end", "granularity": "week"}],
             },
-            "chart": {
-                "type": "line",
-                "x": "ed_visits.week_end",
-                "y": "ed_visits.avg_percent",
+            "vega": {
+                "mark": "line",
+                "encoding": {
+                    "x": {"field": "ed_visits.week_end", "type": "temporal"},
+                    "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
+                },
             },
         }
     ],
@@ -84,42 +82,123 @@ def test_yaml_omits_unset_defaults() -> None:
     assert "order: {}" not in text
 
 
-def test_bar_chart_refuses_a_quantitative_category_axis() -> None:
-    """The reversed-axis mistake, which otherwise draws a wrong chart silently.
+def test_a_vega_spec_may_not_carry_data() -> None:
+    """`data.url` is the one hole a `vega` passthrough would open.
 
-    `horizontal_bar` swaps the axes on screen but is still authored category-in-
-    `x`, measure-in-`y`; a model that reverses them produces something that
-    renders and means nothing. This is the shape that mistake takes.
+    A `data` key — which is what carries `data.url`, fetched from inside the
+    viewer's browser — is rejected at validation, so the model can author any
+    other part of the spec but cannot smuggle or fetch numbers. Rows are bound
+    from the Cube query by the server instead.
     """
-    with pytest.raises(ValidationError, match="x_type cannot be 'quantitative'"):
-        Chart(type="horizontal_bar", x="c.value", y="c.state", x_type="quantitative")
-
-
-def test_point_chart_still_allows_a_quantitative_x() -> None:
-    """A scatter is the form where a quantitative x is the whole point."""
-    assert Chart(type="point", x="c.age", y="c.rate", x_type="quantitative").x == "c.age"
-
-
-def test_arbitrary_vega_lite_is_not_accepted() -> None:
-    """`Chart` is a closed enum, not a Vega-Lite passthrough.
-
-    An arbitrary spec would carry `data.url`, which fetches from inside the
-    viewer's browser — the reason this layer compiles the spec instead of
-    forwarding one.
-    """
-    with pytest.raises(ValidationError):
-        Chart.model_validate(
-            {"type": "line", "x": "c.a", "y": "c.b", "data": {"url": "https://example.com/x.json"}}
+    with pytest.raises(ValidationError, match="may not carry a `data` key"):
+        DashboardSpec.model_validate(
+            {
+                **SPEC,
+                "panels": [
+                    {
+                        **SPEC["panels"][0],
+                        "vega": {
+                            **SPEC["panels"][0]["vega"],
+                            "data": {"url": "https://example.com/x.json"},
+                        },
+                    }
+                ],
+            }
         )
 
 
-# --- compiling to Vega-Lite ------------------------------------------------
+def test_a_nested_data_key_is_rejected_too() -> None:
+    """The firewall recurses: `data` under `layer` or a `lookup` is still a fetch."""
+    spec = {**SPEC["panels"][0]}
+    spec["vega"] = {
+        "layer": [
+            {
+                "mark": "line",
+                "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+                "data": {"values": [{"ed_visits.avg_percent": 7}]},
+            }
+        ]
+    }
+    with pytest.raises(ValidationError, match="may not carry a `data` key"):
+        DashboardSpec.model_validate({**SPEC, "panels": [spec]})
+
+
+def test_transform_and_params_are_allowed() -> None:
+    """The model may reach for `transform` and `params`; only `data` is refused."""
+    spec = DashboardSpec.model_validate(
+        {
+            **SPEC,
+            "panels": [
+                {
+                    **SPEC["panels"][0],
+                    "vega": {
+                        "transform": [{"filter": "datum['ed_visits.avg_percent'] > 0"}],
+                        "params": [{"name": "cutoff", "value": 0}],
+                        "mark": "line",
+                        "encoding": {
+                            "x": {"field": "ed_visits.week_end", "type": "temporal"},
+                            "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    assert spec.panels[0].vega["transform"][0]["filter"] == "datum['ed_visits.avg_percent'] > 0"
+
+
+# --- binding rows to the authored Vega-Lite --------------------------------
 
 
 def test_cube_columns_are_escaped_for_vega() -> None:
     """The silent-empty-chart bug: an unescaped dot is a nested-field lookup."""
-    spec = build_vega_spec(_spec().panels[0].chart, ROWS, list(ROWS[0]))
+    spec = bind_data(_spec().panels[0].vega, ROWS, list(ROWS[0]))
     assert spec["encoding"]["y"]["field"] == "ed_visits\\.avg_percent"
+
+
+def test_data_is_bound_as_values_not_a_url() -> None:
+    """The rows land as `data.values`, never a URL the browser would fetch."""
+    spec = bind_data(_spec().panels[0].vega, ROWS, list(ROWS[0]))
+    assert spec["data"] == {"values": ROWS}
+    assert "url" not in spec["data"]
+
+
+def test_a_unit_spec_gets_width_and_autosize_defaults() -> None:
+    """A bare {mark, encoding} still renders full-width, like the compiled output."""
+    spec = bind_data(_spec().panels[0].vega, ROWS, list(ROWS[0]))
+    assert spec["width"] == "container"
+    assert spec["autosize"] == {"type": "fit", "contains": "padding"}
+
+
+def test_a_composite_spec_is_left_to_size_itself() -> None:
+    """`width: container` would fight a `layer`; composites size their own children."""
+    layer = {
+        "layer": [
+            {
+                "mark": "line",
+                "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+            }
+        ]
+    }
+    spec = bind_data(layer, ROWS, list(ROWS[0]))
+    assert "width" not in spec
+    assert "autosize" not in spec
+    assert spec["data"] == {"values": ROWS}
+
+
+def test_a_transform_output_is_not_escaped() -> None:
+    """A dotless field (a transform output) is left alone; only members are escaped."""
+    vega = {
+        "transform": [{"calculate": "datum['ed_visits.avg_percent']", "as": "rate"}],
+        "mark": "bar",
+        "encoding": {
+            "x": {"field": "ed_visits.week_end", "type": "temporal"},
+            "y": {"field": "rate", "type": "quantitative"},
+        },
+    }
+    spec = bind_data(vega, ROWS, list(ROWS[0]))
+    assert spec["encoding"]["y"]["field"] == "rate"
+    assert spec["encoding"]["x"]["field"] == "ed_visits\\.week_end\\.week"
 
 
 def test_a_time_dimension_resolves_through_its_granularity_suffix() -> None:
@@ -131,33 +210,6 @@ def test_an_unknown_column_names_the_ones_that_exist() -> None:
     """The error goes back to the model, which is the thing that can fix it."""
     with pytest.raises(ValueError, match="ed_visits.avg_percent"):
         resolve_column("ed_visits.nope", list(ROWS[0]))
-
-
-def test_bars_include_zero_and_lines_do_not() -> None:
-    """A bar's length is the value; a line's position is. Only one must hold zero."""
-    line = build_vega_spec(Chart(type="line", x="c.week", y="c.rate"), [], ["c.week", "c.rate"])
-    bar = build_vega_spec(Chart(type="bar", x="c.state", y="c.rate"), [], ["c.state", "c.rate"])
-    assert line["encoding"]["y"]["scale"]["zero"] is False
-    assert bar["encoding"]["y"]["scale"]["zero"] is True
-
-
-def test_horizontal_bar_puts_the_measure_on_the_x_axis() -> None:
-    """Authored category-in-`x`; only the screen assignment swaps."""
-    spec = build_vega_spec(
-        Chart(type="horizontal_bar", x="c.state", y="c.rate"), [], ["c.state", "c.rate"]
-    )
-    assert spec["encoding"]["x"]["field"] == "c\\.rate"
-    assert spec["encoding"]["y"]["field"] == "c\\.state"
-
-
-def test_a_colour_encoding_always_gets_a_legend() -> None:
-    """Two or more series must never be identified by colour alone."""
-    spec = build_vega_spec(
-        Chart(type="line", x="c.week", y="c.rate", color="c.pathogen"),
-        [],
-        ["c.week", "c.rate", "c.pathogen"],
-    )
-    assert spec["encoding"]["color"]["legend"]["orient"] == "bottom"
 
 
 # --- the rendered page -----------------------------------------------------
@@ -180,10 +232,12 @@ def test_a_broken_panel_does_not_lose_the_others() -> None:
                 {
                     **SPEC["panels"][0],
                     "title": "Broken",
-                    "chart": {
-                        "type": "line",
-                        "x": "ed_visits.absent",
-                        "y": "ed_visits.avg_percent",
+                    "vega": {
+                        "mark": "line",
+                        "encoding": {
+                            "x": {"field": "ed_visits.absent", "type": "temporal"},
+                            "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
+                        },
                     },
                 },
             ],
@@ -202,24 +256,15 @@ def test_row_data_is_escaped_into_the_payload_script() -> None:
     assert "\\u003c/script" in html
 
 
-# --- the saved ones --------------------------------------------------------
-
-
-def test_every_committed_dashboard_parses() -> None:
-    """CI, not a user, is where a broken saved spec should surface."""
-    saved = list_saved()
-    assert saved, "expected at least the worked example in ohdp_agent/dashboards/"
-    for spec in saved:
-        assert load_saved(spec.name) == spec
-
-
 def test_a_panel_has_nowhere_to_put_rows() -> None:
-    """The property behind "the model supplies encodings, never data values".
+    """The property behind "the model supplies a `vega` spec, never data values".
 
     It is structural rather than a matter of discipline: a panel is a query plus
-    an encoding, and `extra="forbid"` means there is no field a caller can use
-    to smuggle numbers past Cube. It is also what keeps a saved dashboard from
-    going stale — there is no cached answer in the file to go stale.
+    a `vega` spec, and there is no field a caller can use to smuggle numbers
+    past Cube — not as a `rows` key (rejected by `extra="forbid"`) and not as a
+    `data` key inside `vega` (rejected by the `VegaSpec` validator). It is also
+    what keeps a saved dashboard from going stale — there is no cached answer in
+    the file to go stale.
     """
     with pytest.raises(ValidationError):
         DashboardSpec.model_validate(
@@ -227,21 +272,7 @@ def test_a_panel_has_nowhere_to_put_rows() -> None:
         )
 
 
-def test_load_saved_does_not_build_a_path_from_its_argument() -> None:
-    """`name` comes from a model; it never reaches the filesystem."""
-    with pytest.raises(KeyError):
-        load_saved("../../../etc/passwd")
-
-
 # --- the embed contract ----------------------------------------------------
-
-
-def test_open_saved_dashboard_404s_with_the_available_names(client: TestClient) -> None:
-    response = client.get(
-        "/tools/saved_dashboards/does-not-exist", headers={"X-Forwarded-Email": "a@b.test"}
-    )
-    assert response.status_code == 404
-    assert "respiratory-season" in response.json()["detail"]
 
 
 def test_render_requires_a_credential(client: TestClient) -> None:

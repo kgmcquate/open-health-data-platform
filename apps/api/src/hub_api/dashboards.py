@@ -9,23 +9,16 @@ Cube tools: MCP results are JSON-RPC content with no HTTP response headers, so
 an MCP tool has no way to ask for an embed. The transport is the reason for the
 placement, and it is the same split ADR-0016 already made for `report_issue`.
 
-The model never writes HTML and never writes Vega-Lite. It sends a
-`DashboardSpec` — titles, Cube queries, and which column goes on which axis —
-and this module runs the queries and compiles the page (`ohdp_agent.dashboard`).
-Three consequences worth stating plainly:
+The model writes its Vega-Lite, but never the data. It sends a
+`DashboardSpec` — a title, Cube queries, and a `vega` spec per panel — and this
+module runs the queries and binds the rows (`ohdp_agent.dashboard`). A `data`
+key anywhere in a `vega` spec is rejected before it can reach a browser.
+Two consequences worth stating plainly:
 
   - **The numbers cannot be invented.** Rows reach the page from Cube, through
     the same validated `CubeQuery` every other execution tool uses.
   - **The output is deterministic.** The same spec renders the same page, so a
     dashboard is reviewable as code rather than as a screenshot.
-  - **The spec is what gets committed.** A rendered card carries its own YAML,
-    and `ohdp_agent/dashboards/` holds the ones that were kept — which
-    `open_saved_dashboard` re-runs against current data.
-
-Saved specs live inside the package rather than in a repo-root directory
-because `apps/api/Dockerfile` copies only the built virtualenv into the runtime
-stage; a top-level `dashboards/` would be reviewable in git and absent from the
-image, which is the worst of both.
 
 One limitation to know before extending this. Open WebUI's `process_tool_result`
 only accepts the "(embed, context-for-the-model)" pair from tools it runs
@@ -41,14 +34,12 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
 
 from hub_api.issues import Reporter, get_reporter
 from ohdp_agent.cube import CubeClient, CubeError
 from ohdp_agent.dashboard import DashboardSpec, PanelData, render_html
-from ohdp_agent.dashboards import list_saved, load_saved
 from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
@@ -70,13 +61,6 @@ _QUERY_TIMEOUT_SECONDS = 90.0
 _EMBED_HEADERS = {"Content-Disposition": "inline"}
 
 dashboards_router = APIRouter()
-
-
-class SavedDashboard(BaseModel):
-    name: str
-    title: str
-    description: str | None = None
-    panel_count: int
 
 
 def _client() -> CubeClient:
@@ -141,75 +125,20 @@ async def render_dashboard_tool(
     and describe the data first, then draw it.
 
     Each panel carries a `query` in exactly the form `run_metric_query` takes,
-    plus a `chart` saying which returned column goes on which axis. `x` is
-    always the category or time column and `y` is always the measure, including
-    for `horizontal_bar`. Use column names exactly as they came back in the
-    query result. Pick the form from the data: a time series is a `line`, a
-    measure across a handful of named categories is a `horizontal_bar`, a
-    part-of-whole is a `stacked_bar`. Give every axis a title that carries its
-    units, and title the dashboard with the filter scope it was run at.
+    plus a `vega` Vega-Lite spec describing how to draw that query's rows. The
+    spec may use anything Vega-Lite supports — `mark`, `encoding`, `transform`,
+    `layer`, `params` — but must not include a `data` key anywhere: rows are
+    bound from `query` by the server. Use column names exactly as they came back
+    in the query result. Give every axis a title that carries its units, and
+    title the dashboard with the filter scope it was run at.
 
     Keep it to what a reader can take in — at most six panels, and aggregate to
     a top-N plus an "Other" bucket rather than plotting dozens of categories.
     The rendered card shows its own data table, the compiled query behind each
     panel, and the dashboard's YAML source, so you do not need to repeat any of
     those in your reply. Tell the user the source is in the card if they want to
-    keep the dashboard.
+    reuse the spec.
     """
     data = await _run_panels(spec)
     log.info("dashboard_rendered", name=spec.name, panels=len(spec.panels))
-    return _embed(spec, data)
-
-
-@dashboards_router.get(
-    "/saved_dashboards",
-    operation_id="list_saved_dashboards",
-    summary="List the saved dashboards",
-)
-async def list_saved_dashboards_tool(
-    _caller: Annotated[Reporter, Depends(get_reporter)],
-) -> list[SavedDashboard]:
-    """The dashboards that have been kept in this repository and can be reopened.
-
-    These are curated and reviewed, so prefer one of them over building a new
-    dashboard when it answers the question. Open one with
-    `open_saved_dashboard`; it re-runs against current data every time.
-    """
-    return [
-        SavedDashboard(
-            name=spec.name,
-            title=spec.title,
-            description=spec.description,
-            panel_count=len(spec.panels),
-        )
-        for spec in list_saved()
-    ]
-
-
-@dashboards_router.get(
-    "/saved_dashboards/{name}",
-    operation_id="open_saved_dashboard",
-    summary="Open a saved dashboard",
-    response_class=HTMLResponse,
-    responses={200: {"content": {"text/html": {}}, "description": "The rendered dashboard"}},
-)
-async def open_saved_dashboard_tool(
-    name: Annotated[str, Path(description="The dashboard's `name`, from list_saved_dashboards")],
-    _caller: Annotated[Reporter, Depends(get_reporter)],
-) -> HTMLResponse:
-    """Draw a saved dashboard in this chat, against current data.
-
-    A saved dashboard stores its questions rather than its answers, so what you
-    get back is today's numbers, not the numbers from when it was written.
-    """
-    try:
-        spec = load_saved(name)
-    except KeyError as exc:
-        available = ", ".join(s.name for s in list_saved()) or "none"
-        raise HTTPException(
-            404, f"No saved dashboard named {name!r}. Available: {available}."
-        ) from exc
-
-    data = await _run_panels(spec)
-    log.info("saved_dashboard_opened", name=spec.name)
     return _embed(spec, data)

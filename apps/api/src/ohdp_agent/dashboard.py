@@ -1,30 +1,39 @@
-"""Dashboards as code: a small spec, rendered to a self-contained HTML card.
+"""Dashboards as code: an authorable Vega-Lite spec, rendered to an HTML card.
 
-This is docs/chatbot.md §5's "validated chart spec" path, built for the surface
-that actually exists. Three properties drive every decision in here:
+This is docs/chatbot.md §5's "validated chart spec" path. One property drives
+every decision in here:
 
-  - **The model supplies encodings, never data values.** A `Panel` carries a
-    `CubeQuery` and a `Chart` that says which returned column goes on which
-    axis. The rows are fetched from Cube by the caller and injected here. There
-    is no field through which a number can be invented, which is the same
-    property `models.CubeQuery` gives the query layer (ARCHITECTURE.md §6).
+  - **The model writes the Vega-Lite, but never the data.** A `Panel` carries a
+    `CubeQuery` and a `vega` spec — anything Vega-Lite accepts (`mark`,
+    `encoding`, `transform`, `layer`, `params`, ...). The one thing it may not
+    author is a `data` key, which is rejected everywhere, at any depth. Rows
+    are fetched from Cube by the caller and bound by `bind_data` as
+    `data.values`, so there is no `data.url` to fetch from inside the viewer's
+    browser and no field through which a number can be invented. The query is
+    the same validated `models.CubeQuery` every other execution tool takes
+    (ARCHITECTURE.md §6).
 
-  - **The model does not write Vega-Lite either.** `Chart` is our own six-type
-    enum, and `build_vega_spec` compiles it. Arbitrary Vega-Lite would hand a
-    chat model `transform`, `datasets`, and — the one that matters — `data.url`,
-    which fetches from inside the viewer's browser. A closed enum is a surface
-    we can reason about; a Vega-Lite passthrough is not.
+  - **The spec is the artifact.** A `DashboardSpec` round-trips through YAML, and
+    the rendered card carries that YAML. Rows are never part of it: a spec holds
+    a *question*, not an answer, so it cannot disagree with the semantic layer.
 
-  - **The spec is the artifact.** A `DashboardSpec` round-trips through YAML, so
-    the thing rendered in chat is the same thing committed to
-    `ohdp_agent/dashboards/` and re-rendered later against fresh data. Rows are
-    never part of it: a saved dashboard holds a *question*, not an answer, and
-    therefore cannot go stale or disagree with the semantic layer.
+Two things the server still does for the author, because Cube's result shape
+makes them easy to get wrong:
+
+  - **Field escaping.** Every Cube column name contains a dot, and Vega-Lite
+    reads an unescaped dot as nested-object access, so an unescaped
+    `"field": "cube.measure"` renders empty with no error. `bind_data` escapes
+    member references and resolves Cube's granularity suffix (`cube.week`) —
+    the single most likely way a panel fails silently.
+
+  - **Theme and defaults.** The page owns one Vega `config` per theme and merges
+    it at render time; `bind_data` supplies `width: container`/`autosize: fit`
+    for a unit spec that did not set its own.
 
 The rendered HTML is a full document for a sandboxed iframe (Open WebUI's Rich
 UI embed, ADR-0025). It loads Vega from a CDN, reports its own height by
-`postMessage`, and carries its own YAML source so the reader can copy the
-dashboard into the repo without the model retyping it.
+`postMessage`, and carries its own YAML source so the reader can see the exact
+spec without the model retyping it.
 
 Colour comes from the reference data-viz palette, unmodified: eight categorical
 slots in fixed order, separately stepped for the dark surface rather than
@@ -37,10 +46,11 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Annotated, Any, Literal
+from copy import deepcopy
+from typing import Annotated, Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from ohdp_agent.models import CubeQuery
 
@@ -64,60 +74,48 @@ RENDER_ROW_CAP = 500
 # export; it shows the head and says how much it left out.
 TABLE_ROW_CAP = 50
 
-ChartType = Literal["line", "area", "bar", "horizontal_bar", "stacked_bar", "point"]
-_BAR_TYPES = frozenset({"bar", "horizontal_bar", "stacked_bar"})
-FieldType = Literal["temporal", "ordinal", "nominal", "quantitative"]
-
-
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class Chart(_Strict):
-    """Which returned column goes where. Not a Vega-Lite spec — see module docs.
+def _assert_no_data(node: Any) -> None:
+    """Reject a `data` key anywhere in the spec, at any depth.
 
-    **`x` is always the category and `y` is always the measure**, for every
-    chart type including `horizontal_bar` — that one draws its categories down
-    the left, but it is still authored the same way as `bar`. Writing it the
-    other way round produces a chart that is wrong rather than one that errors,
-    so `model_post_init` below refuses the shape that mistake takes.
+    The one thing the model may not author is the data: rows are bound from the
+    panel's Cube query by `bind_data`. A `data` key in any position — top level,
+    under `layer`, or a `lookup` transform's `from.data` — is a fetch from
+    inside the viewer's browser, or a smuggled answer, and is refused here.
     """
-
-    type: ChartType
-    x: ColumnKey = Field(
-        description=(
-            "Column for the category or time axis — what the measure is broken "
-            "down BY. For horizontal_bar this is still the category."
-        )
-    )
-    y: ColumnKey = Field(
-        description="Column for the measure being plotted. Always the numeric one."
-    )
-    # A third column splits the data into series. Eight is the palette's fixed
-    # slot count; a ninth series is never a generated hue, so it is refused here
-    # and the model is told to aggregate into a top-N plus "Other".
-    color: ColumnKey | None = None
-    x_title: str | None = Field(default=None, max_length=120)
-    y_title: str | None = Field(default=None, max_length=120)
-    color_title: str | None = Field(default=None, max_length=120)
-    # Inferred from `type` when omitted; set it when the inference is wrong
-    # (a year column that is really ordinal, say).
-    x_type: FieldType | None = None
-
-    def model_post_init(self, _context: object) -> None:
-        if self.type in _BAR_TYPES and self.x_type == "quantitative":
+    if isinstance(node, dict):
+        if "data" in node:
             raise ValueError(
-                f"{self.type!r} puts categories on `x` and the measure on `y`, so "
-                "x_type cannot be 'quantitative'. If you meant a horizontal bar "
-                "chart, keep the category in `x` and the measure in `y` — "
-                "horizontal_bar swaps them on screen for you."
+                "a panel's `vega` spec may not carry a `data` key — rows are "
+                "bound from the panel's Cube query by the server"
             )
+        for value in node.values():
+            _assert_no_data(value)
+    elif isinstance(node, list):
+        for item in node:
+            _assert_no_data(item)
+
+
+def _no_data(spec: dict[str, Any]) -> dict[str, Any]:
+    """`AfterValidator` for `VegaSpec`: allow everything but `data`."""
+    _assert_no_data(spec)
+    return spec
+
+
+# An agent-authored Vega-Lite spec. Everything is allowed — `mark`, `encoding`,
+# `transform`, `layer`, `params`, `resolve` — except a `data` key, at any depth.
+# The rows are attached by `bind_data` from the panel's query.
+VegaSpec = Annotated[dict[str, Any], AfterValidator(_no_data)]
 
 
 class Panel(_Strict):
     title: str = Field(min_length=1, max_length=160)
     query: CubeQuery
-    chart: Chart
+    # The agent's Vega-Lite spec, minus its data (see `VegaSpec`).
+    vega: VegaSpec
     # One sentence of what the panel shows. The chart should carry the
     # explanation; this is for the part a reader cannot see, such as a
     # population restriction that lives in the filters.
@@ -192,143 +190,87 @@ def resolve_column(key: str, columns: list[str]) -> str:
     )
 
 
-def _vega_field(column: str) -> str:
-    """Escape a column name for a Vega-Lite `field`.
+def _escape_field_reference(field: str, columns: list[str]) -> str:
+    """Map an authored `field` reference onto the column Cube returned, escaped.
 
-    Vega-Lite reads an unescaped dot as nested-object access, so every Cube
-    column — all of which contain one — resolves to undefined and the chart
-    renders empty with no error. This is the single most likely way a panel
-    fails silently.
+    Two corrections, both driven by how Cube keys its result rows:
+
+      - **Granularity suffix.** A reference to `cube.week_end` must find the
+        `cube.week_end.week` Cube actually returned.
+      - **Dot escaping.** Vega-Lite reads an unescaped dot as nested-object
+        access, so `"field": "cube.measure"` resolves to undefined and the chart
+        renders empty with no error.
+
+    Only member references (`cube.field`) are corrected. A `datum.`/`parent.`
+    accessor, a field that is already escaped, or a transform output like
+    `ratio` has its dots mean object access — or has none — and is returned
+    untouched. A member that does not resolve raises here, so a typo surfaces
+    as "could not be drawn" rather than as a silent empty chart.
     """
-    return column.replace("\\", "\\\\").replace(".", "\\.")
+    if field.startswith("\\") or field.startswith(("datum.", "parent.")):
+        return field
+    if COLUMN_RE.match(field):
+        return resolve_column(field, columns).replace(".", "\\.")
+    return field
 
 
-def _infer_x_type(chart: Chart) -> FieldType:
-    if chart.x_type is not None:
-        return chart.x_type
-    # A line or an area is a change-over-time form; a bar is a comparison across
-    # named things. That is the useful default, and `x_type` overrides it.
-    return "temporal" if chart.type in {"line", "area"} else "nominal"
+def _escape_fields(node: Any, columns: list[str]) -> None:
+    """Escape every `field` reference in the spec, in place.
 
-
-def build_vega_spec(chart: Chart, rows: list[dict[str, Any]], columns: list[str]) -> dict[str, Any]:
-    """Compile a `Chart` to a Vega-Lite spec with the rows inlined.
-
-    No `config` here: the page holds one config per theme and merges the right
-    one at render time, so a single spec serves light and dark (see
-    `_THEME_CONFIG`).
+    Walks the whole tree — `encoding`, `transform`, `layer`, `facet` — so that
+    whatever the model wrote, a field that names a returned column survives
+    Vega's parse.
     """
-    x_col = resolve_column(chart.x, columns)
-    y_col = resolve_column(chart.y, columns)
-    color_col = resolve_column(chart.color, columns) if chart.color else None
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "field" and isinstance(value, str):
+                node[key] = _escape_field_reference(value, columns)
+            else:
+                _escape_fields(value, columns)
+    elif isinstance(node, list):
+        for item in node:
+            _escape_fields(item, columns)
 
-    x_type = _infer_x_type(chart)
-    horizontal = chart.type == "horizontal_bar"
 
-    value_axis: dict[str, Any] = {
-        "field": _vega_field(y_col),
-        "type": "quantitative",
-        "title": chart.y_title or y_col.split(".")[-1].replace("_", " "),
-        "axis": {"grid": True},
-        # A bar's length *is* the value, so its scale must include zero or the
-        # picture lies. A line or a scatter encodes position, not length, and
-        # forcing zero on a rate that moves between 0.50 and 0.61 flattens the
-        # only thing the reader came for. Hence the split — and hence the axis
-        # title carrying units, which is what makes a non-zero baseline honest.
-        "scale": {"zero": chart.type not in {"line", "point"}},
-    }
-    category_axis: dict[str, Any] = {
-        "field": _vega_field(x_col),
-        "type": x_type,
-        "title": chart.x_title or x_col.split(".")[-1].replace("_", " "),
-        "axis": (
-            {"grid": False, "labelAngle": 0, "tickCount": 6, "labelOverlap": True}
-            if x_type == "temporal"
-            else {"grid": False, "labelAngle": -30, "labelOverlap": True}
-        ),
-    }
-    # A ranked list of named things reads as a ranking, so sort it by the
-    # measure. Only for `nominal`: `ordinal` and `temporal` categories carry an
-    # order of their own that sorting by value would destroy. Stacked and
-    # multi-series bars keep their natural order — the segments, not the bar
-    # totals, are what the reader is comparing.
-    if chart.type in _BAR_TYPES and x_type == "nominal" and chart.color is None:
-        category_axis["sort"] = "-x" if horizontal else "-y"
+# Composite views size their own children; a top-level `width: container` and
+# `autosize: fit` are a unit-view convenience that would fight a `layer`/`facet`.
+_COMPOSITE_KEYS = frozenset({"layer", "concat", "hconcat", "vconcat", "facet", "repeat", "spec"})
 
-    if horizontal:
-        # The category runs down the y axis and the measure across the x. The
-        # spec's own x/y stay as authored; only the visual assignment swaps, so
-        # `horizontal_bar` reads the same way in YAML as `bar`.
-        category_axis["axis"] = {"grid": False}
-        encoding: dict[str, Any] = {"y": category_axis, "x": value_axis}
-    else:
-        encoding = {"x": category_axis, "y": value_axis}
 
-    if color_col is not None:
-        encoding["color"] = {
-            "field": _vega_field(color_col),
-            "type": "nominal",
-            "title": chart.color_title or color_col.split(".")[-1].replace("_", " "),
-            # A legend is always present for two or more series — identity is
-            # never carried by colour alone.
-            "legend": {"orient": "bottom", "direction": "horizontal", "columns": 4},
-        }
+def _unit_defaults(spec: dict[str, Any]) -> dict[str, Any]:
+    """Width/autosize defaults for a single-view spec; composites are left alone."""
+    if any(key in spec for key in _COMPOSITE_KEYS):
+        return {}
+    defaults = {"width": "container", "autosize": {"type": "fit", "contains": "padding"}}
+    return {k: v for k, v in defaults.items() if k not in spec}
 
-    encoding["tooltip"] = [
-        {"field": _vega_field(x_col), "type": x_type, "title": category_axis["title"]},
-        {"field": _vega_field(y_col), "type": "quantitative", "title": value_axis["title"]},
-    ]
-    if color_col is not None:
-        encoding["tooltip"].append(
-            {
-                "field": _vega_field(color_col),
-                "type": "nominal",
-                "title": encoding["color"]["title"],
-            }
-        )
 
+_VL_SCHEMA = "https://vega.github.io/schema/vega-lite/v5.json"
+
+
+def bind_data(spec: VegaSpec, rows: list[dict[str, Any]], columns: list[str]) -> dict[str, Any]:
+    """Bind the Cube rows into an authorable Vega-Lite spec.
+
+    The agent's `vega` spec carries no `data` (rejected at parse time by the
+    `VegaSpec` validator); this is the only place rows are attached, and they
+    are always attached as `data.values` — never a URL, never a dataset name —
+    so the chart cannot fetch from inside the viewer's browser.
+
+    No `config` here either: the page holds one config per theme and merges it
+    at render time, so a single spec serves light and dark (see `_THEME_CONFIG`).
+
+    Field references are escaped first (see `_escape_field_reference`), and a
+    single-view spec gets `width: container`/`autosize: fit` when it did not set
+    its own, so a bare `{mark, encoding}` matches the compiled-output rendering.
+    """
+    vl_spec = deepcopy(spec)
+    _escape_fields(vl_spec, columns)
     return {
-        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-        "width": "container",
-        "height": _height(chart, rows, x_col),
-        "autosize": {"type": "fit", "contains": "padding"},
+        **_unit_defaults(vl_spec),
+        **vl_spec,
+        "$schema": _VL_SCHEMA,
         "data": {"values": rows},
-        "mark": _mark(chart.type),
-        "encoding": encoding,
     }
-
-
-PANEL_HEIGHT = 260
-
-
-def _height(chart: Chart, rows: list[dict[str, Any]], x_col: str) -> int:
-    """Panel height in pixels.
-
-    Fixed for everything except a horizontal bar chart, whose categories run
-    down the axis: at a fixed height three categories give bars thick enough to
-    read as blocks and twenty give a smear. Sizing by row band keeps the mark
-    thin at both ends, which no amount of scale padding can do on its own.
-    """
-    if chart.type != "horizontal_bar":
-        return PANEL_HEIGHT
-    categories = len({str(row.get(x_col)) for row in rows}) or 1
-    return max(140, min(560, categories * 30 + 50))
-
-
-def _mark(chart_type: ChartType) -> dict[str, Any]:
-    """Mark specs: thin strokes, rounded data-ends, markers big enough to hit."""
-    if chart_type == "line":
-        return {"type": "line", "strokeWidth": 2, "point": {"filled": True, "size": 60}}
-    if chart_type == "area":
-        return {"type": "area", "line": {"strokeWidth": 2}, "opacity": 0.85}
-    if chart_type == "point":
-        return {"type": "point", "filled": True, "size": 80, "strokeWidth": 1}
-    if chart_type == "stacked_bar":
-        # The surface-coloured hairline that separates stacked segments is
-        # `config.bar.stroke`, applied to every bar mark — so a stacked bar needs
-        # nothing here that a plain one does not.
-        return {"type": "bar", "cornerRadiusEnd": 4}
-    return {"type": "bar", "cornerRadiusEnd": 4}
 
 
 # Two selected palettes, not one flipped: the dark column is the same eight hues
@@ -381,7 +323,7 @@ def _theme_config(theme: dict[str, Any]) -> dict[str, Any]:
     """The Vega-Lite `config` for one theme.
 
     Everything that differs between light and dark lives here, which is why
-    `build_vega_spec` can stay theme-free and the page can swap themes by
+    `bind_data` can stay theme-free and the page can swap themes by
     re-embedding the same spec with the other config.
     """
     return {
@@ -539,7 +481,7 @@ def render_html(spec: DashboardSpec, data: list[PanelData]) -> str:
         rows = result.rows[:RENDER_ROW_CAP]
 
         try:
-            vega_specs.append(build_vega_spec(panel.chart, rows, columns))
+            vega_specs.append(bind_data(panel.vega, rows, columns))
             chart_html = f'<div class="chart" id="chart-{index}"></div>'
         except ValueError as exc:
             # One unplottable panel should not cost the reader the other five,
@@ -602,9 +544,8 @@ def render_html(spec: DashboardSpec, data: list[PanelData]) -> str:
       Data Platform semantic layer. Not clinical decision support and not medical advice.</p>
       <details>
         <summary>Dashboard source · <code>{_esc(spec.name)}.yaml</code></summary>
-        <p class="note">Commit this to <code>apps/api/src/ohdp_agent/dashboards/</code>
-        to keep the dashboard. It stores the questions, not the answers, so a saved
-        copy re-runs against current data.</p>
+        <p class="note">The spec this page renders, as YAML — the Cube queries and
+        the Vega-Lite, never the rows.</p>
         <pre class="source">{_esc(spec.to_yaml())}</pre>
       </details>
     </footer>

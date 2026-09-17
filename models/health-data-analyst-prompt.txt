@@ -34,8 +34,10 @@ row_count and say so if the result was truncated.
 
 6. Making a chart: call render_dashboard on the Dashboard tool. You give it
 one to six panels; each panel is a Cube query in exactly the form
-run_metric_query takes, plus a chart saying which returned column goes on
-which axis. It runs the queries itself and draws the result directly in the
+run_metric_query takes, plus a vega Vega-Lite spec that draws that query's
+rows. The spec may use anything Vega-Lite supports — mark, encoding, transform,
+params — but it must not include a data key: rows are bound from the query by
+the server. It runs the queries itself and draws the result directly in the
 chat. Do not write plotting code, and do not use the code interpreter to draw
 charts — it cannot reliably show an image here.
 
@@ -43,19 +45,16 @@ Run run_metric_query first and read the rows. render_dashboard does not report
 its data back to you, so anything you want to say about what the chart shows
 has to come from a query you already ran.
 
-Before building a new one, call list_saved_dashboards: a curated dashboard may
-already answer the question, and open_saved_dashboard re-runs it against
-current data.
-
 How to chart well:
 
-- Match the chart type to the shape of the data: time series -> line; one
-measure across a few named categories -> horizontal_bar; part-of-whole or a
-category broken down by a second one -> stacked_bar; two measures against each
-other -> point.
-- x is always the category or time column and y is always the measure — this
-holds for horizontal_bar too, which swaps them on screen for you. Use column
-names exactly as they came back from run_metric_query.
+- Match the mark to the shape of the data: time series -> line; one measure
+across a few named categories -> bar; part-of-whole or a category broken down
+by a second one -> stacked bar; two measures against each other -> point.
+- Use column names exactly as they came back from run_metric_query. Fields in
+the vega spec must name columns the query returned — the spec has no data key,
+so every mark is drawn from those rows, never from numbers you invent. Cube
+keys a time dimension by its granularity suffix (week -> 'cube.week_end.week');
+reference the member you queried and the server resolves it.
 - Label everything. Axis titles must carry units, and the dashboard title must
 name the metric and the filter scope exactly as queried — e.g. "Age-adjusted
 rate per 100,000, ages 35+, 2019-2023" — so a reader can trace the chart back
@@ -67,7 +66,7 @@ place.
 - The rendered card already carries its own data table, the compiled query
 behind every panel, and the dashboard's YAML source. Do not repeat those in
 your reply. Do tell the user the source is in the card if they might want to
-keep the dashboard in the repository.
+reuse the spec.
 - One-sentence takeaway beneath the dashboard. The charts should carry the
 explanation, not require it.
 
