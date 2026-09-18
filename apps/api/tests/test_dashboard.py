@@ -494,6 +494,30 @@ def test_render_carries_its_own_source_and_disclaimer() -> None:
     assert "iframe:height" in html
 
 
+def test_the_page_never_styles_a_bare_table_cell() -> None:
+    """The reported bug: the hover tooltip's text was unreadable in dark mode.
+
+    vega-tooltip appends its own <table> to <body>, outside `.panel`, so a bare
+    `td { color: ... }` here matches the tooltip's value cells directly — and a
+    direct match beats the colour those cells merely inherit from
+    `#vg-tooltip-element`. Dark mode's near-white `--text` then landed on the
+    tooltip's own pale background. The page's table styles must stay anchored
+    to `.panel`; nothing renders a bare cell selector.
+    """
+    html = render_html(_spec(), ChartData(rows=ROWS, row_count=2))
+    for bare in ("\ntd {", "\nth {", "\ntable {", "\nth, td {"):
+        assert bare not in html
+    assert ".panel td {" in html
+
+
+def test_the_tooltip_follows_the_charts_theme() -> None:
+    """The tooltip is styled by vega-tooltip, not by this page's CSS, so its
+    own `theme` option is the only thing that keeps it on the same surface as
+    the chart it belongs to."""
+    html = render_html(_spec(), ChartData(rows=ROWS, row_count=2))
+    assert "tooltip: { theme: media.matches ? 'dark' : 'light' }" in html
+
+
 def test_an_unplottable_spec_raises_rather_than_rendering_silently() -> None:
     """`render_html` must not swallow the error into a 200 embed.
 

@@ -858,7 +858,14 @@ summary {
   list-style-position: outside;
 }
 summary:hover { color: var(--secondary); }
-table {
+/* Scoped to the panel, never bare `table`/`th`/`td`: vega-tooltip builds the
+   hover tooltip as its own <table> and appends it to <body>, outside any
+   panel. A bare `td { color: ... }` there is a *direct* match on the
+   tooltip's value cells, and a direct match beats the colour those cells only
+   inherit from `#vg-tooltip-element` — so the dark theme's near-white --text
+   landed on the tooltip's own pale background and the values became
+   unreadable. Keep these selectors anchored to `.panel`. */
+.panel table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 8px;
@@ -867,14 +874,14 @@ table {
   display: block;
   overflow-x: auto;
 }
-th, td {
+.panel th, .panel td {
   text-align: left;
   padding: 4px 10px 4px 0;
   border-bottom: 1px solid var(--grid);
   white-space: nowrap;
 }
-th { color: var(--secondary); font-weight: 500; }
-td { color: var(--text); }
+.panel th { color: var(--secondary); font-weight: 500; }
+.panel td { color: var(--text); }
 pre {
   margin: 8px 0 0;
   padding: 10px;
@@ -918,7 +925,12 @@ _JS = """
     if (!spec || !el) return Promise.resolve();
     return vegaEmbed(el, Object.assign({}, spec, { config: config }), {
       actions: false,
-      renderer: 'svg'
+      renderer: 'svg',
+      // vega-tooltip styles itself, from its own stylesheet, on an element it
+      // appends to <body> — the page's CSS does not reach it and should not
+      // try to. Its own `theme` is the supported way to keep the tooltip on
+      // the same surface as the chart; `draw` re-runs on a theme change.
+      tooltip: { theme: media.matches ? 'dark' : 'light' }
     }).catch(function (err) {
       el.innerHTML = '';
       var p = document.createElement('p');
