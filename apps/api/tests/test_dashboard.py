@@ -189,7 +189,10 @@ def test_cube_columns_are_escaped_for_vega() -> None:
 def test_data_path_injects_rows_at_the_lookup_source() -> None:
     """The Vega-Lite choropleth shape: geometry is the top-level `data.url`,
     and the Cube rows land at `transform.0.from.data.values`. The lookup's
-    `from.key`/`from.fields` also get resolved and escaped, same as `field`."""
+    `from.key`/`from.fields` also get resolved and escaped, same as `field` —
+    and so must the joined properties' name (`as`), or the encoding that reads
+    a full `cube.member` name back out sees a nested path where the lookup
+    wrote a literal dotted key, and every value comes back NaN."""
     rows = [{"ed_visits.fips": "06", "ed_visits.avg_percent": 3.1}]
     spec = DashboardSpec.model_validate(
         {
@@ -227,6 +230,9 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
     assert from_clause["data"] == {"values": rows}
     assert from_clause["key"] == "ed_visits\\.fips"
     assert from_clause["fields"] == ["ed_visits\\.avg_percent"]
+    # The joined property's name and the encoding that reads it must agree.
+    assert from_clause["as"] == ["ed_visits\\.avg_percent"]
+    assert bound["encoding"]["color"]["field"] == "ed_visits\\.avg_percent"
 
 
 def test_bare_lookup_names_resolve_and_keep_the_models_own_field_names() -> None:

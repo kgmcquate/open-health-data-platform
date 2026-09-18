@@ -281,9 +281,16 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
     `_resolve_lookup_field`). When the model didn't give `from.as`, the
     resolved-to column's full name would otherwise become the joined
     property's name — but `encoding`/`tooltip` elsewhere in the spec is
-    written against the short name the model actually typed in `fields`, so
+    written against whatever name the model actually typed in `fields`, so
     that becomes `as` instead, and the join keeps writing under the name the
-    rest of the spec already expects.
+    rest of the spec already expects. That default `as` is run through
+    `_escape_field_reference` — the same COLUMN_RE-gated function applied to
+    every `encoding`/`tooltip` field — rather than kept as the model's raw
+    text: a bare short name (no dot) is unaffected either way, but a model
+    that typed the full `cube.member` in `fields` (as the prompt tells it to
+    everywhere else) gets that same string dot-escaped in `encoding` too, so
+    `as` and the field that reads it agree on one literal property name
+    instead of Vega-Lite reading one as nested-object access.
     """
     if isinstance(node, dict):
         for key, value in node.items():
@@ -294,12 +301,12 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
                     value["key"] = _resolve_lookup_field(value["key"], columns)
                 fields = value.get("fields")
                 if isinstance(fields, list) and all(isinstance(f, str) for f in fields):
-                    # No `as`: keep the joined properties named exactly what the
-                    # model wrote in `fields` (its own short name, if that's what
-                    # it used) — `encoding`/`tooltip` elsewhere in the spec was
-                    # written against that same name, not the resolved column.
+                    # No `as`: keep the joined properties named against what
+                    # `encoding`/`tooltip` elsewhere in the spec expects — the
+                    # same escaping an `encoding.field` with this text would get,
+                    # so the two agree on the literal property name.
                     if "as" not in value:
-                        value["as"] = list(fields)
+                        value["as"] = [_escape_field_reference(f, columns) for f in fields]
                     value["fields"] = [_resolve_lookup_field(f, columns) for f in fields]
                 _escape_fields(value, columns)
             else:
