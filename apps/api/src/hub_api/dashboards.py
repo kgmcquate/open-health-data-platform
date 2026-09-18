@@ -126,9 +126,12 @@ async def render_dashboard_tool(
     plus a `vega` Vega-Lite spec describing how to draw that query's rows. The
     spec may use anything Vega-Lite supports — `mark`, `encoding`, `transform`,
     `layer`, `params` — but must not carry literal `data` values: rows are
-    bound from `query` by the server. The one exception is a `data` block that
+    bound from `query` by the server. The exceptions are a `data` block that
     is only a remote reference, `{"url": "...", "format": ...}`, which a
-    choropleth may use for its basemap geometry. The query's rows are bound
+    choropleth may use for its basemap geometry, and an empty
+    `{"values": []}`, which keeps the spec valid, parseable Vega-Lite at the
+    exact spot — e.g. a `lookup` transform's `from.data` — where `data_path`
+    will bind the real rows in. The query's rows are bound
     into the spec at `data_path` — a JSONPath, `$.data.values` by default; for
     a choropleth, where the top-level `data` is the geometry URL, set
     `data_path` to the lookup source instead, e.g.

@@ -114,6 +114,31 @@ def test_a_remote_data_url_is_allowed() -> None:
     assert "url" in spec.vega["data"]
 
 
+def test_an_empty_data_values_placeholder_is_allowed() -> None:
+    """`{"values": []}` carries no data — it's how a `lookup`'s `from.data`
+    (which `data_path` will point at) stays valid Vega-Lite before binding."""
+    spec = DashboardSpec.model_validate(
+        {
+            **SPEC,
+            "data_path": "$.transform[0].from.data.values",
+            "vega": {
+                **SPEC["vega"],
+                "transform": [
+                    {
+                        "lookup": "id",
+                        "from": {
+                            "data": {"values": []},
+                            "key": "id",
+                            "fields": ["ed_visits.avg_percent"],
+                        },
+                    }
+                ],
+            },
+        }
+    )
+    assert spec.vega["transform"][0]["from"]["data"] == {"values": []}
+
+
 def test_a_nested_literal_data_block_is_rejected_too() -> None:
     """The firewall recurses: `values` under `layer` is still a smuggled answer."""
     with pytest.raises(ValidationError, match="must not carry literal `data` values"):

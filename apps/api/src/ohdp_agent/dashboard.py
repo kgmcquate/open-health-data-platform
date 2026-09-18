@@ -89,18 +89,26 @@ class _Strict(BaseModel):
 # geometry file, not a value — so a `data` block is fine when it is exactly
 # that: a `url`, plus an optional `format`. Literal `values`, or a dataset
 # `name`, stay forbidden: rows are bound from the panel's Cube query by
-# `bind_data`, and a `values` list in the spec is a smuggled answer.
+# `bind_data`, and a non-empty `values` list in the spec is a smuggled answer.
+# An *empty* `{"values": []}`, though, carries no data at all — it's how a
+# `lookup` transform's `from.data` (or the top-level `data`, for a non-map
+# chart) stays valid, parseable Vega-Lite before `bind_data` overwrites that
+# same `values` key at `data_path`, so it's allowed as a placeholder too.
 _DATA_URL_KEYS = frozenset({"url", "format"})
 
 
 def _assert_data_is_url_only(data: Any) -> None:
-    if isinstance(data, dict) and set(data) <= _DATA_URL_KEYS and "url" in data:
-        return
+    if isinstance(data, dict):
+        if set(data) <= _DATA_URL_KEYS and "url" in data:
+            return
+        if data == {"values": []}:
+            return
     raise ValueError(
         "a panel's `vega` spec must not carry literal `data` values — a "
         "`data` block is allowed only as a remote reference of the form "
-        '`{"url": "...", "format": ...}` (e.g. a choropleth basemap); rows '
-        "are bound from the panel's Cube query by the server"
+        '`{"url": "...", "format": ...}` (e.g. a choropleth basemap) or an '
+        'empty placeholder `{"values": []}` for the rows `data_path` will '
+        "bind; rows are bound from the panel's Cube query by the server"
     )
 
 
