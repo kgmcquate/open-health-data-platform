@@ -77,29 +77,46 @@ def test_yaml_omits_unset_defaults() -> None:
     assert "order: {}" not in text
 
 
-def test_a_vega_spec_may_not_carry_data() -> None:
-    """`data.url` is the one hole a `vega` passthrough would open.
+def test_a_vega_spec_may_not_carry_literal_data() -> None:
+    """`data.values` is the hole a `vega` passthrough would open.
 
-    A `data` key — which is what carries `data.url`, fetched from inside the
-    viewer's browser — is rejected at validation, so the model can author any
-    other part of the spec but cannot smuggle or fetch numbers. Rows are bound
-    from the Cube query by the server instead.
+    Literal `values` in a `data` block are smuggled numbers — the chart claims
+    its rows came from Cube while drawing whatever the model wrote — so they
+    are rejected at validation. Blocks that are only a remote `url` reference
+    (a choropleth's geometry) pass.
     """
-    with pytest.raises(ValidationError, match="may not carry a `data` key"):
+    with pytest.raises(ValidationError, match="must not carry literal `data` values"):
         DashboardSpec.model_validate(
             {
                 **SPEC,
                 "vega": {
                     **SPEC["vega"],
-                    "data": {"url": "https://example.com/x.json"},
+                    "data": {"values": [{"ed_visits.avg_percent": 7}]},
                 },
             }
         )
 
 
-def test_a_nested_data_key_is_rejected_too() -> None:
-    """The firewall recurses: `data` under `layer` or a `lookup` is still a fetch."""
-    with pytest.raises(ValidationError, match="may not carry a `data` key"):
+def test_a_remote_data_url_is_allowed() -> None:
+    """A choropleth needs its geometry; a url-only `data` block is fine."""
+    spec = DashboardSpec.model_validate(
+        {
+            **SPEC,
+            "vega": {
+                **SPEC["vega"],
+                "data": {
+                    "url": "https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json",
+                    "format": {"type": "topojson", "feature": "states"},
+                },
+            },
+        }
+    )
+    assert "url" in spec.vega["data"]
+
+
+def test_a_nested_literal_data_block_is_rejected_too() -> None:
+    """The firewall recurses: `values` under `layer` is still a smuggled answer."""
+    with pytest.raises(ValidationError, match="must not carry literal `data` values"):
         DashboardSpec.model_validate(
             {
                 **SPEC,
@@ -142,6 +159,50 @@ def test_cube_columns_are_escaped_for_vega() -> None:
     """The silent-empty-chart bug: an unescaped dot is a nested-field lookup."""
     spec = bind_data(_spec().vega, ROWS, list(ROWS[0]))
     assert spec["encoding"]["y"]["field"] == "ed_visits\\.avg_percent"
+
+
+def test_data_path_injects_rows_at_the_lookup_source() -> None:
+    """The Vega-Lite choropleth shape: geometry is the top-level `data.url`,
+    and the Cube rows land at `transform.0.from.data.values`."""
+    spec = DashboardSpec.model_validate(
+        {
+            **SPEC,
+            "data_path": "$.transform[0].from.data.values",
+            "vega": {
+                "width": 500,
+                "height": 300,
+                "data": {
+                    "url": "https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json",
+                    "format": {"type": "topojson", "feature": "states"},
+                },
+                "transform": [
+                    {
+                        "lookup": "id",
+                        "from": {"key": "id", "fields": ["ed_visits.avg_percent"]},
+                    }
+                ],
+                "projection": {"type": "albersUsa"},
+                "mark": "geoshape",
+                "encoding": {
+                    "color": {"field": "ed_visits.avg_percent", "type": "quantitative"}
+                },
+            },
+        }
+    )
+    bound = bind_data(spec.vega, ROWS, list(ROWS[0]), spec.data_path)
+    assert bound["data"]["url"]  # the geometry reference survives
+    assert "values" not in bound["data"]
+    assert bound["transform"][0]["from"]["data"] == {"values": ROWS}
+
+
+def test_a_data_path_that_leads_nowhere_fails_with_the_reason() -> None:
+    with pytest.raises(ValueError, match="does not name an existing part"):
+        bind_data(_spec().vega, ROWS, list(ROWS[0]), "$.transform[0].from.data.values")
+
+
+def test_an_invalid_data_path_is_rejected_at_validation() -> None:
+    with pytest.raises(ValidationError, match="valid JSONPath"):
+        DashboardSpec.model_validate({**SPEC, "data_path": "not a jsonpath"})
 
 
 def test_data_is_bound_as_values_not_a_url() -> None:

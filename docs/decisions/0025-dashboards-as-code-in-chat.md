@@ -54,8 +54,10 @@ Vega-Lite carries `transform`, `datasets`, and `data.url`, and a `data.url` in a
 chat model's output is a fetch issued from inside the reader's browser.
 
 > **Amended.** The "closed enum" half of this decision was later reversed: panels
-> now carry an authorable Vega-Lite `vega` spec, with only a `data` key forbidden
-> at any depth (rows are still bound from the Cube query by the server). The
+> now carry an authorable Vega-Lite `vega` spec, with only literal `data` values
+> forbidden at any depth — a `data` block that is only a remote `url` reference
+> (a choropleth's basemap geometry) is allowed; rows are still bound from the
+> Cube query by the server. The
 > saved-dashboard half — `list_saved_dashboards`, `open_saved_dashboard`, and the
 > `ohdp_agent/dashboards/` package — was later removed. See `docs/chatbot.md §5`
 > for the current shape.

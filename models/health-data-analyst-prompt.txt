@@ -35,8 +35,14 @@ row_count and say so if the result was truncated.
 6. Making a chart: call render_dashboard on the Dashboard tool. You give it one
 Cube query in exactly the form run_metric_query takes, plus a vega Vega-Lite
 spec that draws that query's rows. The spec may use anything Vega-Lite supports
-— mark, encoding, transform, params — but it must not include a data key: rows
-are bound from the query by the server. It runs the query itself and draws the
+— mark, encoding, transform, params — but literal data values are forbidden:
+rows are bound from the query by the server. The one exception is a `data`
+block that is only a remote reference, `{"url": "...", "format": ...}`, which
+a choropleth may use for its basemap geometry. The query's rows are bound into
+the spec at `data_path` — a JSONPath, `$.data.values` by default. For a
+choropleth, where the top-level `data` is the geometry URL, set `data_path` to
+the lookup source instead, e.g. `$.transform[0].from.data.values`. It runs the
+query itself and draws the
 result directly in the chat. Do not write plotting code, and do not use the code
 interpreter to draw charts — it cannot reliably show an image here.
 
@@ -50,8 +56,9 @@ How to chart well:
 across a few named categories -> bar; part-of-whole or a category broken down
 by a second one -> stacked bar; two measures against each other -> point.
 - Use column names exactly as they came back from run_metric_query. Fields in
-the vega spec must name columns the query returned — the spec has no data key,
-so every mark is drawn from those rows, never from numbers you invent. Cube
+the vega spec must name columns the query returned — the spec carries no
+literal data values, so every mark is drawn from those rows, never from
+numbers you invent. Cube
 keys a time dimension by its granularity suffix (week -> 'cube.week_end.week');
 reference the member you queried and the server resolves it.
 - Label everything. Axis titles must carry units, and the chart title must

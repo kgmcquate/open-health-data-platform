@@ -6,8 +6,10 @@ every decision in here:
   - **The model writes the Vega-Lite, but never the data.** A `DashboardSpec` carries a
     `CubeQuery` and a `vega` spec — anything Vega-Lite accepts (`mark`,
     `encoding`, `transform`, `layer`, `params`, ...). The one thing it may not
-    author is a `data` key, which is rejected everywhere, at any depth. Rows
-    are fetched from Cube by the caller and bound by `bind_data` as
+    author is literal data: a `data` block is allowed only as a remote `url`
+    reference (a choropleth's basemap geometry), and literal `values` are
+    rejected at any depth. Rows are fetched from Cube by the caller and bound
+    by `bind_data` as
     `data.values`, so there is no `data.url` to fetch from inside the viewer's
     browser and no field through which a number can be invented. The query is
     the same validated `models.CubeQuery` every other execution tool takes
@@ -50,6 +52,7 @@ from copy import deepcopy
 from typing import Annotated, Any
 
 import yaml
+from jsonpath_ng.ext import parse as parse_jsonpath
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from ohdp_agent.models import CubeQuery
@@ -62,6 +65,11 @@ COLUMN_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)
 ColumnKey = Annotated[str, Field(pattern=COLUMN_RE.pattern, max_length=192)]
 
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+# Where in a `vega` spec the Cube rows land, as a JSONPath:
+# `$.transform[0].from.data.values` for a choropleth whose geography is a
+# top-level `data.url`. The default is the top-level `$.data.values`.
+DEFAULT_DATA_PATH = "$.data.values"
 
 # Rows past this are dropped before they reach the page. A Cube free-tier query
 # tops out at 1000 rows (semantic/cube/cube.js), which is a ~1MB chat message for
@@ -76,20 +84,37 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-def _assert_no_data(node: Any) -> None:
-    """Reject a `data` key anywhere in the spec, at any depth.
+# A remote geometry is the only `data` the model may author. Choropleths need
+# their basemap as `{"url": "...", "format": {"type": "topojson", ...}}` — a
+# geometry file, not a value — so a `data` block is fine when it is exactly
+# that: a `url`, plus an optional `format`. Literal `values`, or a dataset
+# `name`, stay forbidden: rows are bound from the panel's Cube query by
+# `bind_data`, and a `values` list in the spec is a smuggled answer.
+_DATA_URL_KEYS = frozenset({"url", "format"})
 
-    The one thing the model may not author is the data: rows are bound from the
-    panel's Cube query by `bind_data`. A `data` key in any position — top level,
-    under `layer`, or a `lookup` transform's `from.data` — is a fetch from
-    inside the viewer's browser, or a smuggled answer, and is refused here.
+
+def _assert_data_is_url_only(data: Any) -> None:
+    if isinstance(data, dict) and set(data) <= _DATA_URL_KEYS and "url" in data:
+        return
+    raise ValueError(
+        "a panel's `vega` spec must not carry literal `data` values — a "
+        "`data` block is allowed only as a remote reference of the form "
+        '`{"url": "...", "format": ...}` (e.g. a choropleth basemap); rows '
+        "are bound from the panel's Cube query by the server"
+    )
+
+
+def _assert_no_data(node: Any) -> None:
+    """Reject literal `data` values anywhere in the spec, at any depth.
+
+    A `url` reference — the only thing a choropleth can use to reach its
+    geometry — passes; anything else (`values`, `name`) in any position —
+    top level, under `layer`, or a `lookup` transform's `from.data` — is a
+    smuggled answer and is refused here.
     """
     if isinstance(node, dict):
         if "data" in node:
-            raise ValueError(
-                "a panel's `vega` spec may not carry a `data` key — rows are "
-                "bound from the panel's Cube query by the server"
-            )
+            _assert_data_is_url_only(node["data"])
         for value in node.values():
             _assert_no_data(value)
     elif isinstance(node, list):
@@ -98,14 +123,15 @@ def _assert_no_data(node: Any) -> None:
 
 
 def _no_data(spec: dict[str, Any]) -> dict[str, Any]:
-    """`AfterValidator` for `VegaSpec`: allow everything but `data`."""
+    """`AfterValidator` for `VegaSpec`: allow everything but literal `data`."""
     _assert_no_data(spec)
     return spec
 
 
 # An agent-authored Vega-Lite spec. Everything is allowed — `mark`, `encoding`,
-# `transform`, `layer`, `params`, `resolve` — except a `data` key, at any depth.
-# The rows are attached by `bind_data` from the panel's query.
+# `transform`, `layer`, `params`, `resolve` — and a `data` block only as a
+# remote `url` reference (see above). Rows are still attached by `bind_data`
+# from the panel's query.
 VegaSpec = Annotated[dict[str, Any], AfterValidator(_no_data)]
 
 
@@ -118,6 +144,10 @@ class DashboardSpec(_Strict):
     query: CubeQuery
     # The agent's Vega-Lite spec, minus its data (see `VegaSpec`).
     vega: VegaSpec
+    # Where `bind_data` attaches the query's rows, as a JSONPath into `vega` —
+    # `$.transform[0].from.data.values` for a choropleth whose geography is a
+    # top-level `data.url`. The default is the top-level `$.data.values`.
+    data_path: Annotated[str, AfterValidator(_valid_data_path)] = DEFAULT_DATA_PATH
     # One sentence of what the chart shows. The chart should carry the
     # explanation; this is for the part a reader cannot see, such as a
     # population restriction that lives in the filters.
@@ -241,13 +271,80 @@ def _unit_defaults(spec: dict[str, Any]) -> dict[str, Any]:
 _VL_SCHEMA = "https://vega.github.io/schema/vega-lite/v5.json"
 
 
-def bind_data(spec: VegaSpec, rows: list[dict[str, Any]], columns: list[str]) -> dict[str, Any]:
+def _valid_data_path(value: str) -> str:
+    """`AfterValidator` for `data_path`: it must parse as a JSONPath."""
+    try:
+        parse_jsonpath(value)
+    except Exception as exc:
+        raise ValueError(f"`data_path` must be a valid JSONPath: {exc}") from exc
+    return value
+
+
+# A JSONPath is split into parent path plus final selector so `values` can be
+# created when absent. Everything else — matching, indexing, syntax — is the
+# library's job; this regex only peels off one trailing `.key`, `['key']`, or
+# `[0]`.
+_TAIL_RE = re.compile(
+    r"^(?P<parent>\$.*?)(?:\['(?P<key>[^'\\]*)'\]|\[(?P<idx>\d+)\]"
+    r"|\.(?P<dot>[A-Za-z_][A-Za-z0-9_]*))$"
+)
+
+
+def _inject_values(spec: Any, data_path: str, rows: list[dict[str, Any]]) -> None:
+    """Attach `rows` at `data_path` inside `spec`, in place.
+
+    The path must name parts of the spec the model actually wrote — a wrong
+    turn is a typo in the path, not something to silently create, so a missing
+    parent raises. The one exception is a `data` key, which the server owns
+    (a missing `data` at the end of the parent path is created); the final
+    key, always `values` by convention, may be absent.
+    """
+    match = _TAIL_RE.match(data_path)
+    if match is None:
+        raise ValueError(f"`data_path` {data_path!r} must end in a key or index")
+    parent_path = match.group("parent") or "$"
+    last_key = match.group("key") or match.group("dot")
+    last_idx = match.group("idx")
+
+    parents = parse_jsonpath(parent_path).find(spec)
+    if not parents and (
+        parent_path.endswith("['data']") or parent_path.endswith(".data")
+    ):
+        # The server owns `data` keys; create the one this path expects.
+        holder_match = _TAIL_RE.match(parent_path)
+        assert holder_match is not None
+        holder_path = holder_match.group("parent") or "$"
+        for holder in parse_jsonpath(holder_path).find(spec):
+            if isinstance(holder.value, dict):
+                holder.value["data"] = {}
+        parents = parse_jsonpath(parent_path).find(spec)
+    if not parents:
+        raise ValueError(
+            f"`data_path` {data_path!r} does not name an existing part of the spec"
+        )
+    for parent in parents:
+        if isinstance(parent.value, list):
+            parent.value[int(last_idx or last_key or 0)] = rows
+        else:
+            parent.value[last_key] = rows
+
+
+def bind_data(
+    spec: VegaSpec,
+    rows: list[dict[str, Any]],
+    columns: list[str],
+    data_path: str = DEFAULT_DATA_PATH,
+) -> dict[str, Any]:
     """Bind the Cube rows into an authorable Vega-Lite spec.
 
-    The agent's `vega` spec carries no `data` (rejected at parse time by the
-    `VegaSpec` validator); this is the only place rows are attached, and they
-    are always attached as `data.values` — never a URL, never a dataset name —
-    so the chart cannot fetch from inside the viewer's browser.
+    The agent's `vega` spec may carry a remote `data.url` reference (rejected
+    at parse time unless it is exactly that), but never `values`; this is the
+    only place rows are attached, always as `data.values` — never a dataset
+    name — so the numbers still come only from the Cube query. The default
+    `$.data.values` lands them at the top level; a choropleth points
+    `data_path` at its lookup source instead
+    (`$.transform[0].from.data.values`), leaving the top-level `data.url`
+    geometry reference in place.
 
     No `config` here either: the page holds one config per theme and merges it
     at render time, so a single spec serves light and dark (see `_THEME_CONFIG`).
@@ -258,12 +355,9 @@ def bind_data(spec: VegaSpec, rows: list[dict[str, Any]], columns: list[str]) ->
     """
     vl_spec = deepcopy(spec)
     _escape_fields(vl_spec, columns)
-    return {
-        **_unit_defaults(vl_spec),
-        **vl_spec,
-        "$schema": _VL_SCHEMA,
-        "data": {"values": rows},
-    }
+    bound = {**_unit_defaults(vl_spec), **vl_spec, "$schema": _VL_SCHEMA}
+    _inject_values(bound, data_path, rows)
+    return bound
 
 
 # Two selected palettes, not one flipped: the dark column is the same eight hues
@@ -467,7 +561,7 @@ def render_html(spec: DashboardSpec, data: ChartData) -> str:
     rows = data.rows[:RENDER_ROW_CAP]
 
     try:
-        vega_spec: dict[str, Any] | None = bind_data(spec.vega, rows, columns)
+        vega_spec: dict[str, Any] | None = bind_data(spec.vega, rows, columns, spec.data_path)
         chart_html = '<div class="chart" id="chart"></div>'
     except ValueError as exc:
         # An unplottable spec should not cost the reader the rows, which are

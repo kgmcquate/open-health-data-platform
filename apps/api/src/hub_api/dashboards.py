@@ -11,8 +11,10 @@ placement, and it is the same split ADR-0016 already made for `report_issue`.
 
 The model writes its Vega-Lite, but never the data. It sends a
 `DashboardSpec` — a title, one Cube query, and a `vega` spec — and this
-module runs the query and binds the rows (`ohdp_agent.dashboard`). A `data`
-key anywhere in a `vega` spec is rejected before it can reach a browser.
+module runs the query and binds the rows (`ohdp_agent.dashboard`). Literal
+`data` values anywhere in a `vega` spec are rejected before they can reach a
+browser; a `data` block survives only as a remote `url` reference (e.g. a
+choropleth's basemap geometry).
 Two consequences worth stating plainly:
 
   - **The numbers cannot be invented.** Rows reach the page from Cube, through
@@ -123,8 +125,15 @@ async def render_dashboard_tool(
     The spec carries a `query` in exactly the form `run_metric_query` takes,
     plus a `vega` Vega-Lite spec describing how to draw that query's rows. The
     spec may use anything Vega-Lite supports — `mark`, `encoding`, `transform`,
-    `layer`, `params` — but must not include a `data` key anywhere: rows are
-    bound from `query` by the server. Use column names exactly as they came back
+    `layer`, `params` — but must not carry literal `data` values: rows are
+    bound from `query` by the server. The one exception is a `data` block that
+    is only a remote reference, `{"url": "...", "format": ...}`, which a
+    choropleth may use for its basemap geometry. The query's rows are bound
+    into the spec at `data_path` — a JSONPath, `$.data.values` by default; for
+    a choropleth, where the top-level `data` is the geometry URL, set
+    `data_path` to the lookup source instead, e.g.
+    `$.transform[0].from.data.values`. Use column names exactly as they came
+    back
     in the query result. Give every axis a title that carries its units, and
     title the chart with the filter scope it was run at.
 
