@@ -59,8 +59,32 @@
 from cube import TemplateContext
 from cube_dbt import Dbt
 from cube_dbt.column import Column
+from cube_dbt.dump import Dumper, SafeString
+from cube_dbt.model import Model
 
 Column.sql = property(lambda self: f'{{CUBE}}."{self._column_dict["name"]}"')
+
+# Relation-name quoting — the same ADR-0019 fallout as the Column.sql patch
+# above, but on the table side. The dbt manifest's `relation_name` is already
+# double-quoted ("CURATED"."RESPIRATORY"."TABLE"), and Cube's Jinja engine
+# JSON-escapes a plain `str` returned from `{{ ... }}`. So `{{ model.sql_table }}`
+# in a refresh_key emitted `"\""CURATED"\".\""RESPIRATORY"\".\""TABLE"\""`, which
+# Snowflake rejects ("parse error ... near '34'" — 34 is ASCII `"`). Returning a
+# SafeString marks the value is_safe so Jinja inserts it verbatim, the same way
+# as_cube()/as_dimensions() already do via dump(). The yaml representer below
+# keeps as_cube()'s yaml.dump from serialising the SafeString as a
+# `!!python/object` tag, so `sql_table` still renders as the plain quoted name.
+_original_sql_table = Model.sql_table
+
+
+@property
+def _sql_table_safe(self) -> SafeString:
+    return SafeString(_original_sql_table.fget(self))
+
+
+Model.sql_table = _sql_table_safe
+
+Dumper.add_representer(SafeString, lambda dumper, data: dumper.represent_str(str(data)))
 
 dbt = Dbt.from_file("dbt/manifest.json").filter(paths=["curated/"])
 
