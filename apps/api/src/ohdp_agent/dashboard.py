@@ -639,8 +639,13 @@ _JS = """
   function reportHeight() {
     // Open WebUI's embed iframe is sandboxed without same-origin, so the parent
     // cannot measure this document. Without this it renders at a stub height.
+    // `document.body.scrollHeight`, not `document.documentElement.scrollHeight`:
+    // the latter is clamped to at least the iframe's viewport height, so once the
+    // parent has framed the embed taller than its content, the reported height can
+    // never shrink back down — which shows up as empty space below a collapsed
+    // <details>. The body's scroll height is the real content height.
     parent.postMessage(
-      { type: 'iframe:height', height: document.documentElement.scrollHeight },
+      { type: 'iframe:height', height: document.body.scrollHeight },
       '*'
     );
   }
