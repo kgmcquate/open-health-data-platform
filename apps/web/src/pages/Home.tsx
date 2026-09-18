@@ -1,0 +1,128 @@
+import { Link } from "react-router-dom";
+import { fetchNews, fetchPlots } from "../lib/api";
+import { useFetch } from "../lib/useFetch";
+
+const HIGHLIGHTS = [
+  {
+    icon: "🌍",
+    title: "Public data, one spine",
+    body: "OpenAQ, CDC, openFDA, CMS and WHO GHO — ingested nightly, tested with dbt, and served through a single semantic layer so every number means the same thing everywhere.",
+    to: "/data-sources",
+    cta: "Explore the sources",
+  },
+  {
+    icon: "📊",
+    title: "Plots with a paper trail",
+    body: "Every visualization carries the exact metric query that produced it. Curated, reproducible, and re-runnable — ask the chatbot to draw its own.",
+    to: "/plots",
+    cta: "See curated plots",
+  },
+  {
+    icon: "💬",
+    title: "A chatbot on rails",
+    body: "The assistant answers only from curated metrics and literature — never invented SQL, never unsourced claims. Tool calls, thinking and citations stream live.",
+    to: "/chat",
+    cta: "Ask a question",
+  },
+  {
+    icon: "📚",
+    title: "Literature, trend-watched",
+    body: "Trending and curated studies sit next to the data they cite, so reading and verifying are one click apart.",
+    to: "/literature",
+    cta: "Browse literature",
+  },
+];
+
+export default function Home() {
+  const news = useFetch(fetchNews);
+  const plots = useFetch(fetchPlots);
+  const latest = news.data?.[0];
+  const featured = plots.data?.find((p) => p.featured);
+
+  return (
+    <div>
+      <section className="hero bg-gradient-to-br from-primary/15 via-base-100 to-accent/10 py-20">
+        <div className="hero-content text-center max-w-3xl">
+          <div>
+            <div className="badge badge-primary badge-outline mb-4">
+              Built in the open · portfolio-grade plumbing
+            </div>
+            <h1 className="text-5xl font-extrabold leading-tight">
+              Serious health data,
+              <span className="text-primary"> minus the seriousness.</span>
+            </h1>
+            <p className="py-6 text-lg opacity-80">
+              A self-hosted analytics platform over public health data. Ask
+              questions in plain English, get answers backed by a governed
+              semantic layer — with the pipelines, catalog and tests on full
+              display.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <Link to="/chat" className="btn btn-primary">
+                Try the chatbot
+              </Link>
+              <Link to="/data-sources" className="btn btn-outline">
+                What's inside?
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="max-w-6xl mx-auto px-4 py-12 grid gap-6 md:grid-cols-2">
+        {HIGHLIGHTS.map((h) => (
+          <div key={h.title} className="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+            <div className="card-body">
+              <h2 className="card-title">
+                <span className="text-2xl">{h.icon}</span> {h.title}
+              </h2>
+              <p className="opacity-80">{h.body}</p>
+              <div className="card-actions justify-end">
+                <Link to={h.to} className="btn btn-sm btn-ghost text-primary">
+                  {h.cta} →
+                </Link>
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      {(latest || featured) && (
+        <section className="max-w-6xl mx-auto px-4 pb-12 grid gap-6 md:grid-cols-2">
+          {latest && (
+            <div className="card bg-primary text-primary-content shadow">
+              <div className="card-body">
+                <h3 className="card-title text-sm uppercase tracking-wide opacity-80">
+                  Latest news
+                </h3>
+                <p className="text-xl font-bold">{latest.title}</p>
+                <p className="opacity-90 line-clamp-3">{latest.summary}</p>
+                <div className="card-actions justify-end">
+                  <Link to="/news" className="btn btn-sm btn-secondary">
+                    All news
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+          {featured && (
+            <div className="card bg-secondary text-secondary-content shadow">
+              <div className="card-body">
+                <h3 className="card-title text-sm uppercase tracking-wide opacity-80">
+                  Featured plot
+                </h3>
+                <p className="text-xl font-bold">{featured.title}</p>
+                <p className="opacity-90 line-clamp-3">{featured.description}</p>
+                <div className="card-actions justify-end">
+                  <Link to="/plots" className="btn btn-sm btn-accent">
+                    View plots
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}

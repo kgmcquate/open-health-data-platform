@@ -10,35 +10,31 @@ Responsibilities (ARCHITECTURE.md §2, §5, §6):
 The chat agent itself gets only two MCP connections (Cube, OpenMetadata) and no
 raw SQL tool — ever.
 
-hub-api also serves the chat page itself at `/`. ARCHITECTURE.md §4 lists a
-separate `hub-web` container for this, and docs/chatbot.md §5 puts the chat UI
-there; one static page served from here is a deliberate shortcut, taken so the
-chat could ship without a second image, a second chart, and an ingress split.
-It stays the right call while the UI is one page with no build step. It stops
-being the right call the moment the hub grows a landing page, billing screens,
-and embedded dashboards — at which point `apps/web` gets scaffolded for real and
-this router goes away.
+hub-api used to serve the chat page itself at `/` as a shortcut to ship chat
+without a second image. That page is gone now that `apps/web` (the Vite/React
+hub) is the real UI — the chat there calls the same `/api/chat` route, and
+this service is API-only.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 from hub_api import db
+from hub_api.auth import router as auth_router
 from hub_api.chat import router as chat_router
+from hub_api.content import router as content_router
+from hub_api.content import seed_if_empty
 from hub_api.dashboards import dashboards_router
 from hub_api.issues import tools_app
 from ohdp_shared import configure_logging, get_logger, settings
 
 configure_logging(json=settings.log_json, level=settings.log_level)
 log = get_logger(__name__)
-
-STATIC = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
@@ -54,6 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             engine = db.make_engine(settings.app_database_url)
             db.ensure_schema(engine)
+            seed_if_empty(engine)
             app.state.engine = engine
         except Exception as exc:  # noqa: BLE001 — see docstring
             log.error("database_unavailable", error=str(exc))
@@ -63,7 +60,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Open Health Data Platform — Hub API", version="0.0.0", lifespan=lifespan)
+
+# Signed, HttpOnly session cookie carrying {email, name, tier} after OIDC
+# login (hub_api.auth). This *is* the auth wall for the hub — no oauth2-proxy.
+_secret = settings.session_secret_key
+if not _secret:
+    if settings.environment == "local":
+        _secret = "dev-only-insecure-secret"
+    else:
+        log.error("session_secret_key_not_set")
+        raise RuntimeError("OHDP_SESSION_SECRET_KEY must be set outside local dev.")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_secret,
+    https_only=settings.environment != "local",
+    same_site="lax",
+    max_age=60 * 60 * 24 * 14,
+)
+
+app.include_router(auth_router)
 app.include_router(chat_router)
+app.include_router(content_router)
 
 # Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
 # its own routes. That narrow spec is what Open WebUI is pointed at, and it is
@@ -82,11 +99,6 @@ app.mount("/tools", tools_app)
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "environment": settings.environment}
-
-
-@app.get("/")
-def index() -> FileResponse:
-    return FileResponse(STATIC / "index.html")
 
 
 # Routers to be added per milestone:

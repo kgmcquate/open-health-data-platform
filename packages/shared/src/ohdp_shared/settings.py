@@ -134,6 +134,17 @@ class Settings(BaseSettings):
     # not one.
     tools_auth_token: str = ""
 
+    # Hub sign-in (hub_api.auth). The hub does its own OIDC — there is no
+    # oauth2-proxy in front of the app tier. Works with any OIDC provider;
+    # Google is the default issuer. `session_secret_key` signs the session
+    # cookie and must be set in any deployed environment.
+    session_secret_key: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_issuer: str = "https://accounts.google.com"
+    # Public base URL of the hub, used to build the OAuth redirect URI.
+    hub_base_url: str = "http://localhost:8000"
+
     @property
     def horizon_catalog_uri(self) -> str:
         """Snowflake Horizon's Iceberg REST endpoint — the one URI both dlt

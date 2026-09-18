@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 .PHONY: help setup lint fmt types test dbt-parse dbt-build dagster-dev api-dev cube-dev \
-        act-list act-preflight act-build act-plan images
+        act-list act-preflight act-build act-plan images web-setup web-dev web-build
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -31,6 +31,15 @@ dagster-dev: ## Run the Dagster webserver against the local code location
 
 api-dev: ## Run the hub API locally
 	cd apps/api && uv run uvicorn hub_api.main:app --reload --port 8000
+
+web-setup: ## Install hub UI dependencies
+	cd apps/web && npm install
+
+web-dev: ## Run the hub UI dev server (proxies /api and /auth to :8000)
+	cd apps/web && npm run dev
+
+web-build: ## Type-check and build the hub UI into apps/web/dist
+	cd apps/web && npm run build
 
 cube-dev: dbt-parse ## Run Cube Core locally, wired to the dbt manifest + Snowflake
 	cd semantic/cube && docker run -p 4000:4000 \

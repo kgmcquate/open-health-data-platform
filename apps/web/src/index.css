@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * Theming
+ *
+ * Every brand decision lives in the two daisyUI theme blocks below.
+ * daisyUI generates full component themes from these few color tokens,
+ * so re-skinning the whole hub means editing this file only — no
+ * component class changes. Add more themes by copying a block and
+ * giving it a new `name`; the navbar theme controller picks up any
+ * theme listed in `THEMES` (src/theme.ts).
+ * ------------------------------------------------------------------ */
+
+@plugin "daisyui" {
+  themes: ohdp --default, ohdp-dark --prefersdark;
+}
+
+/* "Official but fun": clinical teal + ink on paper, with a sunny accent. */
+@plugin "daisyui/theme" {
+  name: "ohdp";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: oklch(98% 0.01 200);
+  --color-base-200: oklch(95% 0.015 200);
+  --color-base-300: oklch(90% 0.02 200);
+  --color-base-content: oklch(25% 0.04 230);
+  --color-primary: oklch(62% 0.12 195);
+  --color-primary-content: oklch(98% 0.01 200);
+  --color-secondary: oklch(55% 0.1 260);
+  --color-secondary-content: oklch(97% 0.01 260);
+  --color-accent: oklch(80% 0.15 85);
+  --color-accent-content: oklch(30% 0.06 85);
+  --color-neutral: oklch(35% 0.03 230);
+  --color-neutral-content: oklch(96% 0.01 230);
+  --color-info: oklch(70% 0.12 220);
+  --color-success: oklch(70% 0.14 155);
+  --color-warning: oklch(78% 0.14 75);
+  --color-error: oklch(62% 0.2 25);
+
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --border: 1.5px;
+}
+
+@plugin "daisyui/theme" {
+  name: "ohdp-dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: oklch(20% 0.03 230);
+  --color-base-200: oklch(16% 0.025 230);
+  --color-base-300: oklch(26% 0.03 230);
+  --color-base-content: oklch(93% 0.015 220);
+  --color-primary: oklch(72% 0.12 195);
+  --color-primary-content: oklch(18% 0.04 220);
+  --color-secondary: oklch(72% 0.1 260);
+  --color-secondary-content: oklch(18% 0.03 260);
+  --color-accent: oklch(82% 0.14 85);
+  --color-accent-content: oklch(25% 0.06 85);
+  --color-neutral: oklch(30% 0.03 230);
+  --color-neutral-content: oklch(93% 0.015 230);
+  --color-info: oklch(70% 0.12 220);
+  --color-success: oklch(70% 0.14 155);
+  --color-warning: oklch(78% 0.14 75);
+  --color-error: oklch(65% 0.19 25);
+
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --border: 1.5px;
+}
+
+/* The chat thread should feel like a document, not a terminal. */
+.prose-chat p {
+  margin: 0.25rem 0;
+}

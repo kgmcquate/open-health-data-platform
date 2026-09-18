@@ -72,12 +72,21 @@ def get_engine(request: Request) -> Engine:
 
 
 def get_user_email(
+    request: Request,
     x_forwarded_email: Annotated[str | None, Header()] = None,
 ) -> str:
-    """The email the auth wall verified. No header, no chat."""
-    if not x_forwarded_email:
-        raise HTTPException(401, "Not signed in.")
-    return x_forwarded_email
+    """Identity from the hub's own OIDC session (hub_api.auth).
+
+    The `X-Forwarded-Email` fallback keeps the legacy oauth2-proxy deployment
+    working during the cutover; it is removed once the hub's built-in sign-in
+    is the only way in (the header is spoofable by any in-cluster caller).
+    """
+    user = request.session.get("user")
+    if user and user.get("email"):
+        return str(user["email"])
+    if x_forwarded_email:
+        return x_forwarded_email
+    raise HTTPException(401, "Not signed in.")
 
 
 @router.get("/me")
