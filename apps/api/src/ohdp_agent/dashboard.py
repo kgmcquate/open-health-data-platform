@@ -136,6 +136,65 @@ def _no_data(spec: dict[str, Any]) -> dict[str, Any]:
     return spec
 
 
+# Vega-Lite picks a transform by which of these keys it carries — there is no
+# `type` discriminator. Low-level Vega's `{"type": "formula", "expr": ...}`
+# therefore matches nothing, and vega-lite throws while compiling: the card
+# renders empty, in the browser, where this server never sees it. Matched
+# case-insensitively so a `timeUnit`/`timeunit` spelling can't fail a spec
+# that would in fact have drawn.
+_TRANSFORM_KEYS = frozenset(
+    {
+        "aggregate",
+        "bin",
+        "calculate",
+        "density",
+        "extent",
+        "filter",
+        "flatten",
+        "fold",
+        "impute",
+        "joinaggregate",
+        "loess",
+        "lookup",
+        "pivot",
+        "quantile",
+        "regression",
+        "sample",
+        "stack",
+        "timeunit",
+        "window",
+    }
+)
+
+
+def _assert_vega_lite_transforms(node: Any) -> None:
+    """Reject a Vega transform written into a Vega-Lite spec, at any depth.
+
+    The failure this prevents is entirely client-side — vega-lite rejects the
+    unknown step, nothing draws, and the tool still answered 200 — so it has
+    to be caught before the embed is built or it is caught by nobody.
+    """
+    if isinstance(node, dict):
+        steps = node.get("transform")
+        if isinstance(steps, list):
+            for step in steps:
+                if isinstance(step, dict) and not {k.lower() for k in step} & _TRANSFORM_KEYS:
+                    named = ", ".join(sorted(step)) or "no keys at all"
+                    raise ValueError(
+                        f"a `transform` step carrying {named} names no Vega-Lite "
+                        "transform. Vega-Lite has no `type` discriminator — a step is "
+                        "identified by its own key, e.g. `calculate`, `filter`, "
+                        "`lookup`, `window`. In particular a Vega-style "
+                        '`{"type": "formula", "expr": ...}` is written '
+                        '`{"calculate": ..., "as": ...}` in Vega-Lite'
+                    )
+        for value in node.values():
+            _assert_vega_lite_transforms(value)
+    elif isinstance(node, list):
+        for item in node:
+            _assert_vega_lite_transforms(item)
+
+
 # An agent-authored Vega-Lite spec. Everything is allowed — `mark`, `encoding`,
 # `transform`, `layer`, `params`, `resolve` — and a `data` block only as a
 # remote `url` reference (see above). Rows are still attached by `bind_data`
@@ -459,6 +518,7 @@ def bind_data(
     its own, so a bare `{mark, encoding}` matches the compiled-output rendering.
     """
     vl_spec = deepcopy(spec)
+    _assert_vega_lite_transforms(vl_spec)
     _escape_fields(vl_spec, columns)
     bound = {**_unit_defaults(vl_spec), **vl_spec, "$schema": _VL_SCHEMA}
     _inject_values(bound, data_path, rows)

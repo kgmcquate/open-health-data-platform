@@ -53,7 +53,17 @@ reference by name, and the map renders with no error and no color. Reference
 a joined column in `encoding`/`tooltip` by that same column name (its `as`, if
 you gave one; otherwise the name you put in `fields`). A choropleth's `data`
 (the geometry) carries its own `properties.*` fields — e.g. `properties.name`
-— which are never query columns and need no escaping. It runs the query
+— which are never query columns and need no escaping. For a US state basemap
+use `https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json` with
+`{"type": "topojson", "feature": "states"}`; its states carry
+`properties.name` (full state name) and a FIPS `id`. Do not invent basemap
+URLs — a URL that 404s draws nothing and reports nothing.
+
+Write Vega-Lite, not Vega. A transform is identified by its own key —
+`{"calculate": "...", "as": "..."}`, `{"filter": "..."}`, `{"lookup": ...}`,
+`{"window": [...]}` — and there is no `type` field on a transform. Vega's
+`{"type": "formula", "expr": "...", "as": "..."}` is not Vega-Lite and the
+chart will not draw. It runs the query
 itself and draws the
 result directly in the chat. Do not write plotting code, and do not use the code
 interpreter to draw charts — it cannot reliably show an image here.

@@ -384,6 +384,39 @@ def test_a_lookup_without_fields_fails_with_the_reason() -> None:
         bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
 
 
+def test_a_vega_transform_in_a_vega_lite_spec_fails_with_the_reason() -> None:
+    """The reported bug: `{"type": "formula", "expr": ...}` is low-level Vega.
+    Vega-Lite identifies a step by its own key and has no `type` discriminator,
+    so vega-lite rejects the step in the browser and the card comes back empty
+    — with a 200 on this side, where nothing is left to notice it."""
+    vega = {
+        "transform": [
+            {"type": "formula", "expr": "+datum.rate", "as": "rate_num"},
+        ],
+        "mark": "bar",
+        "encoding": {"y": {"field": "rate_num", "type": "quantitative"}},
+    }
+    with pytest.raises(ValueError, match="names no Vega-Lite transform"):
+        bind_data(vega, ROWS, list(ROWS[0]))
+
+
+def test_the_vega_lite_transforms_a_chart_actually_uses_are_accepted() -> None:
+    """The guard must not fail a spec that would have drawn: a false reject
+    here costs a chart, which is worse than the silent blank it prevents."""
+    vega = {
+        "transform": [
+            {"calculate": "datum['ed_visits.avg_percent'] * 2", "as": "doubled"},
+            {"filter": "datum.doubled > 0"},
+            {"window": [{"op": "rank", "as": "r"}], "sort": [{"field": "doubled"}]},
+            {"timeUnit": "year", "field": "ed_visits.week_end", "as": "yr"},
+            {"joinaggregate": [{"op": "mean", "field": "doubled", "as": "avg"}]},
+        ],
+        "mark": "bar",
+        "encoding": {"y": {"field": "doubled", "type": "quantitative"}},
+    }
+    bind_data(vega, ROWS, list(ROWS[0]))
+
+
 def test_a_data_path_that_leads_nowhere_fails_with_the_reason() -> None:
     with pytest.raises(ValueError, match="does not name an existing part"):
         bind_data(_spec().vega, ROWS, list(ROWS[0]), "$.transform[0].from.data.values")
