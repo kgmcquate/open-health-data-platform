@@ -245,17 +245,43 @@ def _escape_field_reference(field: str, columns: list[str]) -> str:
     return field
 
 
+def _resolve_lookup_field(field: str, columns: list[str]) -> str:
+    """Resolve+escape a `lookup` transform's `from.key`/`from.fields` entry.
+
+    These always name a column in the just-injected Cube rows — a choropleth's
+    `from.data` holds nothing else — so, unlike `_escape_field_reference`,
+    resolution isn't gated behind `COLUMN_RE`: a bare, unqualified name like
+    `fips` (instead of `cube.fips`) is exactly the kind of typo this should
+    catch, not pass through untouched.
+    """
+    if field.startswith("\\"):
+        return field
+    return resolve_column(field, columns).replace(".", "\\.")
+
+
 def _escape_fields(node: Any, columns: list[str]) -> None:
     """Escape every `field` reference in the spec, in place.
 
     Walks the whole tree — `encoding`, `transform`, `layer`, `facet` — so that
     whatever the model wrote, a field that names a returned column survives
-    Vega's parse.
+    Vega's parse. A `lookup` transform's `from.key`/`from.fields` get the same
+    treatment: they aren't `field` entries, but they name Cube columns just as
+    surely, and the same silent-empty-chart failure mode applies (see
+    `_resolve_lookup_field`).
     """
     if isinstance(node, dict):
         for key, value in node.items():
             if key == "field" and isinstance(value, str):
                 node[key] = _escape_field_reference(value, columns)
+            elif key == "from" and isinstance(value, dict):
+                if isinstance(value.get("key"), str):
+                    value["key"] = _resolve_lookup_field(value["key"], columns)
+                if isinstance(value.get("fields"), list):
+                    value["fields"] = [
+                        _resolve_lookup_field(f, columns) if isinstance(f, str) else f
+                        for f in value["fields"]
+                    ]
+                _escape_fields(value, columns)
             else:
                 _escape_fields(value, columns)
     elif isinstance(node, list):

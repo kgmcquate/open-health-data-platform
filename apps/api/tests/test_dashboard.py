@@ -188,7 +188,9 @@ def test_cube_columns_are_escaped_for_vega() -> None:
 
 def test_data_path_injects_rows_at_the_lookup_source() -> None:
     """The Vega-Lite choropleth shape: geometry is the top-level `data.url`,
-    and the Cube rows land at `transform.0.from.data.values`."""
+    and the Cube rows land at `transform.0.from.data.values`. The lookup's
+    `from.key`/`from.fields` also get resolved and escaped, same as `field`."""
+    rows = [{"ed_visits.fips": "06", "ed_visits.avg_percent": 3.1}]
     spec = DashboardSpec.model_validate(
         {
             **SPEC,
@@ -203,7 +205,11 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
                 "transform": [
                     {
                         "lookup": "id",
-                        "from": {"key": "id", "fields": ["ed_visits.avg_percent"]},
+                        "from": {
+                            "data": {"values": []},
+                            "key": "ed_visits.fips",
+                            "fields": ["ed_visits.avg_percent"],
+                        },
                     }
                 ],
                 "projection": {"type": "albersUsa"},
@@ -214,10 +220,27 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
             },
         }
     )
-    bound = bind_data(spec.vega, ROWS, list(ROWS[0]), spec.data_path)
+    bound = bind_data(spec.vega, rows, list(rows[0]), spec.data_path)
     assert bound["data"]["url"]  # the geometry reference survives
     assert "values" not in bound["data"]
-    assert bound["transform"][0]["from"]["data"] == {"values": ROWS}
+    from_clause = bound["transform"][0]["from"]
+    assert from_clause["data"] == {"values": rows}
+    assert from_clause["key"] == "ed_visits\\.fips"
+    assert from_clause["fields"] == ["ed_visits\\.avg_percent"]
+
+
+def test_an_unresolvable_lookup_key_fails_with_the_reason() -> None:
+    """A bare `fips` instead of `cube.fips` used to fail silently at render —
+    the color-mapped shapes just vanished. It now raises like a bad `field` does."""
+    rows = [{"ed_visits.fips": "06", "ed_visits.avg_percent": 3.1}]
+    vega = {
+        "data": {"url": "https://example.com/us.json", "format": {"type": "topojson"}},
+        "transform": [{"lookup": "id", "from": {"key": "fips", "fields": ["avg_coverage_pct"]}}],
+        "mark": "geoshape",
+        "encoding": {"color": {"field": "avg_coverage_pct", "type": "quantitative"}},
+    }
+    with pytest.raises(ValueError, match="column 'fips' is not in the query result"):
+        bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
 
 
 def test_a_data_path_that_leads_nowhere_fails_with_the_reason() -> None:
