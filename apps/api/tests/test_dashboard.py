@@ -231,7 +231,10 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
     assert from_clause["key"] == "ed_visits\\.fips"
     assert from_clause["fields"] == ["ed_visits\\.avg_percent"]
     # The joined property's name and the encoding that reads it must agree.
-    assert from_clause["as"] == ["ed_visits\\.avg_percent"]
+    # `as` belongs on the transform itself, beside `lookup`/`from` — Vega-Lite
+    # has no `from.as` — not nested inside `from_clause`.
+    assert bound["transform"][0]["as"] == ["ed_visits\\.avg_percent"]
+    assert "as" not in from_clause
     assert bound["encoding"]["color"]["field"] == "ed_visits\\.avg_percent"
 
 
@@ -267,6 +270,46 @@ def test_a_geojson_feature_property_is_not_mistaken_for_a_cube_column() -> None:
     assert bound["tooltip"][1]["field"] == "ed_visits\\.avg_percent"
 
 
+def test_a_lookup_against_a_remote_basemap_is_left_alone() -> None:
+    """The reported bug, the other direction: Cube rows are the *primary*
+    `data` (bound at the default `$.data.values`), and a `lookup` pulls
+    geometry in from a remote basemap instead of the other way around. That
+    `from.key`/`from.fields` name a column on the *basemap* — a TopoJSON
+    feature's `id`/`properties` — never a Cube column, so resolving them
+    against `columns` always fails, the same failure mode as `properties.name`
+    in `encoding`, just one level deeper. `from.data` carrying a `url` is what
+    tells the two kinds of lookup apart."""
+    rows = [{"ed_visits.state_name": "Ohio", "ed_visits.avg_percent": 3.1}]
+    vega = {
+        "data": {"values": []},
+        "transform": [
+            {
+                "lookup": "state_name",
+                "from": {
+                    "data": {
+                        "url": "https://cdn.jsdelivr.net/npm/vega-datasets@v2.9.1/data/us-10m.json",
+                        "format": {"type": "topojson", "feature": "states"},
+                    },
+                    "key": "properties.name",
+                    "fields": ["id", "properties"],
+                },
+                "as": ["geo"],
+            }
+        ],
+        "mark": "geoshape",
+        "encoding": {
+            "geometry": {"field": "geo", "type": "geojson"},
+            "color": {"field": "ed_visits.avg_percent", "type": "quantitative"},
+        },
+    }
+    bound = bind_data(vega, rows, list(rows[0]))
+    from_clause = bound["transform"][0]["from"]
+    assert from_clause["key"] == "properties.name"
+    assert from_clause["fields"] == ["id", "properties"]
+    assert bound["transform"][0]["as"] == ["geo"]
+    assert bound["encoding"]["color"]["field"] == "ed_visits\\.avg_percent"
+
+
 def test_bare_lookup_names_resolve_and_keep_the_models_own_field_names() -> None:
     """The reported bug: `from.key: fips` / `from.fields: [avg_coverage_pct, geography]`
     used bare names instead of the full `cube.member` paths Cube actually returns.
@@ -299,7 +342,9 @@ def test_bare_lookup_names_resolve_and_keep_the_models_own_field_names() -> None
     from_clause = bound["transform"][0]["from"]
     assert from_clause["key"] == "immunization\\.fips"
     assert from_clause["fields"] == ["immunization\\.avg_coverage_pct", "immunization\\.geography"]
-    assert from_clause["as"] == ["avg_coverage_pct", "geography"]
+    # `as` is a sibling of `lookup`/`from` on the transform, not nested in `from`.
+    assert bound["transform"][0]["as"] == ["avg_coverage_pct", "geography"]
+    assert "as" not in from_clause
     assert bound["encoding"]["color"]["field"] == "avg_coverage_pct"
 
 

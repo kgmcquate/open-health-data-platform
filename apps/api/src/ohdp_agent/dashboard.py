@@ -280,51 +280,78 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
     Vega's parse. A `lookup` transform's `from.key`/`from.fields` get the same
     treatment: they aren't `field` entries, but they name Cube columns just as
     surely, and the same silent-empty-chart failure mode applies (see
-    `_resolve_lookup_field`). When the model didn't give `from.as`, the
-    resolved-to column's full name would otherwise become the joined
-    property's name — but `encoding`/`tooltip` elsewhere in the spec is
-    written against whatever name the model actually typed in `fields`, so
-    that becomes `as` instead, and the join keeps writing under the name the
-    rest of the spec already expects. That default `as` is run through
-    `_escape_field_reference` — the same COLUMN_RE-gated function applied to
-    every `encoding`/`tooltip` field — rather than kept as the model's raw
-    text: a bare short name (no dot) is unaffected either way, but a model
-    that typed the full `cube.member` in `fields` (as the prompt tells it to
-    everywhere else) gets that same string dot-escaped in `encoding` too, so
-    `as` and the field that reads it agree on one literal property name
-    instead of Vega-Lite reading one as nested-object access.
+    `_resolve_lookup_field`). When the model didn't give `as`, the resolved-to
+    column's full name would otherwise become the joined property's name — but
+    `encoding`/`tooltip` elsewhere in the spec is written against whatever name
+    the model actually typed in `fields`, so that becomes `as` instead, and the
+    join keeps writing under the name the rest of the spec already expects.
+    That default `as` is run through `_escape_field_reference` — the same
+    COLUMN_RE-gated function applied to every `encoding`/`tooltip` field —
+    rather than kept as the model's raw text: a bare short name (no dot) is
+    unaffected either way, but a model that typed the full `cube.member` in
+    `fields` (as the prompt tells it to everywhere else) gets that same string
+    dot-escaped in `encoding` too, so `as` and the field that reads it agree on
+    one literal property name instead of Vega-Lite reading one as
+    nested-object access.
 
-    `from.fields` is required, not optional, on every `lookup`: Vega-Lite
-    treats an omitted `fields` as "attach the whole matched row as one nested
-    object" — silently, since that is valid Vega-Lite — and this module has
-    no way to know, or rewrite, whatever nested path the rest of the spec
-    would need to reach a single column back out of that object. A fieldless
-    lookup is rejected here instead, before it can become a spec that renders
-    with every value NaN and no error anywhere.
+    `as` is set on the *transform*, beside `lookup` and `from` — Vega-Lite's
+    own schema, confirmed against its docs, has no `from.as`; a value written
+    there is a silently ignored extra property, not a rename. Setting it in
+    the wrong place would still pass every check in this module (the
+    structure `bind_data` returns would look correct) while doing nothing at
+    all in the browser, which is worse than not setting it — the failure
+    would be invisible on this side of the wire too. Because this now mutates
+    the transform dict (`node`) while walking it, the loop below iterates a
+    snapshot of `node.items()`, not the live dict.
+
+    `from.fields` is required, not optional, on every `lookup` whose `from.data`
+    is the Cube-rows placeholder: Vega-Lite treats an omitted `fields` as
+    "attach the whole matched row as one nested object" — silently, since that
+    is valid Vega-Lite — and this module has no way to know, or rewrite,
+    whatever nested path the rest of the spec would need to reach a single
+    column back out of that object. A fieldless lookup against Cube rows is
+    rejected here instead, before it can become a spec that renders with every
+    value NaN and no error anywhere.
+
+    A `lookup` can run the other way, too: the model's own rows as the primary
+    `data`, joined *against* a remote basemap (`from.data.url`) to pull
+    geometry onto each row. There, `from.key`/`from.fields` name a column in
+    *that* remote source — a GeoJSON/TopoJSON feature's `id`/`properties.*`,
+    never a Cube column — so resolving or requiring them against `columns`
+    would be wrong in exactly the way `properties.*` was wrong in `encoding`.
+    `VegaSpec`'s validator already guarantees `from.data` is either that exact
+    `{"url": ..., "format": ...}` shape or the `{"values": []}` placeholder, so
+    the two are told apart the same way here.
     """
     if isinstance(node, dict):
-        for key, value in node.items():
+        for key, value in list(node.items()):
             if key == "field" and isinstance(value, str):
                 node[key] = _escape_field_reference(value, columns)
             elif key == "from" and isinstance(value, dict):
-                if isinstance(value.get("key"), str):
-                    value["key"] = _resolve_lookup_field(value["key"], columns)
-                fields = value.get("fields")
-                if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
-                    raise ValueError(
-                        "a `lookup` transform must list `from.fields` — the columns to "
-                        "join in by name. Without it Vega-Lite attaches the whole matched "
-                        "row as one nested object, which nothing else in the spec can "
-                        f"then reference by its own column name. Available columns: "
-                        f"{', '.join(columns)}"
-                    )
-                # No `as`: keep the joined properties named against what
-                # `encoding`/`tooltip` elsewhere in the spec expects — the
-                # same escaping an `encoding.field` with this text would get,
-                # so the two agree on the literal property name.
-                if "as" not in value:
-                    value["as"] = [_escape_field_reference(f, columns) for f in fields]
-                value["fields"] = [_resolve_lookup_field(f, columns) for f in fields]
+                from_data = value.get("data")
+                against_remote_geometry = isinstance(from_data, dict) and "url" in from_data
+                if not against_remote_geometry:
+                    if isinstance(value.get("key"), str):
+                        value["key"] = _resolve_lookup_field(value["key"], columns)
+                    fields = value.get("fields")
+                    if not isinstance(fields, list) or not all(
+                        isinstance(f, str) for f in fields
+                    ):
+                        raise ValueError(
+                            "a `lookup` transform must list `from.fields` — the columns to "
+                            "join in by name. Without it Vega-Lite attaches the whole matched "
+                            "row as one nested object, which nothing else in the spec can "
+                            f"then reference by its own column name. Available columns: "
+                            f"{', '.join(columns)}"
+                        )
+                    # No `as`: keep the joined properties named against what
+                    # `encoding`/`tooltip` elsewhere in the spec expects — the
+                    # same escaping an `encoding.field` with this text would get,
+                    # so the two agree on the literal property name. It belongs
+                    # on `node` (the transform), not `value` (`from`) — see above.
+                    if "as" not in node:
+                        node["as"] = [_escape_field_reference(f, columns) for f in fields]
+                    value["fields"] = [_resolve_lookup_field(f, columns) for f in fields]
                 _escape_fields(value, columns)
             else:
                 _escape_fields(value, columns)
