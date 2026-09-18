@@ -610,19 +610,21 @@ def render_html(spec: DashboardSpec, data: ChartData) -> str:
     `data` is the result of running `spec.query`; the caller is responsible for
     having run the query, which is what keeps this module free of I/O and
     therefore testable without a warehouse.
+
+    Raises `ValueError` (from `bind_data`) if the spec references a column the
+    query did not return. That used to be swallowed into an in-page error
+    paragraph so a bad spec would not cost the reader the rows — but the embed
+    is the entire HTTP response Open WebUI's Rich UI path renders, and the
+    model never gets any of that body back (ADR-0025's "The model cannot read
+    back what it drew"), so a caught-and-printed error was invisible to the
+    one party that could fix the spec. The caller now decides what to do with
+    the failure instead.
     """
     columns = _columns_of(data.rows)
     rows = data.rows[:RENDER_ROW_CAP]
 
-    try:
-        vega_spec: dict[str, Any] | None = bind_data(spec.vega, rows, columns, spec.data_path)
-        chart_html = '<div class="chart" id="chart"></div>'
-    except ValueError as exc:
-        # An unplottable spec should not cost the reader the rows, which are
-        # still worth showing. The reason is printed rather than swallowed,
-        # because it is usually a column-name typo.
-        vega_spec = None
-        chart_html = f'<p class="error">This chart could not be drawn: {_esc(str(exc))}</p>'
+    vega_spec = bind_data(spec.vega, rows, columns, spec.data_path)
+    chart_html = '<div class="chart" id="chart"></div>'
 
     footnote = f"{data.row_count:,} rows"
     if data.truncated:

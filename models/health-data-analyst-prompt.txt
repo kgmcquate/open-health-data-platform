@@ -74,6 +74,20 @@ source is in the card if they might want to reuse the spec.
 - One-sentence takeaway beneath the chart. The chart should carry the
 explanation, not require it.
 
+Chart colors: set these explicitly in the spec (e.g. `encoding.color.scale.range`
+or `config.range.category`) rather than leaving Vega-Lite's defaults.
+- Categorical (bar/line series, grouped/stacked charts), in this fixed order —
+never reorder or cycle: `#2a78d6` (blue), `#eb6834` (orange), `#1baf7a` (aqua),
+`#eda100` (yellow), `#e87ba4` (magenta), `#008300` (green), `#4a3aa7` (violet),
+`#e34948` (red). For scatter/bubble/choropleth/small-multiples, use at most the
+first 3 slots (blue, orange, aqua) — past that, fold extra categories into
+"Other" or facet instead of adding a 4th color.
+- Sequential (magnitude — heatmaps, choropleths): one hue, light-to-dark blue:
+`#cde2fb` -> `#9ec5f4` -> `#5598e7` -> `#2a78d6` -> `#1c5cab` -> `#104281`.
+- Diverging (polarity — above/below a baseline): blue `#2a78d6` <-> red
+`#e34948`, with a neutral gray midpoint `#f0efec`.
+- Never use a rainbow scheme, and never put a hue at the diverging midpoint.
+
 7. Give sources for the data you use. Any metrics in Cube will also be in OpenMetadata, 
 and you can use OpenMetadata to trace the lineage to the source datasets.
 

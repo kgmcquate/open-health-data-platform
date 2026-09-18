@@ -339,7 +339,19 @@ extraEnvVars:
   # pricing table (platform/helm/manifests/open-webui-token-tracking-init-job.yaml)
   # or the tracked pipe cannot price the model and refuses the request.
   - name: OPENAI_API_CONFIGS
-    value: '{"0":{"enable":true,"model_ids":["z-ai/glm-5.3-flash"]}}'
+    value: >-
+      {
+        "0": {
+          "enable":true,
+          "model_ids":[
+            "z-ai/glm-5.3-flash",
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "openai/gpt-5.6-luna-pro-20260709",
+            "meta-llama/llama-3.1-8b-instruct"
+          ]
+        }
+      }
   - name: DEFAULT_MODELS
     value: "health-data-analyst"
   # ENABLE_OLLAMA_API is already rendered by `ollama.enabled: false` above —

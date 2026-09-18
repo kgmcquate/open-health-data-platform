@@ -354,8 +354,14 @@ def test_render_carries_its_own_source_and_disclaimer() -> None:
     assert "iframe:height" in html
 
 
-def test_an_unplottable_spec_still_shows_the_rows() -> None:
-    """One bad `vega` spec should not cost the reader the rows behind it."""
+def test_an_unplottable_spec_raises_rather_than_rendering_silently() -> None:
+    """`render_html` must not swallow the error into a 200 embed.
+
+    Open WebUI hands the model a fixed "active and visible" string for any
+    embed, success or not, so a caught-and-printed error here would be
+    invisible to the model — see `test_an_unplottable_spec_returns_an_error`
+    for the route-level contract this protects.
+    """
     spec = DashboardSpec.model_validate(
         {
             **SPEC,
@@ -368,9 +374,8 @@ def test_an_unplottable_spec_still_shows_the_rows() -> None:
             },
         }
     )
-    html = render_html(spec, ChartData(rows=ROWS, row_count=2))
-    assert "could not be drawn" in html
-    assert "3.1" in html
+    with pytest.raises(ValueError, match="ed_visits.avg_percent"):
+        render_html(spec, ChartData(rows=ROWS, row_count=2))
 
 
 def test_row_data_is_escaped_into_the_payload_script() -> None:
@@ -450,6 +455,39 @@ def test_a_rejected_query_returns_cubes_own_reason(
     )
     assert response.status_code == 400
     assert "ed_visits.nope" in response.json()["detail"]
+
+
+def test_an_unplottable_spec_returns_an_error_not_an_embed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A spec/column mismatch must fail the tool call, not render a 200 embed.
+
+    Open WebUI gives the model a fixed "active and visible" string for *any*
+    embed — so a 200 here, even with an in-page error paragraph, would look
+    like success to the model and it would never retry with a fixed spec.
+    """
+    bad_spec = {
+        **SPEC,
+        "vega": {
+            "mark": "line",
+            "encoding": {
+                "x": {"field": "ed_visits.absent", "type": "temporal"},
+                "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
+            },
+        },
+    }
+
+    async def fake_query(self: object, query: object) -> dict[str, Any]:
+        return {"rows": ROWS, "row_count": len(ROWS), "truncated": False, "applied_limit": 1000}
+
+    monkeypatch.setattr("ohdp_agent.cube.CubeClient.run_metric_query", fake_query)
+
+    response = client.post(
+        "/tools/render_dashboard", json=bad_spec, headers={"X-Forwarded-Email": "a@b.test"}
+    )
+    assert response.status_code == 422
+    assert "ed_visits.avg_percent" in response.json()["detail"]
+    assert response.headers.get("content-disposition") != "inline"
 
 
 # --- the handoff to Open WebUI's frontend ----------------------------------

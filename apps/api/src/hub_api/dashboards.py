@@ -29,6 +29,13 @@ gets a fixed "Embedded UI result is active and visible to the user" string.
 So the model cannot read the rows back out of a render, and the prompt tells it
 to run `run_metric_query` first when it intends to say anything *about* the
 data. Rendering twice is cheap — every cube is pre-aggregated (ADR-0024).
+
+The same limitation means a rendered-but-broken chart cannot be reported inside
+a 200 embed either: the fixed "active and visible" string would tell the model
+the render succeeded even when `render_html` could not bind the spec to the
+query's columns. `_embed` turns that case into an HTTPException instead (see
+`_run_query`, which already does this for a Cube-rejected query), so the model
+gets the real reason back and can retry with a corrected spec.
 """
 
 from __future__ import annotations
@@ -96,7 +103,21 @@ async def _run_query(spec: DashboardSpec) -> ChartData:
 
 
 def _embed(spec: DashboardSpec, data: ChartData) -> HTMLResponse:
-    return HTMLResponse(content=render_html(spec, data), headers=_EMBED_HEADERS)
+    """Render the embed, or fail the render with the reason.
+
+    `render_html` raises `ValueError` when the `vega` spec names a column the
+    query did not return. That must not become a 200 embed: the embed body is
+    all Open WebUI hands the model back for an external tool (a fixed
+    "active and visible" string stands in for it), so a spec/column mismatch
+    would otherwise look like success to the model and it would never retry
+    with a corrected spec. Raising instead puts the same reason `_run_query`
+    already surfaces for a rejected Cube query onto this path too.
+    """
+    try:
+        html = render_html(spec, data)
+    except ValueError as exc:
+        raise HTTPException(422, f"This chart could not be drawn: {exc}") from exc
+    return HTMLResponse(content=html, headers=_EMBED_HEADERS)
 
 
 @dashboards_router.post(
