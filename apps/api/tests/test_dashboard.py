@@ -315,6 +315,30 @@ def test_an_unresolvable_lookup_key_fails_with_the_reason() -> None:
         bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
 
 
+def test_a_lookup_without_fields_fails_with_the_reason() -> None:
+    """The reported bug: `from.key` with no `from.fields` at all — the model
+    meant to pull individual columns back out with a later `calculate`, but an
+    omitted `fields` tells Vega-Lite to attach the *whole* matched row as one
+    nested object instead. Nothing downstream can reach a column by name out
+    of that, so every value comes back NaN with no error anywhere — unless
+    this is caught here first."""
+    rows = [
+        {
+            "chronic_disease.state_name": "Ohio",
+            "chronic_disease.avg_age_adjusted_prevalence": 33.4,
+        }
+    ]
+    vega = {
+        "data": {"url": "https://example.com/us-states.json", "format": {"type": "topojson"}},
+        "transform": [
+            {"lookup": "properties.name", "from": {"data": {"values": []}, "key": "state_name"}}
+        ],
+        "mark": "geoshape",
+    }
+    with pytest.raises(ValueError, match="from.fields"):
+        bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
+
+
 def test_a_data_path_that_leads_nowhere_fails_with_the_reason() -> None:
     with pytest.raises(ValueError, match="does not name an existing part"):
         bind_data(_spec().vega, ROWS, list(ROWS[0]), "$.transform[0].from.data.values")

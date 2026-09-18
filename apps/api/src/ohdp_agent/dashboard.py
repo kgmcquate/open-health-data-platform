@@ -293,6 +293,14 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
     everywhere else) gets that same string dot-escaped in `encoding` too, so
     `as` and the field that reads it agree on one literal property name
     instead of Vega-Lite reading one as nested-object access.
+
+    `from.fields` is required, not optional, on every `lookup`: Vega-Lite
+    treats an omitted `fields` as "attach the whole matched row as one nested
+    object" — silently, since that is valid Vega-Lite — and this module has
+    no way to know, or rewrite, whatever nested path the rest of the spec
+    would need to reach a single column back out of that object. A fieldless
+    lookup is rejected here instead, before it can become a spec that renders
+    with every value NaN and no error anywhere.
     """
     if isinstance(node, dict):
         for key, value in node.items():
@@ -302,14 +310,21 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
                 if isinstance(value.get("key"), str):
                     value["key"] = _resolve_lookup_field(value["key"], columns)
                 fields = value.get("fields")
-                if isinstance(fields, list) and all(isinstance(f, str) for f in fields):
-                    # No `as`: keep the joined properties named against what
-                    # `encoding`/`tooltip` elsewhere in the spec expects — the
-                    # same escaping an `encoding.field` with this text would get,
-                    # so the two agree on the literal property name.
-                    if "as" not in value:
-                        value["as"] = [_escape_field_reference(f, columns) for f in fields]
-                    value["fields"] = [_resolve_lookup_field(f, columns) for f in fields]
+                if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
+                    raise ValueError(
+                        "a `lookup` transform must list `from.fields` — the columns to "
+                        "join in by name. Without it Vega-Lite attaches the whole matched "
+                        "row as one nested object, which nothing else in the spec can "
+                        f"then reference by its own column name. Available columns: "
+                        f"{', '.join(columns)}"
+                    )
+                # No `as`: keep the joined properties named against what
+                # `encoding`/`tooltip` elsewhere in the spec expects — the
+                # same escaping an `encoding.field` with this text would get,
+                # so the two agree on the literal property name.
+                if "as" not in value:
+                    value["as"] = [_escape_field_reference(f, columns) for f in fields]
+                value["fields"] = [_resolve_lookup_field(f, columns) for f in fields]
                 _escape_fields(value, columns)
             else:
                 _escape_fields(value, columns)
