@@ -202,20 +202,30 @@ class ChartData(_Strict):
 def resolve_column(key: str, columns: list[str]) -> str:
     """Map a spec column onto a key Cube actually returned.
 
-    Cube keys a time dimension by its granularity (`cube.week_ending.week`), and
-    which suffix comes back depends on the query — so a spec written against
-    `cube.week_ending` still has to find it. Exact match wins; otherwise the
-    unique granularity-suffixed key does.
+    Two ways a spec's name and Cube's column can legitimately differ:
 
-    Raising with the available columns is deliberate: that message goes back to
-    the model as a tool error, and a wrong column name is the mistake it is best
-    placed to fix on its own.
+      - **Granularity suffix.** Cube keys a time dimension by its granularity
+        (`cube.week_ending.week`), and which suffix comes back depends on the
+        query — so a spec written against `cube.week_ending` still has to
+        find it. `key` is a *prefix* of the returned column here.
+      - **Bare member name.** A `lookup`'s `from.key`/`from.fields` sometimes
+        names a dimension without its cube (`fips` for `immunization.fips`) —
+        there's no query context there to spell the prefix out. `key` is a
+        *suffix* of the returned column here.
+
+    Exact match wins; otherwise a uniquely-matching prefix or suffix does.
+    Raising with the available columns is deliberate: that message goes back
+    to the model as a tool error, and a wrong column name is the mistake it is
+    best placed to fix on its own.
     """
     if key in columns:
         return key
-    candidates = [c for c in columns if c.startswith(f"{key}.")]
-    if len(candidates) == 1:
-        return candidates[0]
+    prefix_candidates = [c for c in columns if c.startswith(f"{key}.")]
+    if len(prefix_candidates) == 1:
+        return prefix_candidates[0]
+    suffix_candidates = [c for c in columns if c.endswith(f".{key}")]
+    if len(suffix_candidates) == 1:
+        return suffix_candidates[0]
     raise ValueError(
         f"column {key!r} is not in the query result. Available columns: {', '.join(columns)}"
     )
@@ -250,9 +260,10 @@ def _resolve_lookup_field(field: str, columns: list[str]) -> str:
 
     These always name a column in the just-injected Cube rows — a choropleth's
     `from.data` holds nothing else — so, unlike `_escape_field_reference`,
-    resolution isn't gated behind `COLUMN_RE`: a bare, unqualified name like
-    `fips` (instead of `cube.fips`) is exactly the kind of typo this should
-    catch, not pass through untouched.
+    resolution isn't gated behind `COLUMN_RE`: a bare name like `fips` is
+    resolved the same as a qualified `cube.fips` would be (`resolve_column`'s
+    suffix match covers exactly this), and only a name matching no column at
+    all — the actual typo case — raises.
     """
     if field.startswith("\\"):
         return field
@@ -267,7 +278,12 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
     Vega's parse. A `lookup` transform's `from.key`/`from.fields` get the same
     treatment: they aren't `field` entries, but they name Cube columns just as
     surely, and the same silent-empty-chart failure mode applies (see
-    `_resolve_lookup_field`).
+    `_resolve_lookup_field`). When the model didn't give `from.as`, the
+    resolved-to column's full name would otherwise become the joined
+    property's name — but `encoding`/`tooltip` elsewhere in the spec is
+    written against the short name the model actually typed in `fields`, so
+    that becomes `as` instead, and the join keeps writing under the name the
+    rest of the spec already expects.
     """
     if isinstance(node, dict):
         for key, value in node.items():
@@ -276,11 +292,15 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
             elif key == "from" and isinstance(value, dict):
                 if isinstance(value.get("key"), str):
                     value["key"] = _resolve_lookup_field(value["key"], columns)
-                if isinstance(value.get("fields"), list):
-                    value["fields"] = [
-                        _resolve_lookup_field(f, columns) if isinstance(f, str) else f
-                        for f in value["fields"]
-                    ]
+                fields = value.get("fields")
+                if isinstance(fields, list) and all(isinstance(f, str) for f in fields):
+                    # No `as`: keep the joined properties named exactly what the
+                    # model wrote in `fields` (its own short name, if that's what
+                    # it used) — `encoding`/`tooltip` elsewhere in the spec was
+                    # written against that same name, not the resolved column.
+                    if "as" not in value:
+                        value["as"] = list(fields)
+                    value["fields"] = [_resolve_lookup_field(f, columns) for f in fields]
                 _escape_fields(value, columns)
             else:
                 _escape_fields(value, columns)

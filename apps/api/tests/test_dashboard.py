@@ -229,17 +229,51 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
     assert from_clause["fields"] == ["ed_visits\\.avg_percent"]
 
 
-def test_an_unresolvable_lookup_key_fails_with_the_reason() -> None:
-    """A bare `fips` instead of `cube.fips` used to fail silently at render —
-    the color-mapped shapes just vanished. It now raises like a bad `field` does."""
-    rows = [{"ed_visits.fips": "06", "ed_visits.avg_percent": 3.1}]
+def test_bare_lookup_names_resolve_and_keep_the_models_own_field_names() -> None:
+    """The reported bug: `from.key: fips` / `from.fields: [avg_coverage_pct, geography]`
+    used bare names instead of the full `cube.member` paths Cube actually returns.
+    Bare names now resolve by suffix match, same as a granularity suffix does by
+    prefix, and — since the model gave no `as` — the joined property keeps the
+    bare name it already used in `encoding`/`tooltip`, so those need no change."""
+    rows = [
+        {
+            "immunization.geography": "California",
+            "immunization.fips": "06",
+            "immunization.avg_coverage_pct": 55.3,
+        }
+    ]
     vega = {
         "data": {"url": "https://example.com/us.json", "format": {"type": "topojson"}},
-        "transform": [{"lookup": "id", "from": {"key": "fips", "fields": ["avg_coverage_pct"]}}],
+        "transform": [
+            {
+                "lookup": "id",
+                "from": {
+                    "data": {"values": []},
+                    "key": "fips",
+                    "fields": ["avg_coverage_pct", "geography"],
+                },
+            }
+        ],
         "mark": "geoshape",
         "encoding": {"color": {"field": "avg_coverage_pct", "type": "quantitative"}},
     }
-    with pytest.raises(ValueError, match="column 'fips' is not in the query result"):
+    bound = bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
+    from_clause = bound["transform"][0]["from"]
+    assert from_clause["key"] == "immunization\\.fips"
+    assert from_clause["fields"] == ["immunization\\.avg_coverage_pct", "immunization\\.geography"]
+    assert from_clause["as"] == ["avg_coverage_pct", "geography"]
+    assert bound["encoding"]["color"]["field"] == "avg_coverage_pct"
+
+
+def test_an_unresolvable_lookup_key_fails_with_the_reason() -> None:
+    """A name matching no column at all — a genuine typo — still raises."""
+    rows = [{"ed_visits.fips": "06"}]
+    vega = {
+        "data": {"url": "https://example.com/us.json", "format": {"type": "topojson"}},
+        "transform": [{"lookup": "id", "from": {"key": "not_a_real_column", "fields": []}}],
+        "mark": "geoshape",
+    }
+    with pytest.raises(ValueError, match="column 'not_a_real_column' is not in the query result"):
         bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
 
 
