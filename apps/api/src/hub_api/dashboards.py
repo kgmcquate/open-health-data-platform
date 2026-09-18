@@ -10,8 +10,8 @@ an MCP tool has no way to ask for an embed. The transport is the reason for the
 placement, and it is the same split ADR-0016 already made for `report_issue`.
 
 The model writes its Vega-Lite, but never the data. It sends a
-`DashboardSpec` — a title, Cube queries, and a `vega` spec per panel — and this
-module runs the queries and binds the rows (`ohdp_agent.dashboard`). A `data`
+`DashboardSpec` — a title, one Cube query, and a `vega` spec — and this
+module runs the query and binds the rows (`ohdp_agent.dashboard`). A `data`
 key anywhere in a `vega` spec is rejected before it can reach a browser.
 Two consequences worth stating plainly:
 
@@ -39,7 +39,7 @@ from fastapi.responses import HTMLResponse
 
 from hub_api.issues import Reporter, get_reporter
 from ohdp_agent.cube import CubeClient, CubeError
-from ohdp_agent.dashboard import DashboardSpec, PanelData, render_html
+from ohdp_agent.dashboard import ChartData, DashboardSpec, render_html
 from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
@@ -49,10 +49,8 @@ log = get_logger(__name__)
 # set here and never taken from the caller. Same reasoning as `ohdp_mcp.server`.
 TIER = "free"
 
-# Rendering an embed means holding every panel's rows in memory at once and
-# handing Open WebUI a single response, so the panels are fetched together
-# rather than one after another. Six concurrent pre-aggregated queries is a
-# smaller load than the chat surface's own polling.
+# Rendering an embed means holding the chart's rows in memory and handing Open
+# WebUI a single response.
 _QUERY_TIMEOUT_SECONDS = 90.0
 
 # The header pair that turns a tool result into an iframe instead of a wall of
@@ -67,8 +65,8 @@ def _client() -> CubeClient:
     return CubeClient(settings.cube_api_url, settings.cube_api_secret, tier=TIER)
 
 
-async def _run_panels(spec: DashboardSpec) -> list[PanelData]:
-    """Fetch every panel's rows, or fail the whole render with Cube's reason.
+async def _run_query(spec: DashboardSpec) -> ChartData:
+    """Fetch the chart's rows, or fail the render with Cube's reason.
 
     Cube's own message names the wrong member or the unsupported operator, and
     that message is usually enough for the model to correct its spec on the next
@@ -76,28 +74,26 @@ async def _run_panels(spec: DashboardSpec) -> list[PanelData]:
     """
     client = _client()
 
-    async def one(index: int) -> PanelData:
-        result = await client.run_metric_query(spec.panels[index].query)
-        return PanelData(
-            rows=result["rows"],
-            row_count=result["row_count"],
-            truncated=bool(result["truncated"]),
-        )
-
     try:
         async with asyncio.timeout(_QUERY_TIMEOUT_SECONDS):
-            return list(await asyncio.gather(*(one(i) for i in range(len(spec.panels)))))
+            result = await client.run_metric_query(spec.query)
     except CubeError as exc:
-        raise HTTPException(400, f"The semantic layer rejected a panel query: {exc}") from exc
+        raise HTTPException(400, f"The semantic layer rejected the query: {exc}") from exc
     except TimeoutError as exc:
         raise HTTPException(
             504,
-            "The semantic layer did not answer in time. Try fewer panels, a "
-            "shorter date range, or a coarser granularity.",
+            "The semantic layer did not answer in time. Try a shorter date "
+            "range or a coarser granularity.",
         ) from exc
 
+    return ChartData(
+        rows=result["rows"],
+        row_count=result["row_count"],
+        truncated=bool(result["truncated"]),
+    )
 
-def _embed(spec: DashboardSpec, data: list[PanelData]) -> HTMLResponse:
+
+def _embed(spec: DashboardSpec, data: ChartData) -> HTMLResponse:
     return HTMLResponse(content=render_html(spec, data), headers=_EMBED_HEADERS)
 
 
@@ -117,28 +113,27 @@ async def render_dashboard_tool(
     # cluster could run.
     _caller: Annotated[Reporter, Depends(get_reporter)],
 ) -> HTMLResponse:
-    """Draw one or more charts of semantic-layer data directly in this chat.
+    """Draw a chart of semantic-layer data directly in this chat.
 
     Use this whenever a question is better answered by a picture than by a
     table, and after `run_metric_query` has shown you the actual numbers — this
-    tool runs its own queries and does not report the rows back to you, so plan
+    tool runs its own query and does not report the rows back to you, so plan
     and describe the data first, then draw it.
 
-    Each panel carries a `query` in exactly the form `run_metric_query` takes,
+    The spec carries a `query` in exactly the form `run_metric_query` takes,
     plus a `vega` Vega-Lite spec describing how to draw that query's rows. The
     spec may use anything Vega-Lite supports — `mark`, `encoding`, `transform`,
     `layer`, `params` — but must not include a `data` key anywhere: rows are
     bound from `query` by the server. Use column names exactly as they came back
     in the query result. Give every axis a title that carries its units, and
-    title the dashboard with the filter scope it was run at.
+    title the chart with the filter scope it was run at.
 
-    Keep it to what a reader can take in — at most six panels, and aggregate to
-    a top-N plus an "Other" bucket rather than plotting dozens of categories.
-    The rendered card shows its own data table, the compiled query behind each
-    panel, and the dashboard's YAML source, so you do not need to repeat any of
-    those in your reply. Tell the user the source is in the card if they want to
-    reuse the spec.
+    Aggregate to a top-N plus an "Other" bucket rather than plotting dozens of
+    categories. The rendered card shows its own data table, the compiled query,
+    and the chart's YAML source, so you do not need to repeat any of those in
+    your reply. Tell the user the source is in the card if they want to reuse
+    the spec.
     """
-    data = await _run_panels(spec)
-    log.info("dashboard_rendered", name=spec.name, panels=len(spec.panels))
+    data = await _run_query(spec)
+    log.info("dashboard_rendered", name=spec.name)
     return _embed(spec, data)

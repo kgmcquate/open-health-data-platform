@@ -24,8 +24,8 @@ from pydantic import ValidationError
 from hub_api.main import app
 from ohdp_agent.cube import CubeError
 from ohdp_agent.dashboard import (
+    ChartData,
     DashboardSpec,
-    PanelData,
     bind_data,
     render_html,
     resolve_column,
@@ -34,22 +34,17 @@ from ohdp_agent.dashboard import (
 SPEC: dict[str, Any] = {
     "name": "ed-visits",
     "title": "ED visit share",
-    "panels": [
-        {
-            "title": "By week",
-            "query": {
-                "measures": ["ed_visits.avg_percent"],
-                "time_dimensions": [{"dimension": "ed_visits.week_end", "granularity": "week"}],
-            },
-            "vega": {
-                "mark": "line",
-                "encoding": {
-                    "x": {"field": "ed_visits.week_end", "type": "temporal"},
-                    "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
-                },
-            },
-        }
-    ],
+    "query": {
+        "measures": ["ed_visits.avg_percent"],
+        "time_dimensions": [{"dimension": "ed_visits.week_end", "granularity": "week"}],
+    },
+    "vega": {
+        "mark": "line",
+        "encoding": {
+            "x": {"field": "ed_visits.week_end", "type": "temporal"},
+            "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
+        },
+    },
 }
 
 ROWS = [
@@ -94,33 +89,31 @@ def test_a_vega_spec_may_not_carry_data() -> None:
         DashboardSpec.model_validate(
             {
                 **SPEC,
-                "panels": [
-                    {
-                        **SPEC["panels"][0],
-                        "vega": {
-                            **SPEC["panels"][0]["vega"],
-                            "data": {"url": "https://example.com/x.json"},
-                        },
-                    }
-                ],
+                "vega": {
+                    **SPEC["vega"],
+                    "data": {"url": "https://example.com/x.json"},
+                },
             }
         )
 
 
 def test_a_nested_data_key_is_rejected_too() -> None:
     """The firewall recurses: `data` under `layer` or a `lookup` is still a fetch."""
-    spec = {**SPEC["panels"][0]}
-    spec["vega"] = {
-        "layer": [
-            {
-                "mark": "line",
-                "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
-                "data": {"values": [{"ed_visits.avg_percent": 7}]},
-            }
-        ]
-    }
     with pytest.raises(ValidationError, match="may not carry a `data` key"):
-        DashboardSpec.model_validate({**SPEC, "panels": [spec]})
+        DashboardSpec.model_validate(
+            {
+                **SPEC,
+                "vega": {
+                    "layer": [
+                        {
+                            "mark": "line",
+                            "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+                            "data": {"values": [{"ed_visits.avg_percent": 7}]},
+                        }
+                    ]
+                },
+            }
+        )
 
 
 def test_transform_and_params_are_allowed() -> None:
@@ -128,23 +121,18 @@ def test_transform_and_params_are_allowed() -> None:
     spec = DashboardSpec.model_validate(
         {
             **SPEC,
-            "panels": [
-                {
-                    **SPEC["panels"][0],
-                    "vega": {
-                        "transform": [{"filter": "datum['ed_visits.avg_percent'] > 0"}],
-                        "params": [{"name": "cutoff", "value": 0}],
-                        "mark": "line",
-                        "encoding": {
-                            "x": {"field": "ed_visits.week_end", "type": "temporal"},
-                            "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
-                        },
-                    },
-                }
-            ],
+            "vega": {
+                "transform": [{"filter": "datum['ed_visits.avg_percent'] > 0"}],
+                "params": [{"name": "cutoff", "value": 0}],
+                "mark": "line",
+                "encoding": {
+                    "x": {"field": "ed_visits.week_end", "type": "temporal"},
+                    "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
+                },
+            },
         }
     )
-    assert spec.panels[0].vega["transform"][0]["filter"] == "datum['ed_visits.avg_percent'] > 0"
+    assert spec.vega["transform"][0]["filter"] == "datum['ed_visits.avg_percent'] > 0"
 
 
 # --- binding rows to the authored Vega-Lite --------------------------------
@@ -152,20 +140,20 @@ def test_transform_and_params_are_allowed() -> None:
 
 def test_cube_columns_are_escaped_for_vega() -> None:
     """The silent-empty-chart bug: an unescaped dot is a nested-field lookup."""
-    spec = bind_data(_spec().panels[0].vega, ROWS, list(ROWS[0]))
+    spec = bind_data(_spec().vega, ROWS, list(ROWS[0]))
     assert spec["encoding"]["y"]["field"] == "ed_visits\\.avg_percent"
 
 
 def test_data_is_bound_as_values_not_a_url() -> None:
     """The rows land as `data.values`, never a URL the browser would fetch."""
-    spec = bind_data(_spec().panels[0].vega, ROWS, list(ROWS[0]))
+    spec = bind_data(_spec().vega, ROWS, list(ROWS[0]))
     assert spec["data"] == {"values": ROWS}
     assert "url" not in spec["data"]
 
 
 def test_a_unit_spec_gets_width_and_autosize_defaults() -> None:
     """A bare {mark, encoding} still renders full-width, like the compiled output."""
-    spec = bind_data(_spec().panels[0].vega, ROWS, list(ROWS[0]))
+    spec = bind_data(_spec().vega, ROWS, list(ROWS[0]))
     assert spec["width"] == "container"
     assert spec["autosize"] == {"type": "fit", "contains": "padding"}
 
@@ -216,60 +204,52 @@ def test_an_unknown_column_names_the_ones_that_exist() -> None:
 
 
 def test_render_carries_its_own_source_and_disclaimer() -> None:
-    html = render_html(_spec(), [PanelData(rows=ROWS, row_count=2)])
+    html = render_html(_spec(), ChartData(rows=ROWS, row_count=2))
     assert "ed-visits.yaml" in html
     assert "Not clinical decision support" in html
     # Without this the iframe renders at a stub height and the content is cut off.
     assert "iframe:height" in html
 
 
-def test_a_broken_panel_does_not_lose_the_others() -> None:
+def test_an_unplottable_spec_still_shows_the_rows() -> None:
+    """One bad `vega` spec should not cost the reader the rows behind it."""
     spec = DashboardSpec.model_validate(
         {
             **SPEC,
-            "panels": [
-                SPEC["panels"][0],
-                {
-                    **SPEC["panels"][0],
-                    "title": "Broken",
-                    "vega": {
-                        "mark": "line",
-                        "encoding": {
-                            "x": {"field": "ed_visits.absent", "type": "temporal"},
-                            "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
-                        },
-                    },
+            "vega": {
+                "mark": "line",
+                "encoding": {
+                    "x": {"field": "ed_visits.absent", "type": "temporal"},
+                    "y": {"field": "ed_visits.avg_percent", "type": "quantitative"},
                 },
-            ],
+            },
         }
     )
-    html = render_html(spec, [PanelData(rows=ROWS, row_count=2)] * 2)
+    html = render_html(spec, ChartData(rows=ROWS, row_count=2))
     assert "could not be drawn" in html
-    assert "By week" in html
+    assert "3.1" in html
 
 
 def test_row_data_is_escaped_into_the_payload_script() -> None:
     """A value cannot close the script element it is embedded in."""
     rows = [{"ed_visits.week_end.week": "</script><script>x", "ed_visits.avg_percent": 1.0}]
-    html = render_html(_spec(), [PanelData(rows=rows, row_count=1)])
+    html = render_html(_spec(), ChartData(rows=rows, row_count=1))
     assert "</script><script>x" not in html
     assert "\\u003c/script" in html
 
 
-def test_a_panel_has_nowhere_to_put_rows() -> None:
+def test_the_spec_has_nowhere_to_put_rows() -> None:
     """The property behind "the model supplies a `vega` spec, never data values".
 
-    It is structural rather than a matter of discipline: a panel is a query plus
+    It is structural rather than a matter of discipline: a spec is a query plus
     a `vega` spec, and there is no field a caller can use to smuggle numbers
     past Cube — not as a `rows` key (rejected by `extra="forbid"`) and not as a
     `data` key inside `vega` (rejected by the `VegaSpec` validator). It is also
-    what keeps a saved dashboard from going stale — there is no cached answer in
-    the file to go stale.
+    what keeps a saved chart from going stale — there is no cached answer in the
+    file to go stale.
     """
     with pytest.raises(ValidationError):
-        DashboardSpec.model_validate(
-            {**SPEC, "panels": [{**SPEC["panels"][0], "rows": [{"ed_visits.avg_percent": 99}]}]}
-        )
+        DashboardSpec.model_validate({**SPEC, "rows": [{"ed_visits.avg_percent": 99}]})
 
 
 # --- the embed contract ----------------------------------------------------
@@ -312,7 +292,7 @@ def test_a_successful_render_returns_an_embeddable_response(
     assert "vegaEmbed" in response.text
 
 
-def test_a_rejected_panel_query_returns_cubes_own_reason(
+def test_a_rejected_query_returns_cubes_own_reason(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Cube names the wrong member; the model can fix its own spec from that."""
@@ -361,7 +341,7 @@ def test_the_embed_survives_decode_before_parse() -> None:
     bare `"` inside a JSON string literal, and the whole array stops parsing.
     """
     spec = DashboardSpec.model_validate(SPEC)
-    document = render_html(spec, [PanelData(rows=ROWS, row_count=2)])
+    document = render_html(spec, ChartData(rows=ROWS, row_count=2))
 
     assert "&quot;" not in document
     survived = _through_open_webui(document)
@@ -377,9 +357,9 @@ def test_markup_in_a_title_cannot_survive_the_decode_as_markup() -> None:
     the frontend live markup.
     """
     spec = DashboardSpec.model_validate(
-        {**SPEC, "panels": [{**SPEC["panels"][0], "title": "<script>alert(1)</script>"}]}
+        {**SPEC, "title": "<script>alert(1)</script>"}
     )
-    document = render_html(spec, [PanelData(rows=ROWS, row_count=2)])
+    document = render_html(spec, ChartData(rows=ROWS, row_count=2))
 
     delivered = _through_open_webui(document)
     assert isinstance(delivered, list)

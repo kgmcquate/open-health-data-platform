@@ -3,7 +3,7 @@
 This is docs/chatbot.md §5's "validated chart spec" path. One property drives
 every decision in here:
 
-  - **The model writes the Vega-Lite, but never the data.** A `Panel` carries a
+  - **The model writes the Vega-Lite, but never the data.** A `DashboardSpec` carries a
     `CubeQuery` and a `vega` spec — anything Vega-Lite accepts (`mark`,
     `encoding`, `transform`, `layer`, `params`, ...). The one thing it may not
     author is a `data` key, which is rejected everywhere, at any depth. Rows
@@ -63,12 +63,10 @@ ColumnKey = Annotated[str, Field(pattern=COLUMN_RE.pattern, max_length=192)]
 
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
-MAX_PANELS = 6
-
 # Rows past this are dropped before they reach the page. A Cube free-tier query
-# tops out at 1000 rows (semantic/cube/cube.js), six panels of which is a ~1MB
-# chat message for a chart no one can read. Truncation is reported in the panel
-# footer rather than done silently.
+# tops out at 1000 rows (semantic/cube/cube.js), which is a ~1MB chat message for
+# a chart no one can read. Truncation is reported in the chart's data footer
+# rather than done silently.
 RENDER_ROW_CAP = 500
 # The table view is relief for the low-contrast palette slots, not a data
 # export; it shows the head and says how much it left out.
@@ -111,24 +109,19 @@ def _no_data(spec: dict[str, Any]) -> dict[str, Any]:
 VegaSpec = Annotated[dict[str, Any], AfterValidator(_no_data)]
 
 
-class Panel(_Strict):
-    title: str = Field(min_length=1, max_length=160)
-    query: CubeQuery
-    # The agent's Vega-Lite spec, minus its data (see `VegaSpec`).
-    vega: VegaSpec
-    # One sentence of what the panel shows. The chart should carry the
-    # explanation; this is for the part a reader cannot see, such as a
-    # population restriction that lives in the filters.
-    caption: str | None = Field(default=None, max_length=400)
-
-
 class DashboardSpec(_Strict):
-    """One dashboard. The unit that gets committed to git."""
+    """One chart. The unit that gets committed to git."""
 
     name: Annotated[str, Field(pattern=NAME_RE.pattern, min_length=3, max_length=64)]
     title: str = Field(min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=800)
-    panels: list[Panel] = Field(min_length=1, max_length=MAX_PANELS)
+    query: CubeQuery
+    # The agent's Vega-Lite spec, minus its data (see `VegaSpec`).
+    vega: VegaSpec
+    # One sentence of what the chart shows. The chart should carry the
+    # explanation; this is for the part a reader cannot see, such as a
+    # population restriction that lives in the filters.
+    caption: str | None = Field(default=None, max_length=400)
 
     @classmethod
     def from_yaml(cls, text: str) -> DashboardSpec:
@@ -158,8 +151,8 @@ class DashboardSpec(_Strict):
 # --- rendering ------------------------------------------------------------
 
 
-class PanelData(_Strict):
-    """A panel's rows, as the caller fetched them from Cube."""
+class ChartData(_Strict):
+    """The chart's rows, as the caller fetched them from Cube."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
@@ -463,55 +456,45 @@ def _columns_of(rows: list[dict[str, Any]]) -> list[str]:
     return list(seen)
 
 
-def render_html(spec: DashboardSpec, data: list[PanelData]) -> str:
-    """The complete embeddable document for one dashboard.
+def render_html(spec: DashboardSpec, data: ChartData) -> str:
+    """The complete embeddable document for one chart.
 
-    `data[i]` belongs to `spec.panels[i]`; the caller is responsible for having
-    run the queries, which is what keeps this module free of I/O and therefore
-    testable without a warehouse.
+    `data` is the result of running `spec.query`; the caller is responsible for
+    having run the query, which is what keeps this module free of I/O and
+    therefore testable without a warehouse.
     """
-    if len(data) != len(spec.panels):
-        raise ValueError("every panel needs its own result set")
+    columns = _columns_of(data.rows)
+    rows = data.rows[:RENDER_ROW_CAP]
 
-    panels_html: list[str] = []
-    vega_specs: list[dict[str, Any] | None] = []
+    try:
+        vega_spec: dict[str, Any] | None = bind_data(spec.vega, rows, columns)
+        chart_html = '<div class="chart" id="chart"></div>'
+    except ValueError as exc:
+        # An unplottable spec should not cost the reader the rows, which are
+        # still worth showing. The reason is printed rather than swallowed,
+        # because it is usually a column-name typo.
+        vega_spec = None
+        chart_html = f'<p class="error">This chart could not be drawn: {_esc(str(exc))}</p>'
 
-    for index, (panel, result) in enumerate(zip(spec.panels, data, strict=True)):
-        columns = _columns_of(result.rows)
-        rows = result.rows[:RENDER_ROW_CAP]
+    footnote = f"{data.row_count:,} rows"
+    if data.truncated:
+        footnote += " (truncated at the query limit)"
+    if data.row_count > RENDER_ROW_CAP:
+        footnote += f"; the chart shows the first {RENDER_ROW_CAP:,}"
 
-        try:
-            vega_specs.append(bind_data(panel.vega, rows, columns))
-            chart_html = f'<div class="chart" id="chart-{index}"></div>'
-        except ValueError as exc:
-            # One unplottable panel should not cost the reader the other five,
-            # and the rows are still worth showing. The reason is printed rather
-            # than swallowed, because it is usually a column-name typo.
-            vega_specs.append(None)
-            chart_html = f'<p class="error">This panel could not be drawn: {_esc(str(exc))}</p>'
-
-        footnote = f"{result.row_count:,} rows"
-        if result.truncated:
-            footnote += " (truncated at the query limit)"
-        if result.row_count > RENDER_ROW_CAP:
-            footnote += f"; the chart shows the first {RENDER_ROW_CAP:,}"
-
-        query_json = json.dumps(panel.query.to_cube_json(), indent=2)
-        panels_html.append(
-            f"""      <section class="panel">
-        <h2>{_esc(panel.title)}</h2>
-        {chart_html}
-        {f'<p class="caption">{_esc(panel.caption)}</p>' if panel.caption else ""}
-        <details>
-          <summary>Data and query · {_esc(footnote)}</summary>
-          {_table_html(result.rows, columns)}
-          <pre class="query">{_esc(query_json)}</pre>
-        </details>
-      </section>"""
-        )
+    query_json = json.dumps(spec.query.to_cube_json(), indent=2)
+    panel_html = f"""    <section class="panel">
+      {chart_html}
+      {f'<p class="caption">{_esc(spec.caption)}</p>' if spec.caption else ""}
+      <details>
+        <summary>Data and query · {_esc(footnote)}</summary>
+        {_table_html(data.rows, columns)}
+        <pre class="query">{_esc(query_json)}</pre>
+      </details>
+    </section>"""
 
     payload = {
-        "specs": vega_specs,
+        "spec": vega_spec,
         "config": _THEME_CONFIG,
     }
     scripts = "\n".join(f'  <script src="{src}"></script>' for src in _VEGA_SCRIPTS)
@@ -536,9 +519,7 @@ def render_html(spec: DashboardSpec, data: list[PanelData]) -> str:
       <h1>{_esc(spec.title)}</h1>
 {description}
     </header>
-    <div class="panels">
-{chr(10).join(panels_html)}
-    </div>
+{panel_html}
     <footer>
       <p class="disclaimer">Population-level public health data from the Open Health
       Data Platform semantic layer. Not clinical decision support and not medical advice.</p>
@@ -598,14 +579,6 @@ h1 { font-size: 1.15rem; margin: 0 0 4px; font-weight: 600; }
 h2 { font-size: 0.95rem; margin: 0 0 10px; font-weight: 600; }
 header { margin-bottom: 16px; }
 .description { margin: 0; color: var(--secondary); max-width: 68ch; }
-/* One column by default; two only when there is room, so a phone-width chat
-   pane never gets a 200px-wide chart. */
-/* `align-items: start` so a short panel keeps its own height instead of being
-   stretched to match a taller neighbour — a horizontal bar chart sizes itself
-   by category count, so neighbours in a row are routinely unequal, and the
-   stretched version reads as a rendering fault inside the card. */
-.panels { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: start; }
-@media (min-width: 760px) { .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -613,8 +586,6 @@ header { margin-bottom: 16px; }
   padding: 14px;
   min-width: 0;
 }
-/* A lone panel has no neighbour to line up with, so it takes the full width. */
-.panels > .panel:only-child { grid-column: 1 / -1; }
 .chart { width: 100%; min-height: 260px; }
 .caption { margin: 8px 0 0; color: var(--secondary); font-size: 0.85rem; }
 .error { color: var(--critical); font-size: 0.85rem; margin: 8px 0 0; }
@@ -676,25 +647,23 @@ _JS = """
 
   function draw() {
     var config = payload.config[media.matches ? 'dark' : 'light'];
-    var pending = payload.specs.map(function (spec, i) {
-      var el = document.getElementById('chart-' + i);
-      if (!spec || !el) return Promise.resolve();
-      return vegaEmbed(el, Object.assign({}, spec, { config: config }), {
-        actions: false,
-        renderer: 'svg'
-      }).catch(function (err) {
-        el.innerHTML = '';
-        var p = document.createElement('p');
-        p.className = 'error';
-        p.textContent = 'This panel could not be drawn: ' + err;
-        el.appendChild(p);
-      });
+    var spec = payload.spec;
+    var el = document.getElementById('chart');
+    if (!spec || !el) return Promise.resolve();
+    return vegaEmbed(el, Object.assign({}, spec, { config: config }), {
+      actions: false,
+      renderer: 'svg'
+    }).catch(function (err) {
+      el.innerHTML = '';
+      var p = document.createElement('p');
+      p.className = 'error';
+      p.textContent = 'This chart could not be drawn: ' + err;
+      el.appendChild(p);
     });
-    Promise.all(pending).then(reportHeight);
   }
 
   window.addEventListener('load', function () {
-    draw();
+    draw().then(reportHeight);
     reportHeight();
   });
   // A <details> opening changes the document height; so does a theme switch.
