@@ -235,6 +235,38 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
     assert bound["encoding"]["color"]["field"] == "ed_visits\\.avg_percent"
 
 
+def test_a_geojson_feature_property_is_not_mistaken_for_a_cube_column() -> None:
+    """The reported bug: `properties.name` — a GeoJSON feature's own attribute,
+    on the choropleth's base `data`, not a joined Cube column at all — matches
+    the same `cube.field`-shaped regex a real member does, and resolving it
+    against the query's columns always fails since no cube is named
+    `properties`. It must be left untouched, the same as `datum.`/`parent.`."""
+    rows = [{"ed_visits.state_name": "Ohio", "ed_visits.avg_percent": 3.1}]
+    vega = {
+        "data": {"url": "https://example.com/us-states.json", "format": {"type": "json"}},
+        "transform": [
+            {
+                "lookup": "properties.name",
+                "from": {
+                    "data": {"values": []},
+                    "key": "ed_visits.state_name",
+                    "fields": ["ed_visits.avg_percent"],
+                },
+            }
+        ],
+        "mark": "geoshape",
+        "encoding": {"color": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+        "tooltip": [
+            {"field": "properties.name", "type": "nominal"},
+            {"field": "ed_visits.avg_percent", "type": "quantitative"},
+        ],
+    }
+    bound = bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
+    assert bound["transform"][0]["lookup"] == "properties.name"
+    assert bound["tooltip"][0]["field"] == "properties.name"
+    assert bound["tooltip"][1]["field"] == "ed_visits\\.avg_percent"
+
+
 def test_bare_lookup_names_resolve_and_keep_the_models_own_field_names() -> None:
     """The reported bug: `from.key: fips` / `from.fields: [avg_coverage_pct, geography]`
     used bare names instead of the full `cube.member` paths Cube actually returns.

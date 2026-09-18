@@ -243,12 +243,14 @@ def _escape_field_reference(field: str, columns: list[str]) -> str:
         renders empty with no error.
 
     Only member references (`cube.field`) are corrected. A `datum.`/`parent.`
-    accessor, a field that is already escaped, or a transform output like
-    `ratio` has its dots mean object access — or has none — and is returned
-    untouched. A member that does not resolve raises here, so a typo surfaces
-    as "could not be drawn" rather than as a silent empty chart.
+    accessor, a `properties.` accessor (a GeoJSON/TopoJSON feature's own
+    attributes — the base `data` of every choropleth, never a Cube cube name),
+    a field that is already escaped, or a transform output like `ratio` has
+    its dots mean object access — or has none — and is returned untouched. A
+    member that does not resolve raises here, so a typo surfaces as "could not
+    be drawn" rather than as a silent empty chart.
     """
-    if field.startswith("\\") or field.startswith(("datum.", "parent.")):
+    if field.startswith("\\") or field.startswith(("datum.", "parent.", "properties.")):
         return field
     if COLUMN_RE.match(field):
         return resolve_column(field, columns).replace(".", "\\.")
