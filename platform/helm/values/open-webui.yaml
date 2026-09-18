@@ -27,7 +27,7 @@
 # per-user/group token limits don't depend on a runtime `pip install` on every
 # pod restart. `tag` is supplied via `--set` at deploy time
 # (platform/helm/Makefile's `open-webui` target), the same way hub-api/
-# streamlit/cube/pipeline are.
+# cube/pipeline are.
 # ---------------------------------------------------------------------------
 image:
   repository: ghcr.io/kgmcquate/ohdp-open-webui
@@ -412,7 +412,7 @@ extraEnvVars:
 # ---------------------------------------------------------------------------
 # Google SSO — Open WebUI's own, not an oauth2-proxy wall.
 #
-# The other three public surfaces (Dagster, Streamlit, the hub app) sit behind
+# The other two public surfaces (Dagster, the hub app) sit behind
 # oauth2-proxy because they have no user model worth integrating with. Open WebUI
 # does: accounts, roles, per-user conversation history, per-user tool grants. A
 # proxy wall in front of it would authenticate the user twice and leave Open

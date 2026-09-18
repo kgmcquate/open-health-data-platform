@@ -1,7 +1,7 @@
 # hub-web
 
 Next.js app for the platform hub: landing page, chat UI, and links to every
-tool (Dagster, OpenMetadata, Streamlit dashboards).
+tool (Dagster, OpenMetadata).
 
 Not yet scaffolded. Bring up with the App Router:
 
@@ -11,6 +11,5 @@ npx create-next-app@latest . --ts --app --eslint --no-tailwind --no-src-dir --im
 ```
 
 Constraints:
-- Dashboards are Streamlit, linked as a standalone destination — not embedded
-  (ADR-0015, no guest-token equivalent exists for Streamlit).
+- Dashboards are authored in chat (ADR-0025), not a standalone BI app.
 - OIDC session handled server-side; the `tier` claim drives what the UI offers.

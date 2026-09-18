@@ -56,7 +56,6 @@ flowchart TB
     end
 
     subgraph consumers["Consumers"]
-        DASH["Streamlit"]
         BOT["Chat orchestrator"]
         ALERT["Alerting jobs"]
     end
@@ -76,12 +75,10 @@ flowchart TB
     BUILD -->|dlt loads, dbt-duckdb builds<br/>Iceberg REST| LAKE
     LAKE --- SNOW
     SNOW --> CUBE
-    CUBE --> DASH
     CUBE --> BOT
     CUBE --> ALERT
     ALERT -->|SMS / email| APP
     BOT --> APP
-    DASH -->|linked, standalone| APP
     DAG -.->|GraphQL status| APP
     OM -.->|catalog context| BOT
     BUILD -->|pushes lineage + metrics| OM
@@ -97,13 +94,12 @@ flowchart TB
 
 | Component | Responsibility | Notes |
 |---|---|---|
-| Hub app | Signup, billing, chat UI, links to every tool (including Streamlit) | The only thing most users see first |
+| Hub app | Signup, billing, chat UI, links to every tool | The only thing most users see first |
 | Dagster | Ingestion, dbt orchestration, ML inference, alert checks | Publicly visible, hardened (§5) |
 | dbt | SQL transformation and tests | dbt-duckdb, writing Iceberg (ADR-0019) |
 | Iceberg lakehouse | The medallion layers, as Iceberg tables in our S3 bucket | dlt writes `RAW.*`, dbt-duckdb writes the rest, both over Horizon's REST endpoint |
-| Snowflake | **The Iceberg catalog**, and the query engine over it | Serves Cube's metrics and Streamlit's ad-hoc queries over SQL (ADR-0019) |
+| Snowflake | **The Iceberg catalog**, and the query engine over it | Serves Cube's metrics over SQL (ADR-0019) |
 | Cube Core | Semantic layer: measures, dimensions, access control, REST/SQL APIs | Single definition of every metric, queries Snowflake directly. No MCP server in Core — see §6 |
-| Streamlit | Dashboards, standalone (linked from the hub app, not embedded) | Direct Snowflake for now (M1); repoint at Cube once M2 lands |
 | OpenMetadata | Catalog, lineage, glossary, metric directory, discovery MCP | Human-browsable surface |
 | Postgres | App metadata for Dagster, OpenMetadata, hub app | One instance, three databases |
 | Spaces | Postgres backups | S3-compatible, zero egress fees |
@@ -180,11 +176,6 @@ flowchart TB
             D7[("cubestore")]
         end
 
-        subgraph nsbi["namespace: bi"]
-            B0["oauth2-proxy-streamlit"]
-            B1["streamlit"]
-        end
-
         subgraph nsmeta["namespace: meta"]
             M1["openmetadata-server"]
             M2["opensearch<br/>single node, 2GB heap"]
@@ -208,12 +199,10 @@ flowchart TB
     D6 --> D7
     ING --> D4
     ING --> D6
-    ING --> B0
     ING --> M1
     D4 --> D3
     D4 --> D5
     D3 --> D1
-    B0 --> B1
     vm -.->|metrics, logs| GC
 ```
 
@@ -224,7 +213,7 @@ flowchart TB
 > its own chat UI stay at `app.`, behind `oauth2-proxy-app` (A3).
 >
 > `cube` (D6) is reached directly through ingress, not behind oauth2-proxy —
-> unlike Dagster and Streamlit, its authn/authz is Cube's own JWT security
+> unlike Dagster, its authn/authz is Cube's own JWT security
 > context (§5: "Service token from hub-api"), so a browser SSO wall in front
 > of it would be redundant, not additive.
 >
@@ -233,7 +222,7 @@ flowchart TB
 >
 > **DNS / edge, as built.** One DigitalOcean load balancer fronts everything
 > (Traefik `Service type: LoadBalancer`); Ingresses route by hostname. Public
-> hosts are `app`, `chat`, `dagster`, `catalog`, `cube`, `streamlit` under
+> hosts are `app`, `chat`, `dagster`, `catalog`, `cube` under
 > `open-health-data-platform.org`. `open-health-data-platform.org` is a Cloudflare zone; the records
 > are managed by Terraform (`platform/terraform/dns.tf`, `cloudflare` provider)
 > but are **DNS-only** — Cloudflare is not in the request path, so TLS is Let's
@@ -251,7 +240,6 @@ Steady state ~15 GB, burst ~16.5 GB during a build.
 |---|---|---|
 | opensearch | 3 GB | Largest single consumer; single node, 1 shard, 0 replicas |
 | openmetadata-server | 2 GB | JVM |
-| streamlit | 0.5 GB | Single process, no operator, no metastore (ADR-0015) |
 | postgres | 1 GB | 3 databases: dagster, openmetadata, app |
 | dagster-webserver + daemon | 1 GB | Requests. The webserver's *limit* is 2 GB: one `logsForRun` query costs ~78 MiB of heap regardless of how small the response is, and the run-logs page issues several at once (see values/dagster.yaml) |
 | cube | 0.5 GB | Queries Snowflake directly only on a pre-aggregation miss (ADR-0024) |
@@ -291,18 +279,10 @@ Tokens carry a `tier` claim (`free` | `paid`).
 | Hub app | OIDC session | Entitlement checks in hub-api against `tier` |
 | Open WebUI | Its own Google OAuth — no oauth2-proxy wall (ADR-0017) | New accounts default to `pending` and see nothing until an admin promotes them; no quota gate |
 | mcp-cube | Static bearer token, ClusterIP-only | `CubeQuery` validation and Cube's `queryRewrite` — the same controls the in-process agent gets |
-| Streamlit | oauth2-proxy Google wall, `kgmcquate@gmail.com` only | No role mapping — one operator, not a multi-tenant surface |
 | OpenMetadata | Native OIDC | Default viewer role for all authenticated users |
 | Dagster | oauth2-proxy gates the hostname | GraphQL allowlist proxy enforces read-only |
 | dagster-monitoring | oauth2-proxy gates the hostname (same wall as Dagster, path-routed) | Reads Dagster GraphQL through graphql-authz-proxy, not the raw webserver |
 
-As deployed today (M1), Streamlit sits behind its own oauth2-proxy Google wall
-restricted to `kgmcquate@gmail.com` (`platform/helm/values/oauth2-proxy-streamlit.yaml`)
-— it is an internal analytics tool with one operator, not a public or
-multi-tenant surface. Unlike Superset, Streamlit has no login system of its
-own; this wall is the only authn/authz it gets (ADR-0015). It also has no
-guest-token embed story, so it is linked from the hub app as a standalone
-destination rather than embedded in it.
 | Cube | Service token from hub-api | `queryRewrite` applies tier limits |
 
 ### Dagster hardening — non-negotiable
@@ -375,10 +355,9 @@ duplicate rather than filing a new one. Rate limit per user per month. Label by 
 ```
 health-data-platform/
 ├── apps/
-│   ├── web/                    # Next.js hub: landing, chat UI, links out to Streamlit
+│   ├── web/                    # Next.js hub: landing, chat UI, links out to tools
 │   ├── api/                    # FastAPI: chat orchestration, entitlements, Stripe webhooks
 │   │                           #   src/hub_api, src/ohdp_agent, src/ohdp_mcp (the Cube MCP server, ADR-0017)
-│   └── streamlit/              # Streamlit dashboards — direct Snowflake queries
 │
 ├── data/
 │   ├── src/                    # src layout — dir names are import names (ADR-0004)
@@ -456,13 +435,11 @@ no data catalog. Goal: prove dlt loads + dbt builds stay green.
 
 **M1 — Platform on k3s**
 Provision the VM, k3s, Postgres, ingress, TLS. Deploy Dagster with oauth2-proxy and
-the GraphQL allowlist proxy. Deploy Streamlit pointed at Snowflake (directly, or via
-Cube once M2 lands). Everything public, still free, still no chatbot.
+the GraphQL allowlist proxy. Everything public, still free, still no chatbot.
 
 **M2 — Semantic layer and catalog**
-Cube Core with the first five metrics. Repoint Streamlit at Cube. Deploy OpenMetadata
-and the sync job so metrics and lineage appear in the catalog. Hub app shell with OIDC
-and a link out to Streamlit.
+Cube Core with the first five metrics. Deploy OpenMetadata
+and the sync job so metrics and lineage appear in the catalog. Hub app shell with OIDC.
 
 **M3 — Chatbot**
 Read-only Q&A over the Cube tool layer plus OpenMetadata MCP, with Europe PMC
@@ -529,8 +506,7 @@ backed up — neither the S3 files nor the catalog. (Iceberg keeps snapshot
 history per table, which covers rollback but is not a backup.)
 
 Backed up: nightly `pg_dump` of the single Postgres instance to R2, covering Dagster run
-history, OpenMetadata annotations, and user records. Streamlit has no metastore — its
-dashboards are Python files in git, already backed up by the repo itself (ADR-0015).
+history, OpenMetadata annotations, and user records.
 Restore is documented in `docs/runbook.md` and must be tested before M4.
 
 Skip provider snapshot backups — roughly 20% of server cost for data that rebuilds itself.

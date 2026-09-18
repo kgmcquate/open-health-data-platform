@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # --- The Iceberg lakehouse (ADR-0019). Snowflake is the *catalog* only:
     # dlt and dbt-duckdb write Iceberg tables through Horizon's Iceberg REST
     # endpoint, and the files land in our own S3 bucket via an external volume.
-    # Snowflake reads the very same tables over SQL for Cube and Streamlit.
+    # Snowflake reads the very same tables over SQL for Cube.
     #
     # Two credentials, because the two protocols authenticate differently:
     # a PAT for the REST catalog (below) and the RSA key pair for the SQL
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
         default="",
         description=(
             "RSA private key (PKCS#8 PEM) for the SQL connector — Snowflake SERVICE "
-            "users don't accept password auth. What Cube and Streamlit authenticate "
+            "users don't accept password auth. What Cube authenticates "
             "with. Terraform's snowflake_private_key output."
         ),
     )

@@ -233,11 +233,6 @@ browser-side virtual filesystem that nothing reads, so no image ever appeared.
 The rendered card carries its own YAML source, so the spec it drew is always
 readable without the model retyping it.
 
-Streamlit (ADR-0015) still queries Snowflake directly. Teaching it to render the
-same spec files through Cube is the step that would make a rendered dashboard
-and the chat answer that produced it provably the same numbers; it needs a Cube
-client and secret in that chart, so it is its own decision.
-
 ## 6. Safety
 
 Mostly inherited from ARCHITECTURE.md §6; what is new to this design is called out.
@@ -341,7 +336,7 @@ Each step should be demoable and independently reviewable.
 | **M3.3** | **Not done.** Personas and Context Center seed content in `catalog/openmetadata/seed/`. Until this lands, `get_persona_context` 404s and the agent uses its built-in system prompt. |
 | **M3.4** | **Partly done.** A chat UI exists — one static page served by hub-api, not hub-web (see `hub_api/main.py` for why); there, results still render as a table plus the compiled SQL. Charts landed on the *Open WebUI* surface instead (§5, ADR-0025) — hub-api's own page does not call `render_dashboard`. |
 | **M3.5** | **Not done.** Every turn is logged to `chat_turns` in the shape §7 wants, so the eval set is accumulating; there is no harness and no seed question set. |
-| **M4** | Streamlit rendering the ADR-0025 dashboard specs through Cube; news retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces, and dashboards-as-code landed with it (§5). |
+| **M4** | News retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces, and dashboards-as-code landed with it (§5). |
 
 **Deployed as:** `app.open-health-data-platform.org`, behind an `oauth2-proxy` Google wall
 (`platform/helm/values/oauth2-proxy-app.yaml`) that owns the hostname; `charts/hub-api` has

@@ -31,7 +31,7 @@ DNS lives in Cloudflare (`open-health-data-platform.org` is a Cloudflare zone). 
 | `snowflake_account_role` + grants | `OHDP_PIPELINE` — read/write on all three catalogs |
 | `snowflake_service_user` + `snowflake_network_policy` | The one identity; the policy is required for PATs |
 | `tls_private_key` | Its RSA key pair, for the SQL connector — SERVICE users don't accept password auth |
-| `snowflake_warehouse` | XSMALL — compute for Cube's and Streamlit's queries (no dbt builds) |
+| `snowflake_warehouse` | XSMALL — compute for Cube's queries (no dbt builds) |
 
 This setup intentionally uses a managed DigitalOcean Kubernetes cluster instead of a single self-hosted k3s node. The cluster endpoint and kubeconfig are surfaced via Terraform outputs.
 
@@ -79,8 +79,8 @@ https://<org>-<account>.snowflakecomputing.com/polaris/api/catalog
 ```
 
 Two credentials, one user: a **programmatic access token** for that REST
-endpoint (dlt and dbt/DuckDB) and the **RSA key pair** for SQL (Cube and
-Streamlit). PATs only work on a user covered by a network policy, which is why
+endpoint (dlt and dbt/DuckDB) and the **RSA key pair** for SQL (Cube).
+PATs only work on a user covered by a network policy, which is why
 the account-wide one in `snowflake.tf` is load-bearing rather than vestigial.
 
 AWS is storage only. Terraform authenticates to it with **admin** credentials
@@ -175,7 +175,7 @@ export SNOWFLAKE_PRIVATE_KEY="$(cat ~/.snowflake/tf_key.p8)"   # or SNOWFLAKE_PA
 
 The credentials are published above. The other settings (`snowflake_account`,
 `snowflake_user`, `snowflake_role`, `snowflake_warehouse`) are non-secret and
-live in `pipelineConfig` and the Cube and Streamlit chart values — keep them in
+live in `pipelineConfig` and the Cube chart values — keep them in
 sync with those outputs. There's no `OHDP_SNOWFLAKE_DATABASE` setting: the
 catalog is named after `ohdp_ingestion.naming.CATALOG`, so its name is fixed
 rather than passed through the environment (ADR-0019).

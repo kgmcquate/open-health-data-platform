@@ -60,7 +60,7 @@ variable "dns_hostnames" {
   # (ADR-0019), reached at its own hostname; nothing of ours is served for it.
   # "chat" is Open WebUI (ADR-0017), a second chat surface alongside "app"
   # (hub-api's own UI); "app" is not being retired by it.
-  default = ["app", "chat", "dagster", "catalog", "cube", "streamlit"]
+  default = ["app", "chat", "dagster", "catalog", "cube"]
 }
 
 variable "loadbalancer_ip" {
@@ -165,7 +165,7 @@ variable "snowflake_storage_aws_external_id" {
 variable "snowflake_organization_name" {
   description = <<-EOT
     Snowflake organization name. With `snowflake_account_name` it forms the
-    account identifier `<org>-<account>` Cube and Streamlit connect to.
+    account identifier `<org>-<account>` Cube connects to.
     Find both with `SELECT CURRENT_ORGANIZATION_NAME(), CURRENT_ACCOUNT_NAME()`.
   EOT
   type        = string
@@ -177,7 +177,7 @@ variable "snowflake_account_name" {
 }
 
 variable "snowflake_warehouse" {
-  description = "Virtual warehouse (compute) for Cube's and Streamlit's queries over the lakehouse."
+  description = "Virtual warehouse (compute) for Cube's queries over the lakehouse."
   type        = string
   default     = "OHDP_WH"
 }
@@ -195,7 +195,7 @@ variable "snowflake_pipeline_role" {
 variable "snowflake_pipeline_user" {
   description = <<-EOT
     SERVICE user everything authenticates as: the pipeline with a programmatic
-    access token over Horizon's Iceberg REST API, Cube and Streamlit with the
+    access token over Horizon's Iceberg REST API, Cube with the
     RSA key pair over SQL.
   EOT
   type        = string

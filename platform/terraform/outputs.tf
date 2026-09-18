@@ -158,7 +158,7 @@ output "snowflake_role" {
   description = <<-EOT
     OHDP_SNOWFLAKE_ROLE — the role every session runs as. Also half of
     Horizon's OAuth2 scope (`session:role:<this>`), so the pipeline reads it
-    too, not just Cube and Streamlit.
+    too, not just Cube.
   EOT
   value       = snowflake_account_role.pipeline.name
 }
@@ -173,7 +173,7 @@ output "snowflake_warehouse" {
 output "snowflake_private_key" {
   description = <<-EOT
     OHDP_SNOWFLAKE_PRIVATE_KEY — the query role's RSA private key (PKCS#8 PEM),
-    read by Cube's and Streamlit's Snowflake drivers. Store it as the repo
+    read by Cube's Snowflake driver. Store it as the repo
     secret SNOWFLAKE_PIPELINE_PRIVATE_KEY, which deploy-platform.yml reads.
   EOT
   value       = local.snowflake_private_key

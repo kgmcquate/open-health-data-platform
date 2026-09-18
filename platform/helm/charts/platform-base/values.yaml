@@ -7,7 +7,6 @@
 namespaces:
   - app
   - data
-  - bi
   - meta
   - infra
 
@@ -50,7 +49,7 @@ pipelineConfig:
   OHDP_AWS_REGION: "us-east-1"
   OHDP_LAKEHOUSE_BUCKET: "ohdp-lakehouse"
   # The Snowflake account is now load-bearing for the *pipeline* too, not just
-  # for Cube and Streamlit: it is what the Horizon REST endpoint is addressed
+  # for Cube: it is what the Horizon REST endpoint is addressed
   # by. OHDP_SNOWFLAKE_ROLE likewise — it is half of the OAuth2 scope.
   # The token itself (OHDP_SNOWFLAKE_PAT) is in `ohdp-pipeline-secrets`.
   OHDP_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
@@ -86,8 +85,8 @@ postgres:
   # split). Each gets an owner role with the matching generated password.
   #
   # The `polaris` database went with the Polaris catalog (ADR-0011), and
-  # `superset` with the Superset->Streamlit swap (ADR-0015) — Streamlit has no
-  # metastore, so it never needed one. Dropping an entry from this list stops
+  # `superset` with the Superset removal — dashboards-as-code never needed a
+  # metastore. Dropping an entry from this list stops
   # it being *created*; an existing database is left in place, so reclaim the
   # disk with a manual `DROP DATABASE <name>` once you are satisfied nothing
   # wants it.

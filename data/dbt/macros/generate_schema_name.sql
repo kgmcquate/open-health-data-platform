@@ -20,8 +20,8 @@
     **Upper case, deliberately.** Snowflake requires an external engine
     reaching it through the Horizon REST catalog to address namespaces and
     tables in all capitals, and unquoted SQL identifiers fold to upper case
-    anyway — so this is the one casing that resolves from DuckDB, from Cube and
-    from Streamlit without quoting.
+    anyway — so this is the one casing that resolves from DuckDB and from Cube
+    without quoting.
 
     Anything not following the `<prefix>__<name>` convention falls back to the
     explicit `+schema` config, then target.schema, same as dbt's default.

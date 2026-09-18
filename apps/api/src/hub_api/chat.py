@@ -9,7 +9,7 @@ limit costs us an index scan rather than an Opus call (§6, ARCHITECTURE.md §10
 
 **Identity comes from the auth wall, never from the request body.** As deployed
 today, `app.open-health-data-platform.org` sits behind an oauth2-proxy Google
-wall (the same pattern as Dagster and Streamlit), which sets `X-Forwarded-Email`
+wall (the same pattern as Dagster), which sets `X-Forwarded-Email`
 on every request it passes. hub-api's own Ingress is disabled, so the proxy is
 the only route in from outside the cluster.
 

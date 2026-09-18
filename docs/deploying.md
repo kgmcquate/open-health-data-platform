@@ -4,9 +4,9 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 
 | Workflow | Does | Needs a cluster? |
 |---|---|---|
-| [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api`, `ohdp-streamlit`, and `ohdp-pipeline`, pushes to GHCR | no |
+| [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
 | [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces buckets, Cloudflare DNS records, and the Iceberg lakehouse — Snowflake as the catalog, S3 as its external volume | no |
-| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Cube, Streamlit, oauth2-proxy-streamlit, hub-api, oauth2-proxy-app | when `deploy` ticked |
+| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Cube, hub-api, oauth2-proxy-app | when `deploy` ticked |
 
 ## Setup
 
@@ -86,7 +86,7 @@ Order matters, and two steps are deliberately manual.
    Set it as the `LOADBALANCER_IP` secret (`.env` for `act`, wired to
    `TF_VAR_loadbalancer_ip`) and re-run `deploy-infra` with `action=apply`. It
    creates one A record per entry in `dns_hostnames` (`app`, `dagster`,
-   `catalog`, `cube`, `streamlit`).
+   `catalog`, `cube`).
 
    cert-manager then issues a cert per host on the first request; check with
    `kubectl get certificate -A`. Switching a record to proxied (orange cloud)
@@ -129,7 +129,6 @@ act -l
   ```bash
   docker build -f data/Dockerfile -t ohdp-pipeline .
   docker build -f apps/api/Dockerfile -t ohdp-hub-api .
-  docker build -f apps/streamlit/Dockerfile -t ohdp-streamlit .
   ```
 - **Apple Silicon.** `.actrc` forces `linux/amd64` because most actions publish
   amd64 only. Remove that line for native speed if nothing breaks.
@@ -153,12 +152,6 @@ act -l
 
 ## What is still missing
 
-- **Streamlit** is deployed (M1) as a plain Deployment via our own chart,
-  pointed directly at Snowflake — no Cube yet, no metastore, no scheduled
-  reports; see `platform/helm/charts/streamlit` (ADR-0015). It sits behind its
-  own Google login wall (`oauth2-proxy-streamlit`, `kgmcquate@gmail.com` only)
-  rather than the self-service public exposure M1 originally sketched — see
-  ARCHITECTURE.md §5.
 - **hub-web** is not deployed and not scaffolded. hub-api serves the chat page
   itself at `/` on `app.open-health-data-platform.org` (`hub_api/main.py`) — a
   deliberate shortcut while the UI is one static page, to be replaced by
@@ -169,11 +162,11 @@ act -l
      `/api/chat` answers 503.
   2. `https://app.open-health-data-platform.org/oauth2/callback` added to the
      authorized redirect URIs of the Google OAuth client that
-     `DAGSTER_OIDC_CLIENT_ID` names — the hub app's wall reuses it, the same way
-     Streamlit's does. Without it, login fails with `redirect_uri_mismatch`.
+     `DAGSTER_OIDC_CLIENT_ID` names — the hub app's wall reuses it. Without it,
+     login fails with `redirect_uri_mismatch`.
 - **No real OIDC provider.** `app.open-health-data-platform.org` sits behind an
   `oauth2-proxy` Google wall restricted to `kgmcquate@gmail.com`, the same
-  posture as Dagster and Streamlit, and every user past it is tier `free`.
+  posture as Dagster, and every user past it is tier `free`.
   ARCHITECTURE.md §5's hosted IdP with a `tier` claim is what billing needs and
   is still unbuilt.
 - **No rollback step.** `helm rollback <release>` by hand; snapshot rollback is a

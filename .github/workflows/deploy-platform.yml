@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
       image_tag:
-        description: Override the dagster + hub-api + mcp-cube + streamlit + cube image tag (blank = the sha-<12> of the deployed commit).
+        description: Override the dagster + hub-api + mcp-cube + cube image tag (blank = the sha-<12> of the deployed commit).
         type: string
         default: ""
       deploy_all:
@@ -48,14 +48,6 @@ on:
         default: false
       deploy_cube:
         description: "Chart: Cube (+ Cube Store, ADR-0024)"
-        type: boolean
-        default: false
-      deploy_streamlit:
-        description: "Chart: Streamlit"
-        type: boolean
-        default: false
-      deploy_oauth2_proxy_streamlit:
-        description: "Chart: oauth2-proxy (Streamlit wall)"
         type: boolean
         default: false
       deploy_hub_api:
@@ -112,7 +104,7 @@ jobs:
         with:
           kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
 
-      # dagster + hub-api + mcp-cube + streamlit + cube run this tag. Defaults to the sha-<12> of
+      # dagster + hub-api + mcp-cube + cube run this tag. Defaults to the sha-<12> of
       # the checked-out commit — the tag build-images.yml pushed for it. Never
       # `latest`, so `helm rollback` and pod restarts stay pinned to a known build.
       - name: Resolve image tag
@@ -151,8 +143,6 @@ jobs:
           OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
           DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          STREAMLIT_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
-          STREAMLIT_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           # The hub app's wall reuses the same Google client, which must list
           # https://app.open-health-data-platform.org/oauth2/callback among its
           # authorized redirect URIs.
@@ -219,13 +209,8 @@ jobs:
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=OHDP_SNOWFLAKE_PAT="$SNOWFLAKE_PIPELINE_PAT" \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
-          # Streamlit queries Snowflake directly with the OHDP_PIPELINE
-          # role/key — the same identity the pipeline writes with, which is
-          # ADR-0015's documented privilege trade-off, unchanged by ADR-0019.
-          upsert bi streamlit-snowflake \
-            --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
-          # Cube queries Snowflake directly too, same role/key as
-          # streamlit-snowflake above.
+          # Cube queries Snowflake directly with the OHDP_PIPELINE
+          # role/key — the same identity the pipeline writes with (ADR-0019).
           upsert data cube-snowflake \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
           # OHDP_ANTHROPIC_API_KEY is what the chat agent bills against
@@ -276,14 +261,7 @@ jobs:
             "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")
           kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$patch"
 
-          # Same trick, second release: the Streamlit auth wall's own Google
-          # OAuth client (separate from Dagster's — different redirect URI).
-          patch=$(printf '{"data":{"client-id":"%s","client-secret":"%s"}}' \
-            "$(printf %s "$STREAMLIT_OIDC_CLIENT_ID" | base64 -w0)" \
-            "$(printf %s "$STREAMLIT_OIDC_CLIENT_SECRET" | base64 -w0)")
-          kubectl -n bi patch secret oauth2-proxy-streamlit-secret --type merge -p "$patch"
-
-          # Third release: the hub app's wall. Same trick again.
+          # Second release: the hub app's wall. Same trick again.
           patch=$(printf '{"data":{"client-id":"%s","client-secret":"%s"}}' \
             "$(printf %s "$APP_OIDC_CLIENT_ID" | base64 -w0)" \
             "$(printf %s "$APP_OIDC_CLIENT_SECRET" | base64 -w0)")
@@ -316,14 +294,6 @@ jobs:
       - name: Cube (+ Cube Store, ADR-0024 — the `cube` make target depends on `cubestore`)
         if: inputs.deploy_all || inputs.deploy_cube
         run: make -C platform/helm cube TAG="$TAG"
-
-      - name: Streamlit
-        if: inputs.deploy_all || inputs.deploy_streamlit
-        run: make -C platform/helm streamlit TAG="$TAG"
-
-      - name: oauth2-proxy (Google login wall — Streamlit)
-        if: inputs.deploy_all || inputs.deploy_oauth2_proxy_streamlit
-        run: make -C platform/helm oauth2-proxy-streamlit
 
       - name: hub-api
         if: inputs.deploy_all || inputs.deploy_hub_api

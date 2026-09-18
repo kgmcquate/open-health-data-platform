@@ -1,6 +1,6 @@
 # Cube Core — semantic layer
 
-One definition per metric. Three consumers (Streamlit, chatbot, alerting) read
+One definition per metric. Two consumers (chatbot, alerting) read
 from here and must never disagree (ARCHITECTURE.md §1.5).
 
 Every cube below has a `pre_aggregations:` block (`type: originalSql`) that

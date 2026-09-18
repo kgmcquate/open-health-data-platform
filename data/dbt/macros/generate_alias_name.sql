@@ -6,7 +6,7 @@
 
     Upper-cased for the same reason the namespace is (ADR-0019): Horizon
     addresses tables in all capitals, and it is what Snowflake resolves an
-    unquoted identifier to for Cube and Streamlit.
+    unquoted identifier to for Cube.
 #}
 {% macro generate_alias_name(custom_alias_name=none, node=none) -%}
     {%- set parts = node.name.split('__', 1) -%}

@@ -17,7 +17,7 @@ layer+source:
 an external engine reaching it through the Horizon REST catalog to address the
 database, namespaces and tables in all capitals, whatever case they were
 created with. It is also Snowflake's own unquoted-identifier convention, so the
-same names resolve for Cube and Streamlit over SQL without quoting — and they
+same names resolve for Cube over SQL without quoting — and they
 are the names those tables already had, since Snowflake folded the old
 lower-case dbt project's identifiers to upper case anyway.
 

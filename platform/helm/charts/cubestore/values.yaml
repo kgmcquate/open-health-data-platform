@@ -68,7 +68,7 @@ podSecurityContext:
 securityContext:
   allowPrivilegeEscalation: false
   # Cube Store writes rollup Parquet files + its RocksDB metastore at
-  # runtime — same exception cube/streamlit document for the same reason.
+  # runtime — same exception cube documents for the same reason.
   readOnlyRootFilesystem: false
   capabilities:
     drop: ["ALL"]

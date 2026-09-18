@@ -1,8 +1,8 @@
 # Snowflake *is* the Iceberg catalog (ADR-0019, which supersedes ADR-0012's
 # native tables and ADR-0014's Snowflake-only compilation, and keeps ADR-0013's
 # per-layer databases). Horizon serves the layer databases over the open
-# Iceberg REST protocol, so dlt and dbt-duckdb write the same tables Cube and
-# Streamlit read over SQL.
+# Iceberg REST protocol, so dlt and dbt-duckdb write the same tables Cube
+# reads over SQL.
 #
 # **Snowflake holds the metadata, not the bytes.** Every table's files live in
 # our own S3 bucket, reached through the external volume below — Snowflake's
@@ -100,7 +100,7 @@ locals {
 # Snowflake SERVICE users don't accept password auth. Two credentials hang off
 # this one user, because the two protocols authenticate differently:
 #
-#   RSA key pair -> the SQL connector (Cube, Streamlit)
+#   RSA key pair -> the SQL connector (Cube)
 #   PAT          -> the Iceberg REST catalog (dlt, dbt via DuckDB)
 #
 # ADR-0012 removed the PAT on the grounds that nothing did an OAuth2 exchange
@@ -111,7 +111,7 @@ resource "tls_private_key" "pipeline" {
 }
 
 # ---------------------------------------------------------------------------
-# Compute for Cube's and Streamlit's queries. XS, suspended after a minute, and
+# Compute for Cube's queries. XS, suspended after a minute, and
 # created suspended: idle costs nothing. dbt builds no longer run here — that
 # is DuckDB in the pipeline pod — so this is sized for serving only.
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ resource "snowflake_warehouse" "ohdp" {
   auto_suspend        = 60
   auto_resume         = true
   initially_suspended = true
-  comment             = "Compute for Cube's metric queries and Streamlit's ad-hoc ones over the lakehouse."
+  comment             = "Compute for Cube's metric queries over the lakehouse."
 }
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ resource "snowflake_network_policy_attachment" "pipeline" {
 
 resource "snowflake_service_user" "pipeline" {
   name           = var.snowflake_pipeline_user
-  comment        = "The pipeline (PAT, over Horizon's Iceberg REST API) and Cube/Streamlit (key pair, over SQL)."
+  comment        = "The pipeline (PAT, over Horizon's Iceberg REST API) and Cube (key pair, over SQL)."
   default_role   = snowflake_account_role.pipeline.name
   rsa_public_key = local.snowflake_pipeline_rsa_public_key
 
@@ -266,8 +266,8 @@ resource "snowflake_schema" "namespace" {
 }
 
 # Read *and* write, per layer database: the pipeline creates and rewrites
-# tables through the REST catalog. Cube and Streamlit share the role but only
-# ever SELECT.
+# tables through the REST catalog. Cube shares the role but only
+# ever SELECTs.
 #
 # Five grants per database, because ALL and FUTURE are different statements in
 # Snowflake and so different resources here. ALL covers what exists at apply

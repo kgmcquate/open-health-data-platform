@@ -1,6 +1,7 @@
 # 0015 — Streamlit over Superset
 
-**Status:** Accepted
+**Status:** Superseded — the Streamlit app was removed; dashboards are
+authored in chat per [0025](0025-dashboards-as-code-in-chat.md).
 **Supersedes:** the Superset-based dashboard deployment described in earlier
 drafts of ARCHITECTURE.md and `platform/helm/charts/superset` (removed by
 this decision).

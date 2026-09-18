@@ -31,7 +31,7 @@ CUBESTORE_VERSION       ?= v1.7.39
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \
-        streamlit oauth2-proxy-streamlit hub-api oauth2-proxy-app cube cubestore \
+        hub-api oauth2-proxy-app cube cubestore \
         mcp-cube open-webui
 
 help: ## List targets
@@ -52,7 +52,6 @@ lint: ## Lint the charts we own
 	$(HELM) lint $(CHARTS)/hub-api --set image.tag=0.0.0-dev
 	$(HELM) lint $(CHARTS)/graphql-authz-proxy
 	$(HELM) lint $(CHARTS)/dagster-monitoring
-	$(HELM) lint $(CHARTS)/streamlit --set image.tag=0.0.0-dev
 	$(HELM) lint $(CHARTS)/cube --set image.tag=0.0.0-dev
 	$(HELM) lint $(CHARTS)/cubestore --set image.tag=$(CUBESTORE_VERSION)
 	$(HELM) lint $(CHARTS)/mcp-cube --set image.tag=0.0.0-dev
@@ -62,7 +61,6 @@ template: ## Render the charts we own locally (catches template errors without a
 	$(HELM) template hub-api $(CHARTS)/hub-api --set image.tag=0.0.0-dev >/dev/null && echo "hub-api OK"
 	$(HELM) template gqlproxy $(CHARTS)/graphql-authz-proxy >/dev/null && echo "graphql-authz-proxy OK"
 	$(HELM) template dagster-monitoring $(CHARTS)/dagster-monitoring >/dev/null && echo "dagster-monitoring OK"
-	$(HELM) template streamlit $(CHARTS)/streamlit --set image.tag=0.0.0-dev >/dev/null && echo "streamlit OK"
 	$(HELM) template cube $(CHARTS)/cube --set image.tag=0.0.0-dev >/dev/null && echo "cube OK"
 	$(HELM) template cubestore $(CHARTS)/cubestore --set image.tag=$(CUBESTORE_VERSION) >/dev/null && echo "cubestore OK"
 	$(HELM) template mcp-cube $(CHARTS)/mcp-cube --set image.tag=0.0.0-dev >/dev/null && echo "mcp-cube OK"
@@ -134,19 +132,6 @@ dagster-monitoring: ## Install the read-only Dagster monitoring dashboard (mount
 oauth2-proxy: ## Install the Google login wall in front of the authz proxy + dagster-monitoring (ADR-0007)
 	$(HELM) upgrade --install oauth2-proxy oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
 		-n data --create-namespace -f $(VALUES)/oauth2-proxy.yaml --wait --timeout 5m
-
-# --------------------------------------------------------------------------
-# Streamlit — a plain Deployment via our own chart (ADR-0015). No operator,
-# no metastore: dashboards are Python files in git, not stored objects.
-# --------------------------------------------------------------------------
-streamlit: ## Install Streamlit (TAG defaults to the current commit's sha-<12>)
-	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
-	$(HELM) upgrade --install streamlit $(CHARTS)/streamlit \
-		-n bi --create-namespace --set image.tag=$(TAG) --wait --timeout 5m
-
-oauth2-proxy-streamlit: ## Install the Google login wall in front of Streamlit (kgmcquate@gmail.com only)
-	$(HELM) upgrade --install oauth2-proxy-streamlit oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
-		-n bi --create-namespace -f $(VALUES)/oauth2-proxy-streamlit.yaml --wait --timeout 5m
 
 hub-api: ## Install the FastAPI backend + chat UI (TAG defaults to the current commit's sha-<12>)
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }

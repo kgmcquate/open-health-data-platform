@@ -20,7 +20,7 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0012](0012-native-snowflake-tables.md) | Native Snowflake tables replace the Iceberg lake | Superseded by [0019](0019-iceberg-on-s3-duckdb-dbt.md) |
 | [0013](0013-per-layer-snowflake-databases.md) | One Snowflake database per medallion layer (RAW/CLEAN/CURATED) | Accepted |
 | [0014](0014-snowflake-only-compilation.md) | Snowflake-only: drop the local/CI DuckDB targets | Superseded by [0019](0019-iceberg-on-s3-duckdb-dbt.md) |
-| [0015](0015-streamlit-over-superset.md) | Streamlit over Superset for dashboards | Accepted |
+| [0015](0015-streamlit-over-superset.md) | Streamlit over Superset for dashboards | Superseded — Streamlit removed; dashboards-as-code in chat per [0025](0025-dashboards-as-code-in-chat.md) |
 | [0016](0016-chat-agent-tool-surface.md) | Chat agent tool surface: own Cube tools, OpenMetadata MCP for context | Accepted; tool split amended by [0025](0025-dashboards-as-code-in-chat.md) |
 | [0017](0017-open-webui-chat-ui.md) | Open WebUI as a chat UI, with our own Cube MCP server | Accepted; model backend superseded by [0023](0023-openrouter-glm-model-backend.md) |
 | [0018](0018-socrata-ingestion-shared-across-domains.md) | One Socrata ingestion core, bound per domain (CDC) | Accepted |

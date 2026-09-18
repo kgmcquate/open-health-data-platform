@@ -90,5 +90,5 @@ def index() -> FileResponse:
 
 
 # Routers to be added per milestone:
-#   M2: /auth, /dashboards (link out to Streamlit — see ADR-0015)
+#   M2: /auth, /dashboards
 #   M4: /billing/webhook, /tickets

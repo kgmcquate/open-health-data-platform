@@ -64,6 +64,5 @@ act-build: ## Build images via act without pushing
 
 images: ## Build all images directly with docker (faster than act)
 	docker build -f apps/api/Dockerfile -t ohdp-hub-api:dev .
-	docker build -f apps/streamlit/Dockerfile -t ohdp-streamlit:dev .
 	docker build -f data/Dockerfile -t ohdp-pipeline:dev .
 	docker build -f semantic/cube/Dockerfile -t ohdp-cube:dev .

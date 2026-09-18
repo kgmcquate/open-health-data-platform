@@ -6,7 +6,7 @@
 #
 # Auth is Cube's own JWT security context, not an oauth2-proxy wall
 # (ARCHITECTURE.md §5: "Cube | Service token from hub-api"). Ingress is
-# enabled by default here, unlike the streamlit chart.
+# enabled by default here, unlike the hub-api chart.
 #
 # Release name must be "cube" — hub-api reaches this Service at
 # cube.data.svc.cluster.local (hub-api/values.yaml OHDP_CUBE_API_URL), and
@@ -81,7 +81,7 @@ podSecurityContext:
 securityContext:
   allowPrivilegeEscalation: false
   # Cube writes its own cache/tmp files at runtime — same exception
-  # streamlit/values.yaml documents for the same reason.
+  # cubestore documents for the same reason.
   readOnlyRootFilesystem: false
   capabilities:
     drop: ["ALL"]
@@ -115,8 +115,8 @@ env:
   # current database Snowflake rejects that build with "This session does not
   # have a current database. Call 'USE DATABASE', or use a qualified name."
   CUBEJS_DB_NAME: "CURATED"
-  # Non-secret Snowflake connection config — mirrors streamlit/values.yaml and
-  # platform-base's pipelineConfig. Update all three together if the account/
+  # Non-secret Snowflake connection config — mirrors
+  # platform-base's pipelineConfig. Update both together if the account/
   # warehouse ever changes.
   #
   # Since ADR-0019 the tables Cube queries are Iceberg tables in S3 — still
@@ -146,16 +146,15 @@ env:
 # Explicit secretKeyRef mappings, not envFrom: the Secret keys use this
 # project's OHDP_* naming convention, but Cube itself only recognizes its own
 # CUBEJS_* env var names, so the two can't share a key name the way
-# streamlit/hub-api's envFrom does.
+# hub-api's envFrom does.
 secretEnv:
   # platform-base generates this — the shared HMAC secret hub-api signs
   # service tokens with (ARCHITECTURE.md §5).
   - name: CUBEJS_API_SECRET
     secretName: cube-secret
     secretKey: OHDP_CUBE_API_SECRET
-  # Mirrored by deploy-platform.yml's `secrets` step from the same
-  # SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret streamlit-snowflake uses —
-  # ADR-0015's documented privilege trade-off, unchanged by ADR-0019. Cube
+  # Mirrored by deploy-platform.yml's `secrets` step from the
+  # SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret. Cube
   # only ever SELECTs; the pipeline writes with a PAT over a different
   # protocol entirely.
   - name: CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY
