@@ -39,6 +39,7 @@ cube-dev: dbt-parse ## Run Cube Core locally, wired to the dbt manifest + Snowfl
 	  -e CUBEJS_DEV_MODE=true \
 	  -e CUBEJS_API_SECRET=$$OHDP_CUBE_API_SECRET \
 	  -e CUBEJS_DB_TYPE=snowflake \
+	  -e CUBEJS_DB_NAME=CURATED \
 	  -e CUBEJS_DB_SNOWFLAKE_ACCOUNT=$$OHDP_SNOWFLAKE_ACCOUNT \
 	  -e CUBEJS_DB_USER=$$OHDP_SNOWFLAKE_USER \
 	  -e CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY=$$OHDP_SNOWFLAKE_PRIVATE_KEY \

@@ -107,6 +107,14 @@ env:
   CUBEJS_CUBESTORE_HOST: "cubestore.data.svc.cluster.local"
   CUBEJS_CUBESTORE_PORT: "3030"
   CUBEJS_DB_TYPE: snowflake
+  # Must be set now that Cube Store builds pre-aggregations (ADR-0024). The
+  # cube models' sql_table is fully qualified (`CURATED.<SCHEMA>.<TABLE>`), so
+  # Cube's own query path never needed a default database — but Cube Store's
+  # originalSql pre-aggregation build stages the cube's SQL through a
+  # temporary table in the source database, referenced unqualified. Without a
+  # current database Snowflake rejects that build with "This session does not
+  # have a current database. Call 'USE DATABASE', or use a qualified name."
+  CUBEJS_DB_NAME: "CURATED"
   # Non-secret Snowflake connection config — mirrors streamlit/values.yaml and
   # platform-base's pipelineConfig. Update all three together if the account/
   # warehouse ever changes.
@@ -114,8 +122,7 @@ env:
   # Since ADR-0019 the tables Cube queries are Iceberg tables in S3 — still
   # ordinary Snowflake tables to this driver, still addressed as
   # `CURATED.<SCHEMA>.<TABLE>`, which is what the cube models get from the dbt
-  # manifest. Nothing about this connection changed with the format. No
-  # CUBEJS_DB_NAME: every sql_table is fully qualified.
+  # manifest. Nothing about this connection changed with the format.
   #
   # Username is CUBEJS_DB_USER, not CUBEJS_DB_SNOWFLAKE_USER — the Snowflake
   # driver only reads username/password through the generic CUBEJS_DB_USER /
