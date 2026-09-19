@@ -1,0 +1,33 @@
+# Additional tool connections the chat agent's models can be given
+# (docs/chatbot.md §4a), on top of the built-in cube/literature/catalog tools
+# every model already gets (ohdp_agent.loop.BUILTIN_TOOLSET) — this file adds
+# to that surface, it never replaces it.
+#
+# A connection here does nothing by itself: assign its `id` to a model's
+# `tools:` list in models.yaml for a model to actually get it.
+#
+# `${NAME}` in any string value is resolved against .env (hub_api.tool_connections,
+# ohdp_shared.env_file_values) — NAME can be an OHDP_-prefixed or a bare name,
+# whatever the variable is actually called there. Never put a literal secret
+# in this file; it is committed.
+#
+# Two connection types:
+#
+#   type: mcp — a server that already speaks MCP.
+#     - id: weather
+#       type: mcp
+#       url: https://example.com/mcp
+#       headers:
+#         Authorization: "Bearer ${WEATHER_MCP_TOKEN}"
+#
+#   type: openapi — any REST API with an OpenAPI spec. Wrapped as an
+#   in-process MCP server via FastMCP.from_openapi (fastmcp is already a
+#   dependency here — ohdp_mcp is built on it) — no separate server to run.
+#     - id: petstore
+#       type: openapi
+#       spec_url: https://petstore.example.com/openapi.json
+#       base_url: https://petstore.example.com
+#       headers:
+#         X-Api-Key: "${PETSTORE_API_KEY}"
+
+connections: []

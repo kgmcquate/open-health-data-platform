@@ -31,6 +31,8 @@ from hub_api.content import router as content_router
 from hub_api.content import seed_if_empty
 from hub_api.dashboards import dashboards_router
 from hub_api.issues import tools_app
+from hub_api.models import build_agents, discover_openai_models
+from hub_api.tool_connections import load_tool_connections
 from ohdp_shared import configure_logging, get_logger, settings
 
 configure_logging(json=settings.log_json, level=settings.log_level)
@@ -56,6 +58,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             log.error("database_unavailable", error=str(exc))
     else:
         log.warning("database_not_configured")
+
+    openai_models = await discover_openai_models() if settings.openai_backends else {}
+    tool_connections = await load_tool_connections()
+    app.state.agents = build_agents(openai_models, tool_connections)
     yield
 
 

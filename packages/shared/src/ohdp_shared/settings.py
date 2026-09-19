@@ -4,16 +4,26 @@ never passed through Dagster run config or tags (ARCHITECTURE.md §5)."""
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+from dotenv import dotenv_values
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Tier = Literal["free", "paid"]
 
+# Absolute, not "./.env": every app in this monorepo is run from its own
+# subdirectory (`cd apps/api && uv run ...`, per each app's README), and a
+# relative path here resolves against that CWD, not the repo root — so it
+# silently never found the root .env and every OHDP_* setting loaded empty.
+_REPO_ROOT_ENV_FILE = Path(__file__).resolve().parents[4] / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="OHDP_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="OHDP_", env_file=_REPO_ROOT_ENV_FILE, extra="ignore"
+    )
 
     environment: Literal["local", "staging", "prod"] = "local"
     log_json: bool = True
@@ -114,6 +124,23 @@ class Settings(BaseSettings):
     # and the loop falls back to its built-in prompt when it is.
     chat_persona: str = ""
 
+    # Additional OpenAI-spec model backends (docs/chatbot.md §4a), alongside
+    # the built-in Claude model above. Same shape as Open WebUI's
+    # OPENAI_API_BASE_URLS/OPENAI_API_KEYS: semicolon-separated, index-aligned
+    # lists, one entry per backend — OpenRouter, self-hosted vLLM/Ollama, Azure
+    # OpenAI, anything that answers `GET {base_url}/models` and speaks
+    # chat-completions. hub-api lists each backend's models at startup and
+    # merges them into one picker (hub_api.models); a key can be blank for a
+    # backend that needs none (e.g. a local server).
+    openai_api_base_urls: str = ""
+    openai_api_keys: str = ""
+
+    @property
+    def openai_backends(self) -> list[tuple[str, str]]:
+        urls = [u.strip() for u in self.openai_api_base_urls.split(";") if u.strip()]
+        keys = [k.strip() for k in self.openai_api_keys.split(";")]
+        return [(url, keys[i] if i < len(keys) else "") for i, url in enumerate(urls)]
+
     # Chat quotas (ARCHITECTURE.md §10 open decision 3 — provisional)
     free_monthly_questions: int = 20
     paid_monthly_questions: int = 500
@@ -180,3 +207,22 @@ def _load() -> Settings:
 
 
 settings: Settings = _load()
+
+
+@lru_cache
+def env_file_values() -> dict[str, str]:
+    """The repo-root `.env`, as a raw name -> value dict — every name exactly
+    as written there (`OHDP_*` and bare names like `OPENROUTER_API_KEY` alike),
+    not just the `OHDP_*` subset `Settings` itself exposes as typed fields.
+
+    For config files that are not `.env` and were never going to get their own
+    `Settings` field per entry — `apps/api/config/tools.yaml`'s operator-defined
+    tool connections, one example — but still need to resolve a `${NAME}`
+    placeholder to a real secret the same way `Settings` already does. Empty
+    outside local dev, where there is no `.env` file at all and secrets arrive
+    as real environment variables instead — `os.environ` is what a `${NAME}`
+    placeholder should fall back to there.
+    """
+    if not _REPO_ROOT_ENV_FILE.exists():
+        return {}
+    return {k: v for k, v in dotenv_values(_REPO_ROOT_ENV_FILE).items() if v is not None}

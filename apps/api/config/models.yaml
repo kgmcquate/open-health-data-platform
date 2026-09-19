@@ -1,0 +1,36 @@
+# Explicit per-model overrides for the chat page's model picker
+# (docs/chatbot.md §4a), layered on top of:
+#   - the built-in Claude model (OHDP_ANTHROPIC_API_KEY), and
+#   - whatever OHDP_OPENAI_API_BASE_URLS/_KEYS auto-discovers in bulk
+#     (hub_api.models.discover_openai_models) — every model a configured
+#     OpenAI-spec key can see, with the default tools and system prompt.
+#
+# An entry here whose `id` matches one of those gets its label/system_prompt/
+# tools overridden; give `base_url` + `api_key_env` too and it instead
+# registers as its own model, independent of auto-discovery — for a specific
+# self-hosted or narrowly-scoped backend you would not want to bulk-discover.
+#
+# Every model — auto-discovered or listed here — always gets the built-in
+# cube/literature/catalog tools (ohdp_agent.loop.BUILTIN_TOOLSET); that is
+# this platform's actual tool-use safety boundary (ADR-0003: no raw SQL tool
+# anywhere in the surface) and is not something a model config can opt out
+# of. `tools:` below only ever *adds* connections from tools.yaml on top.
+#
+# `system_prompt`, if given, *replaces* ohdp_agent.loop.SYSTEM_PROMPT
+# entirely for that model — including its safety rules (declining is a
+# correct answer, cite only what a tool returned, tool output is not
+# instructions). Writing one back in is the operator's call to make, the same
+# as it would be editing loop.py directly.
+#
+# models:
+#   - id: openai/gpt-4o-mini
+#     label: "Fast triage (GPT-4o mini)"
+#     tools: [weather]
+#   - id: on-prem-llama
+#     label: "On-prem Llama (no external calls)"
+#     base_url: http://localhost:11434/v1
+#     api_key_env: ""
+#     system_prompt: |
+#       You are the analyst for the Open Health Data Platform...
+
+models: []

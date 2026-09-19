@@ -6,6 +6,10 @@ requires-python = ">=3.12"
 dependencies = [
     "ohdp-shared",
     "anthropic>=1.5",
+    # OpenAI-spec model backends (OHDP_OPENAI_API_BASE_URLS/_KEYS) — any
+    # provider that speaks the chat-completions API: OpenRouter, self-hosted
+    # vLLM/Ollama, Azure OpenAI, etc.
+    "openai>=1.50",
     "authlib>=1.3",
     "fastapi>=0.115",
     "itsdangerous>=2.2",
@@ -21,6 +25,7 @@ dependencies = [
     "stripe>=10.0",
     "pyyaml>=6.0.3",
     "jsonpath-ng>=1.8.0",
+    "pydantic-ai-slim[anthropic,mcp,openai]>=1.0",
 ]
 
 [dependency-groups]

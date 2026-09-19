@@ -6,6 +6,6 @@ FastAPI, DuckDB, or any heavy runtime.
 """
 
 from ohdp_shared.logging import configure_logging, get_logger
-from ohdp_shared.settings import Settings, settings
+from ohdp_shared.settings import Settings, env_file_values, settings
 
-__all__ = ["Settings", "settings", "configure_logging", "get_logger"]
+__all__ = ["Settings", "settings", "env_file_values", "configure_logging", "get_logger"]

@@ -5,8 +5,10 @@ import {
   ThreadPrimitive,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useHubChatRuntime } from "../chat/runtime";
+import { fetchModels, type ChatModel } from "../lib/api";
 
 // MarkdownTextPrimitive reads the current text part from message-part
 // context, so it needs no props — wrap it to satisfy the part-component type.
@@ -65,7 +67,13 @@ function AssistantMessage() {
   );
 }
 
-function ChatThread() {
+interface ChatThreadProps {
+  models: ChatModel[];
+  model: string;
+  onModelChange: (model: string) => void;
+}
+
+function ChatThread({ models, model, onModelChange }: ChatThreadProps) {
   return (
     <ThreadPrimitive.Root className="flex h-full flex-col">
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto py-4">
@@ -98,6 +106,25 @@ function ChatThread() {
       </ThreadPrimitive.Viewport>
 
       <div className="border-t border-base-300 bg-base-100 p-3">
+        {models.length > 1 && (
+          <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2">
+            <label htmlFor="chat-model" className="text-xs opacity-60">
+              Model
+            </label>
+            <select
+              id="chat-model"
+              className="select select-bordered select-xs"
+              value={model}
+              onChange={(e) => onModelChange(e.target.value)}
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <ComposerPrimitive.Root className="mx-auto flex max-w-3xl items-end gap-2">
           <ComposerPrimitive.Input
             autoFocus
@@ -126,7 +153,20 @@ function ChatThread() {
 
 export default function Chat() {
   const { user, signIn } = useAuth();
-  const runtime = useHubChatRuntime();
+  const [models, setModels] = useState<ChatModel[]>([]);
+  const [model, setModel] = useState("");
+  const runtime = useHubChatRuntime(model);
+
+  useEffect(() => {
+    fetchModels()
+      .then((fetched) => {
+        setModels(fetched);
+        // Keep whichever the server flags default, rather than always the
+        // first entry — model order isn't guaranteed to put it there.
+        setModel((current) => current || fetched.find((m) => m.default)?.id || "");
+      })
+      .catch(() => setModels([]));
+  }, []);
 
   if (user === undefined) {
     return (
@@ -158,7 +198,7 @@ export default function Chat() {
   return (
     <div className="mx-auto flex h-[calc(100vh-12rem)] max-w-5xl flex-col px-4 py-4">
       <AssistantRuntimeProvider runtime={runtime}>
-        <ChatThread />
+        <ChatThread models={models} model={model} onModelChange={setModel} />
       </AssistantRuntimeProvider>
     </div>
   );

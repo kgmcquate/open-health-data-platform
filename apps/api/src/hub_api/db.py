@@ -16,6 +16,7 @@ shape under live data, this needs Alembic instead.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import (
@@ -63,7 +64,17 @@ chat_turns = Table(
 
 
 def make_engine(url: str) -> Engine:
-    """A pooled engine with pre-ping — the Postgres pod restarts on upgrades."""
+    """A pooled engine with pre-ping — the Postgres pod restarts on upgrades.
+
+    SQLite (local dev only — see .env.example) gets neither: it's a file, not a
+    server that restarts under you, and `pool_size`/`max_overflow` are QueuePool
+    options that SQLAlchemy rejects on the SingletonThreadPool it picks for a
+    file-based sqlite URL. It also needs its parent directory to exist, which
+    a Postgres URL has no equivalent of.
+    """
+    if url.startswith("sqlite:///") and ":memory:" not in url:
+        Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
+        return create_engine(url, pool_pre_ping=True)
     return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=2)
 
 

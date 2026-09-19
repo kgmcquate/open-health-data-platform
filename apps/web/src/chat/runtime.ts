@@ -89,7 +89,8 @@ async function* readSse(response: Response): AsyncGenerator<ServerEvent> {
   }
 }
 
-export function useHubChatRuntime() {
+/** `model` is a GET /api/models id, or "" for the built-in Claude default. */
+export function useHubChatRuntime(model: string) {
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -130,7 +131,7 @@ export function useHubChatRuntime() {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, model }),
         signal: abortRef.current.signal,
       });
       if (!response.ok || !response.body) {

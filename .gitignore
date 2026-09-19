@@ -71,3 +71,6 @@ kubeconfig
 # Local scratch
 scratch/
 tmp/
+
+# hub-api local SQLite (OHDP_APP_DATABASE_URL, local dev only)
+apps/api/.data/

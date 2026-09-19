@@ -28,17 +28,18 @@ import asyncio
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-import anthropic
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.engine import Engine
 
 from hub_api import db
+from hub_api.models import AgentRegistry, ModelConfig
 from ohdp_agent.catalog import CatalogClient
 from ohdp_agent.cube import CubeClient
 from ohdp_agent.literature import LiteratureClient
-from ohdp_agent.loop import ChatAgent, Event, Turn
+from ohdp_agent.loop import MODEL, Event, Turn
+from ohdp_agent.loop import run as run_agent
 from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
@@ -60,6 +61,10 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     # Explicit, not inferred — "explicit is honest and testable" (§10.4).
     persona: str = Field(default="", max_length=128)
+    # Empty means the built-in Claude model (MODEL, below). Anything else must
+    # be one GET /api/models just offered — never a base_url or key from the
+    # client, which would make the browser choose what hub-api talks to.
+    model: str = Field(default="", max_length=256)
 
 
 def get_engine(request: Request) -> Engine:
@@ -69,6 +74,20 @@ def get_engine(request: Request) -> Engine:
     if engine is None:
         raise HTTPException(503, "The chat log database is not available.")
     return engine
+
+
+def get_agents(request: Request) -> AgentRegistry:
+    """model id -> its reusable Agent, built once at startup (hub_api.models)."""
+    return getattr(request.app.state, "agents", {})
+
+
+@router.get("/models")
+def models(agents: Annotated[AgentRegistry, Depends(get_agents)]) -> list[dict[str, object]]:
+    """Every model this deployment can currently answer with, for the picker."""
+    return [
+        {"id": model_id, "label": agents[model_id].label, "default": model_id == MODEL}
+        for model_id in sorted(agents)
+    ]
 
 
 def get_user_email(
@@ -109,6 +128,7 @@ async def chat(
     body: ChatRequest,
     user_email: Annotated[str, Depends(get_user_email)],
     engine: Annotated[Engine, Depends(get_engine)],
+    agents: Annotated[AgentRegistry, Depends(get_agents)],
 ) -> StreamingResponse:
     """Answer one question, streamed as Server-Sent Events.
 
@@ -128,11 +148,18 @@ async def chat(
             f"You have used all {allowance} questions included this month.",
         )
 
-    if not settings.anthropic_api_key:
-        raise HTTPException(503, "The chat agent is not configured (no model API key).")
+    model = body.model or MODEL
+    config = agents.get(model)
+    if config is None:
+        detail = (
+            "The chat agent is not configured (no model API key)."
+            if model == MODEL
+            else f"Unknown model {model!r}. See GET /api/models."
+        )
+        raise HTTPException(503 if model == MODEL else 400, detail)
 
     return StreamingResponse(
-        _stream(engine, body, user_email),
+        _stream(engine, body, user_email, config),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -144,20 +171,21 @@ async def chat(
     )
 
 
-async def _stream(engine: Engine, body: ChatRequest, user_email: str) -> AsyncIterator[str]:
+async def _stream(
+    engine: Engine,
+    body: ChatRequest,
+    user_email: str,
+    config: ModelConfig,
+) -> AsyncIterator[str]:
     """Drive the agent, forward its events, and log the turn when it ends."""
     turn = Turn(question=body.question, persona=body.persona)
-    agent = ChatAgent(
-        client=anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key),
-        cube=CubeClient(settings.cube_api_url, settings.cube_api_secret, tier=TIER),
-        catalog=(
-            CatalogClient(settings.openmetadata_url, settings.openmetadata_jwt)
-            if settings.openmetadata_jwt
-            else None
-        ),
-        literature=LiteratureClient(),
-        persona=body.persona,
+    cube = CubeClient(settings.cube_api_url, settings.cube_api_secret, tier=TIER)
+    catalog = (
+        CatalogClient(settings.openmetadata_url, settings.openmetadata_jwt)
+        if settings.openmetadata_jwt
+        else None
     )
+    literature = LiteratureClient()
 
     failure: str | None = None
     queue: asyncio.Queue[Event | None] = asyncio.Queue()
@@ -165,8 +193,17 @@ async def _stream(engine: Engine, body: ChatRequest, user_email: str) -> AsyncIt
     async def produce() -> None:
         nonlocal failure
         try:
-            async for event in agent.run(body.question, turn):
-                await queue.put(event)
+            await run_agent(
+                config.agent,
+                question=body.question,
+                persona=body.persona,
+                turn=turn,
+                queue=queue,  # type: ignore[arg-type]
+                cube=cube,
+                literature=literature,
+                catalog=catalog,
+                system_prompt=config.system_prompt,
+            )
         except Exception as exc:  # noqa: BLE001 — the stream must always close cleanly
             log.exception("chat_failed", user=user_email)
             failure = str(exc)

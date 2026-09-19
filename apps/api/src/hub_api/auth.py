@@ -105,7 +105,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.get("/login")
 async def login(request: Request) -> RedirectResponse:
     if not settings.oidc_client_id:
-        raise HTTPException(503, "Sign-in is not configured on this deployment.")
+        if settings.environment != "local":
+            raise HTTPException(503, "Sign-in is not configured on this deployment.")
+        # No Google client needed to develop locally: skip the OAuth round trip
+        # and drop straight into a signed-in session, the same way main.py
+        # falls back to an insecure session secret rather than requiring one
+        # outside local dev.
+        request.session["user"] = {"email": "dev@localhost", "name": "Local Dev", "tier": "free"}
+        log.warning("local_auth_bypass", email="dev@localhost")
+        return RedirectResponse("/", status_code=303)
     return await oauth.oidc.authorize_redirect(  # type: ignore[no-any-return]
         request, f"{settings.hub_base_url.rstrip('/')}/auth/callback"
     )

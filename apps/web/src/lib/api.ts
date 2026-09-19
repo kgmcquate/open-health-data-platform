@@ -68,6 +68,16 @@ export const fetchDataSources = () => getJson<DataSource[]>("/api/data-sources")
 export const fetchPlots = () => getJson<CuratedPlot[]>("/api/plots");
 export const fetchLiterature = () => getJson<LiteratureItem[]>("/api/literature");
 
+export interface ChatModel {
+  id: string;
+  label: string;
+  default: boolean;
+}
+
+/** The built-in Claude model plus whatever OHDP_OPENAI_API_BASE_URLS/_KEYS
+ * discovered at startup (hub_api.models). Always has at least one entry. */
+export const fetchModels = () => getJson<ChatModel[]>("/api/models");
+
 export async function logout(): Promise<void> {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
 }

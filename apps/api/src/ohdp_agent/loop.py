@@ -1,26 +1,35 @@
-"""The chat agent's tool-use loop (docs/chatbot.md §4).
+"""The chat agent's tool-use loop (docs/chatbot.md §4), built on pydantic-ai.
 
-Claude Opus 5 with adaptive thinking, streamed, over three tool groups: catalog
-context (OpenMetadata MCP), execution (Cube), and literature (Europe PMC). No
-raw SQL tool exists anywhere in the surface — §2.2, ADR-0003.
+Claude Opus 5 with adaptive thinking by default, streamed, over three tool
+groups: catalog context (OpenMetadata MCP), execution (Cube), and literature
+(Europe PMC). Any OpenAI-spec chat-completions backend can also be configured
+(§4a) and gets the identical tool loop. No raw SQL tool exists anywhere in the
+surface — §2.2, ADR-0003.
+
+**Why pydantic-ai instead of the raw Anthropic/OpenAI SDKs.** hub-api used to
+drive Anthropic's Messages API by hand (a manual turn loop) and, for §4a,
+OpenAI's chat-completions API by hand a second time (reassembling
+streamed tool-call argument fragments itself). pydantic-ai's `Agent` runs the
+turn loop and the tool-call round trip for both, so `Deps`/`_run_tool` below
+is the *only* thing shared between backends — everything else it used to take
+to keep two model APIs in sync is gone. What it does not give us for free is
+this app's specific shape: the SSE `Event` stream `apps/web/src/chat/runtime.ts`
+already renders, the "plan is the first thing the model writes" rule (§4, rule
+2), and the citation check — those still live here.
 
 **Deviations from §4 as written, both deliberate, both worth revisiting.**
 
-1. *Manual loop, not the SDK tool runner.* §4 recommends the tool runner for its
-   per-turn hooks. The hooks would serve us well, but the runner does not expose
-   token-level streaming per turn in a shape that composes with an SSE response
-   to the browser, and the events this loop emits (thinking, tool calls, the
-   compiled SQL, the rows) are the product — "every answer shows its work" (§6)
-   is a UI requirement, not a logging one. The things §4 wanted hooks for are all
-   here: quota is decremented by the caller *before* the model is invoked, every
-   tool call is logged, and the citation check runs on the final text.
-
-2. *One phase, not two.* §4 splits PLAN from EXECUTE so a user can correct the
+1. *One phase, not two.* §4 splits PLAN from EXECUTE so a user can correct the
    metric choice before anything runs. The system prompt below requires the model
    to state its plan before its first `run_metric_query`, and that plan is emitted
    as its own event — but there is no gate where the user can intervene. The eval
    target §7 wants (grade the plan separately from the prose) is therefore not yet
    separable. Adding the gate is a UI and state-machine change, not a model one.
+
+2. *No extended thinking for §4a backends.* The chat-completions spec has no
+   equivalent of Claude's adaptive thinking, so an OpenAI-spec model's "plan"
+   is its first text before its first tool call, not a distinct reasoning
+   phase — the same UI, a weaker guarantee that planning precedes execution.
 
 Everything a tool returns — catalog descriptions, glossary terms, article
 abstracts — is untrusted input that lands in the prompt (§6). It is passed to the
@@ -31,16 +40,35 @@ curated-by-a-human catalog content and is deliberately trusted.
 
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-import anthropic
-from anthropic.types import MessageParam, TextBlockParam, ToolParam
+from anthropic.types.beta import BetaThinkingConfigAdaptiveParam
 from pydantic import ValidationError
+from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai.exceptions import AgentRunError, UsageLimitExceeded
+from pydantic_ai.messages import (
+    AgentStreamEvent,
+    FunctionToolCallEvent,
+    PartDeltaEvent,
+    PartEndEvent,
+    TextPart,
+    TextPartDelta,
+    ThinkingPartDelta,
+)
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.anthropic import AnthropicProvider
+from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import Tool
+from pydantic_ai.toolsets import AbstractToolset, FunctionToolset
+from pydantic_ai.usage import UsageLimits
 
-from ohdp_agent.catalog import CatalogClient, CatalogError
+from ohdp_agent.catalog import CatalogClient, CatalogError, ToolSpec
 from ohdp_agent.cube import CubeClient, CubeError
 from ohdp_agent.literature import LiteratureClient, LiteratureError, unverified_citations
 from ohdp_agent.models import CubeQuery
@@ -52,8 +80,11 @@ log = get_logger(__name__)
 MODEL = "claude-opus-5"
 MAX_TOKENS = 16_000
 
-# A turn is one model response. Ten is generous for the plan-then-execute shape
-# and still bounds the cost of a loop that decides to keep exploring the catalog.
+# A turn is one model request. Ten is generous for the plan-then-execute shape
+# and still bounds the cost of a run that decides to keep exploring the
+# catalog. Also used as the per-tool retry budget (`Agent(retries=...)`)
+# so a fixable mistake — a bad member name, a rejected query — is never the
+# bottleneck; the overall step count still is.
 MAX_TURNS = 10
 
 # Population-level, not clinical decision support (ARCHITECTURE.md §10.2). This
@@ -138,7 +169,38 @@ class Turn:
     output_tokens: int = 0
 
 
-def cube_tool_specs() -> list[ToolParam]:
+@dataclass
+class Deps:
+    """Per-request state every tool function reads from `ctx.deps`.
+
+    Nothing here is closed over by a tool function — every function takes
+    `ctx: RunContext[Deps]` and reads through it — which is what lets
+    `BUILTIN_TOOLSET` be one module-level object built once and reused by
+    every model and every request, rather than rebuilt per question the way
+    the pre-pydantic-ai loop had to.
+    """
+
+    cube: CubeClient
+    literature: LiteratureClient
+    catalog: CatalogClient | None
+    turn: Turn
+    queue: asyncio.Queue[Event]
+    # Text from every model request this run makes, in order — not just the
+    # last one. pydantic-ai's own `result.output` is only the final request's
+    # text; the answer this app shows is the plan *and* the result narrative
+    # together (rule 2 and rule 4 of the system prompt above are both "the
+    # answer"), so this is accumulated by `_handle_stream` across the whole run.
+    answer_parts: list[str] = field(default_factory=list)
+
+
+def _query_schema() -> dict[str, Any]:
+    """`CubeQuery`'s JSON schema, inlined and closed to extra properties."""
+    schema = CubeQuery.model_json_schema()
+    schema["additionalProperties"] = False
+    return schema
+
+
+def cube_tool_specs() -> list[dict[str, Any]]:
     """The four execution tools (§2.2), described for the model.
 
     `run_metric_query`'s schema is generated from `CubeQuery` rather than written
@@ -194,7 +256,7 @@ def cube_tool_specs() -> list[ToolParam]:
     ]
 
 
-def literature_tool_specs() -> list[ToolParam]:
+def literature_tool_specs() -> list[dict[str, Any]]:
     """Europe PMC search (§2.3)."""
     return [
         {
@@ -231,137 +293,310 @@ def literature_tool_specs() -> list[ToolParam]:
     ]
 
 
-class ChatAgent:
-    """One question, one instance. Holds no state between questions."""
+async def _run_tool(ctx: RunContext[Deps], name: str, arguments: dict[str, Any]) -> str:
+    """Shared dispatch body for every built-in and catalog tool.
 
-    def __init__(
-        self,
-        *,
-        client: anthropic.AsyncAnthropic,
-        cube: CubeClient,
-        catalog: CatalogClient | None,
-        literature: LiteratureClient,
-        persona: str = "",
-    ) -> None:
-        self._client = client
-        self._cube = cube
-        self._catalog = catalog
-        self._literature = literature
-        self._persona = persona
-
-    async def _tools(self) -> list[ToolParam]:
-        tools: list[ToolParam] = cube_tool_specs() + literature_tool_specs()
-        if self._catalog is not None:
-            try:
-                discovered = await self._catalog.list_tools()
-                tools = [
-                    ToolParam(
-                        name=spec.name,
-                        description=spec.description,
-                        input_schema=spec.input_schema,
-                    )
-                    for spec in discovered
-                ] + tools
-            except CatalogError as exc:
-                # The catalog being down should cost context, not the answer.
-                log.warning("catalog_tools_unavailable", error=str(exc))
-        return tools
-
-    async def _system(self) -> list[TextBlockParam]:
-        """System prompt plus the persona preamble (§3.1), cached.
-
-        Both halves are stable across turns and across users, which makes this
-        the first prompt-caching lever §10.2 asks for. The breakpoint goes at the
-        end of the system blocks: everything before it is identical for every
-        question asked with this persona.
-        """
-        text = SYSTEM_PROMPT
-        if self._catalog is not None and self._persona:
-            preamble = await self._catalog.persona_preamble(self._persona)
-            if preamble:
-                text += (
-                    "\n\nContext for the person you are answering, curated in the "
-                    f"data catalog:\n\n{preamble}"
+    Raising `ModelRetry` is pydantic-ai's "the model can fix this itself":
+    the message reaches the model as a tool result it can act on, same as a
+    rejected query always could. `list_metrics`/`run_metric_query`/etc. also
+    queue the specific event (`rows`, `sql`, `articles`) a human watching the
+    chat page reads live, which pydantic-ai has no equivalent of. The
+    `tool_call` event itself and `turn.tool_calls` are *not* set here, even
+    though this is the one place that knows `name` and `arguments` without
+    re-deriving them — `_handle_stream` is what has to see every tool call to
+    log one made through an operator-configured connection (tools.yaml) that
+    never runs through this function at all, so it is the only place that can
+    be the single source for either without one of the two tool surfaces
+    silently going unlogged.
+    """
+    deps = ctx.deps
+    turn = deps.turn
+    try:
+        if name == "list_metrics":
+            cubes = await deps.cube.list_metrics()
+            return json.dumps(catalog_json(cubes), separators=(",", ":"))
+        if name == "describe_metric":
+            cube = await deps.cube.describe_metric(str(arguments.get("cube_name", "")))
+            return json.dumps(cube_json(cube, with_agg=True), separators=(",", ":"))
+        if name == "run_metric_query":
+            query = CubeQuery(**arguments)
+            result = await deps.cube.run_metric_query(query)
+            turn.queries.append({"query": query.to_cube_json(), "rows": result["row_count"]})
+            await deps.queue.put(
+                Event(
+                    "rows",
+                    {
+                        "query": query.to_cube_json(),
+                        "rows": result["rows"],
+                        "row_count": result["row_count"],
+                        "truncated": result["truncated"],
+                    },
                 )
-        return [TextBlockParam(type="text", text=text, cache_control={"type": "ephemeral"})]
+            )
+            return json.dumps(result, separators=(",", ":"), default=str)
+        if name == "explain_query":
+            sql = await deps.cube.explain_query(CubeQuery(**arguments))
+            await deps.queue.put(Event("sql", {"sql": sql}))
+            return sql
+        if name == "search_literature":
+            articles = await deps.literature.search_literature(
+                str(arguments.get("query", "")),
+                limit=int(arguments.get("limit", 10)),
+            )
+            await deps.queue.put(
+                Event("articles", {"articles": [_article_json(a) for a in articles]})
+            )
+            return json.dumps([_article_json(a) for a in articles], separators=(",", ":"))
+        if name == "get_article":
+            article = await deps.literature.get_article(str(arguments.get("identifier", "")))
+            return json.dumps(_article_json(article), separators=(",", ":"))
+        if deps.catalog is not None:
+            return await deps.catalog.call_tool(name, arguments)
+        raise CatalogError(f"unknown tool {name!r}")
+    except ValidationError as exc:
+        # The model built a query outside the allowed shape. This is the
+        # safety control doing its job, and the model can usually fix it.
+        log.info("query_rejected", tool=name, errors=exc.error_count())
+        message = "Query rejected by validation."
+        await deps.queue.put(Event("tool_error", {"name": name, "message": message}))
+        raise ModelRetry(f"Rejected: {exc}"[:2000]) from exc
+    except (CubeError, LiteratureError, CatalogError) as exc:
+        log.info("tool_failed", tool=name, error=str(exc))
+        await deps.queue.put(Event("tool_error", {"name": name, "message": str(exc)}))
+        raise ModelRetry(str(exc)[:2000]) from exc
 
-    async def run(self, question: str, turn: Turn) -> AsyncIterator[Event]:
-        """Answer `question`, emitting events as they happen and filling `turn`.
 
-        The caller has already checked entitlement and quota — by the time this
-        runs, the question is paid for (§6).
-        """
-        tools = await self._tools()
-        system = await self._system()
-        messages: list[MessageParam] = [{"role": "user", "content": question}]
+def _tool_from_spec(spec: dict[str, Any]) -> Tool[Deps]:
+    name = spec["name"]
 
-        yield Event("status", {"message": "Reading the catalog"})
+    async def call(ctx: RunContext[Deps], **kwargs: Any) -> str:
+        return await _run_tool(ctx, name, kwargs)
 
-        answer_parts: list[str] = []
-        for turn_index in range(MAX_TURNS):
-            try:
-                async with self._client.messages.stream(
-                    model=MODEL,
-                    max_tokens=MAX_TOKENS,
-                    # Summarised rather than the default (omitted): the reader
-                    # watching a 30-second plan phase should see it happening.
-                    thinking={"type": "adaptive", "display": "summarized"},
-                    system=system,
-                    tools=tools,
-                    messages=messages,
-                ) as stream:
-                    async for raw in stream:
-                        emitted = _stream_event(raw)
-                        if emitted is not None:
-                            yield emitted
-                    response = await stream.get_final_message()
-            except anthropic.APIStatusError as exc:
-                log.error("anthropic_error", status=exc.status_code, turn=turn_index)
-                yield Event("error", {"message": f"The model API returned {exc.status_code}."})
-                return
-            except anthropic.APIConnectionError:
-                log.error("anthropic_unreachable", turn=turn_index)
-                yield Event("error", {"message": "Could not reach the model API."})
-                return
+    return Tool.from_schema(
+        function=call,
+        name=name,
+        description=spec["description"],
+        json_schema=spec["input_schema"],
+        takes_ctx=True,
+    )
 
-            turn.input_tokens += response.usage.input_tokens
-            turn.output_tokens += response.usage.output_tokens
 
-            text = "".join(b.text for b in response.content if b.type == "text")
-            if text:
-                answer_parts.append(text)
-                # The first prose the model writes is its plan (rule 2 above).
-                if not turn.plan:
-                    turn.plan = text
-                    yield Event("plan", {"text": text})
+def _catalog_tool(spec: ToolSpec) -> Tool[Deps]:
+    async def call(ctx: RunContext[Deps], **kwargs: Any) -> str:
+        return await _run_tool(ctx, spec.name, kwargs)
 
-            if response.stop_reason != "tool_use":
-                break
+    return Tool.from_schema(
+        function=call,
+        name=spec.name,
+        description=spec.description,
+        json_schema=spec.input_schema,
+        takes_ctx=True,
+    )
 
-            messages.append({"role": "assistant", "content": response.content})
-            results: list[Any] = []
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-                # Tool inputs are parsed JSON from the SDK — never string-matched.
-                arguments = dict(block.input) if isinstance(block.input, dict) else {}
-                yield Event("tool_call", {"name": block.name, "input": arguments})
-                async for event in self._dispatch(block.name, arguments, turn, results, block.id):
-                    yield event
-            messages.append({"role": "user", "content": results})
-        else:
-            log.warning("agent_turn_limit", limit=MAX_TURNS)
-            yield Event("error", {"message": "Gave up after too many steps without an answer."})
-            return
 
-        answer = "\n\n".join(answer_parts).strip()
-        answer, stripped = _check_citations(answer, self._literature)
-        turn.answer = answer
-        turn.stripped_citations = stripped
-        turn.citations = sorted(self._literature.registry.seen)
+# Cube + literature tools, described once and shared by every model and every
+# request — the functions above all read `ctx.deps` at call time rather than
+# closing over any particular request's clients.
+BUILTIN_TOOLSET: FunctionToolset[Deps] = FunctionToolset(
+    [_tool_from_spec(spec) for spec in cube_tool_specs() + literature_tool_specs()]
+)
 
-        if stripped:
-            yield Event(
+
+async def _catalog_toolset(catalog: CatalogClient | None) -> FunctionToolset[Deps] | None:
+    """Catalog tools, discovered fresh per request (OM's advertised set can
+    change between deploys) and added on top of `BUILTIN_TOOLSET` for that
+    run only — this is the one part of the tool surface that cannot be built
+    once at startup.
+    """
+    if catalog is None:
+        return None
+    try:
+        specs = await catalog.list_tools()
+    except CatalogError as exc:
+        # The catalog being down should cost context, not the answer.
+        log.warning("catalog_tools_unavailable", error=str(exc))
+        return None
+    return FunctionToolset([_catalog_tool(spec) for spec in specs]) if specs else None
+
+
+async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStreamEvent]) -> None:
+    """Forward text/thinking deltas live, log every tool call, and build this
+    turn's text from `PartEndEvent` rather than the deltas themselves.
+
+    The `tool_call` event and `turn.tool_calls` are reported from
+    `FunctionToolCallEvent` here, not self-reported by `_run_tool`, because
+    this is the only place that sees a tool call regardless of which toolset
+    it came from — `BUILTIN_TOOLSET`, the catalog's per-request tools, *and*
+    an operator-configured MCP/OpenAPI connection from tools.yaml, which
+    pydantic-ai's own `MCPToolset` dispatches without ever going through
+    `_run_tool` at all. Self-reporting inside `_run_tool` would leave every
+    tools.yaml connection invisible to both the UI and the eval log — this
+    was caught by manually driving a real OpenAPI connection end to end, not
+    by a unit test, since a mocked tool call has no independent event stream
+    to disagree with the code under test.
+
+    A backend that hands back a whole text part in one piece — no incremental
+    chunks — emits `PartStartEvent`/`PartEndEvent` with the full content and
+    *no* `PartDeltaEvent` at all (confirmed against pydantic-ai's own
+    `FunctionModel` test double, and not guaranteed absent from a real
+    OpenAI-spec server either). Building the answer from deltas alone silently
+    drops that text; `PartEndEvent` is always present and always carries the
+    complete part, so it is the correctness source. Deltas are still forwarded
+    live purely for the token-by-token UI — losing that for such a backend
+    means the text only appears at the end, not that it goes missing.
+    """
+    text_parts: list[str] = []
+    async for event in events:
+        if isinstance(event, PartDeltaEvent):
+            delta = event.delta
+            if isinstance(delta, TextPartDelta):
+                await ctx.deps.queue.put(Event("text", {"text": delta.content_delta}))
+            elif isinstance(delta, ThinkingPartDelta) and delta.content_delta:
+                await ctx.deps.queue.put(Event("thinking", {"text": delta.content_delta}))
+        elif isinstance(event, PartEndEvent) and isinstance(event.part, TextPart):
+            text_parts.append(event.part.content)
+        elif isinstance(event, FunctionToolCallEvent):
+            arguments = event.part.args_as_dict()
+            ctx.deps.turn.tool_calls.append({"name": event.part.tool_name, "input": arguments})
+            await ctx.deps.queue.put(
+                Event("tool_call", {"name": event.part.tool_name, "input": arguments})
+            )
+
+    text = "".join(text_parts)
+    if not text:
+        return
+    ctx.deps.answer_parts.append(text)
+    # The first prose the model writes is its plan (rule 2, §4).
+    if not ctx.deps.turn.plan:
+        ctx.deps.turn.plan = text
+        await ctx.deps.queue.put(Event("plan", {"text": text}))
+
+
+def build_agent(
+    *,
+    model_id: str,
+    base_url: str = "",
+    api_key: str = "",
+    extra_toolsets: Sequence[AbstractToolset[Deps]] = (),
+) -> Agent[Deps, str]:
+    """One reusable `Agent` for `model_id` — built once per configured model
+    (`hub_api.models`), not per request. Persona instructions and the
+    catalog's per-request tools are supplied at run time instead (`run`,
+    below), which is what lets the same `Agent` serve every user and persona.
+
+    `base_url` set means an OpenAI-spec backend (§4a); empty means the
+    built-in Claude model over Anthropic's own API, with adaptive thinking and
+    prompt caching turned on — pydantic-ai exposes both directly as
+    `AnthropicModelSettings`, so there is no hand-rolled equivalent to keep
+    in sync with the SDK any more.
+
+    `extra_toolsets` is this model's operator-configured tool connections
+    (`apps/api/config/tools.yaml`/`models.yaml`, via `hub_api.models`) — added
+    on top of `BUILTIN_TOOLSET`, never in place of it (docs/chatbot.md §4a).
+    """
+    model: AnthropicModel | OpenAIChatModel
+    settings: ModelSettings
+    if base_url:
+        # The openai SDK refuses to construct a client with an empty api_key
+        # at all (`OpenAIError: Missing credentials`) — even for a local
+        # server that ignores auth entirely, so a keyless backend (settings.py
+        # explicitly allows one) needs *something* non-empty here.
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key or "not-required")
+        model = OpenAIChatModel(model_id, provider=provider)
+        settings = ModelSettings(max_tokens=MAX_TOKENS)
+    else:
+        model = AnthropicModel(model_id, provider=AnthropicProvider(api_key=api_key))
+        settings = AnthropicModelSettings(
+            max_tokens=MAX_TOKENS,
+            # Adaptive: the reader watching a 30-second plan phase should see
+            # it happening, whatever budget the model decides that needs.
+            anthropic_thinking=BetaThinkingConfigAdaptiveParam(type="adaptive"),
+            # The system prompt is stable across turns and across users with
+            # the same persona — the first prompt-caching lever §10.2 asks for.
+            anthropic_cache_instructions=True,
+        )
+    return Agent(
+        model,
+        deps_type=Deps,
+        toolsets=[BUILTIN_TOOLSET, *extra_toolsets],
+        model_settings=settings,
+        retries=MAX_TURNS,
+    )
+
+
+async def run(
+    agent: Agent[Deps, str],
+    *,
+    question: str,
+    persona: str,
+    turn: Turn,
+    queue: asyncio.Queue[Event],
+    cube: CubeClient,
+    literature: LiteratureClient,
+    catalog: CatalogClient | None,
+    system_prompt: str = SYSTEM_PROMPT,
+) -> None:
+    """Answer `question`, pushing events onto `queue` as they happen and
+    filling `turn`. Always ends by pushing a `done` or `error` event — the
+    caller does not need its own except-clause for the ordinary failure modes.
+
+    The caller has already checked entitlement and quota — by the time this
+    runs, the question is paid for (§6).
+
+    `system_prompt` defaults to the built-in prompt (its hard rules included)
+    but a model configured in `models.yaml` can replace it outright — see that
+    file's own comment for why that is an explicit, informed operator choice
+    and not merged with the default.
+    """
+    deps = Deps(cube=cube, literature=literature, catalog=catalog, turn=turn, queue=queue)
+    await queue.put(Event("status", {"message": "Reading the catalog"}))
+
+    instructions = system_prompt
+    if catalog is not None and persona:
+        preamble = await catalog.persona_preamble(persona)
+        if preamble:
+            instructions += (
+                "\n\nContext for the person you are answering, curated in the "
+                f"data catalog:\n\n{preamble}"
+            )
+
+    extra_toolsets: list[AbstractToolset[Deps]] = []
+    catalog_toolset = await _catalog_toolset(catalog)
+    if catalog_toolset is not None:
+        extra_toolsets.append(catalog_toolset)
+
+    try:
+        result = await agent.run(
+            question,
+            deps=deps,
+            instructions=instructions,
+            toolsets=extra_toolsets,
+            event_stream_handler=_handle_stream,
+            usage_limits=UsageLimits(request_limit=MAX_TURNS),
+        )
+    except UsageLimitExceeded:
+        log.warning("agent_turn_limit", limit=MAX_TURNS)
+        message = "Gave up after too many steps without an answer."
+        await queue.put(Event("error", {"message": message}))
+        return
+    except AgentRunError as exc:
+        log.error("model_error", error=str(exc))
+        await queue.put(Event("error", {"message": "Something went wrong answering that."}))
+        return
+
+    usage = result.usage
+    turn.input_tokens += usage.input_tokens
+    turn.output_tokens += usage.output_tokens
+
+    answer = "\n\n".join(deps.answer_parts).strip()
+    answer, stripped = _check_citations(answer, literature)
+    turn.answer = answer
+    turn.stripped_citations = stripped
+    turn.citations = sorted(literature.registry.seen)
+
+    if stripped:
+        await queue.put(
+            Event(
                 "warning",
                 {
                     "message": (
@@ -371,102 +606,8 @@ class ChatAgent:
                     "stripped": stripped,
                 },
             )
-        yield Event("done", {"answer": answer, "disclaimer": DISCLAIMER})
-
-    async def _dispatch(
-        self,
-        name: str,
-        arguments: dict[str, Any],
-        turn: Turn,
-        results: list[dict[str, Any]],
-        tool_use_id: str,
-    ) -> AsyncIterator[Event]:
-        """Run one tool, append its `tool_result`, and emit what the UI should show.
-
-        Every failure comes back to the model as `is_error` tool_result rather
-        than ending the turn: a rejected query is usually a fixable mistake (a
-        wrong member name, a bad operator), and the model can see the reason.
-        """
-        turn.tool_calls.append({"name": name, "input": arguments})
-        try:
-            if name == "list_metrics":
-                cubes = await self._cube.list_metrics()
-                content = json.dumps(catalog_json(cubes), separators=(",", ":"))
-            elif name == "describe_metric":
-                cube = await self._cube.describe_metric(str(arguments.get("cube_name", "")))
-                content = json.dumps(cube_json(cube, with_agg=True), separators=(",", ":"))
-            elif name == "run_metric_query":
-                query = CubeQuery(**arguments)
-                result = await self._cube.run_metric_query(query)
-                turn.queries.append({"query": query.to_cube_json(), "rows": result["row_count"]})
-                yield Event(
-                    "rows",
-                    {
-                        "query": query.to_cube_json(),
-                        "rows": result["rows"],
-                        "row_count": result["row_count"],
-                        "truncated": result["truncated"],
-                    },
-                )
-                content = json.dumps(result, separators=(",", ":"), default=str)
-            elif name == "explain_query":
-                sql = await self._cube.explain_query(CubeQuery(**arguments))
-                yield Event("sql", {"sql": sql})
-                content = sql
-            elif name == "search_literature":
-                articles = await self._literature.search_literature(
-                    str(arguments.get("query", "")),
-                    limit=int(arguments.get("limit", 10)),
-                )
-                yield Event("articles", {"articles": [_article_json(a) for a in articles]})
-                content = json.dumps([_article_json(a) for a in articles], separators=(",", ":"))
-            elif name == "get_article":
-                article = await self._literature.get_article(str(arguments.get("identifier", "")))
-                content = json.dumps(_article_json(article), separators=(",", ":"))
-            elif self._catalog is not None:
-                content = await self._catalog.call_tool(name, arguments)
-            else:
-                raise CatalogError(f"unknown tool {name!r}")
-        except ValidationError as exc:
-            # The model built a query outside the allowed shape. This is the
-            # safety control doing its job, and the model can usually fix it.
-            log.info("query_rejected", tool=name, errors=exc.error_count())
-            results.append(_error_result(tool_use_id, f"Rejected: {exc}"))
-            yield Event("tool_error", {"name": name, "message": "Query rejected by validation."})
-            return
-        except (CubeError, LiteratureError, CatalogError) as exc:
-            log.info("tool_failed", tool=name, error=str(exc))
-            results.append(_error_result(tool_use_id, str(exc)))
-            yield Event("tool_error", {"name": name, "message": str(exc)})
-            return
-
-        results.append({"type": "tool_result", "tool_use_id": tool_use_id, "content": content})
-
-
-def _query_schema() -> dict[str, Any]:
-    """`CubeQuery`'s JSON schema, inlined and closed to extra properties."""
-    schema = CubeQuery.model_json_schema()
-    schema["additionalProperties"] = False
-    return schema
-
-
-def _stream_event(event: Any) -> Event | None:
-    """Translate an Anthropic stream event into something the UI can render."""
-    if event.type == "content_block_delta":
-        if event.delta.type == "thinking_delta":
-            return Event("thinking", {"text": event.delta.thinking})
-        if event.delta.type == "text_delta":
-            return Event("text", {"text": event.delta.text})
-    return None
-
-
-def _error_result(tool_use_id: str, message: str) -> dict[str, Any]:
-    return {
-        "type": "tool_result",
-        "tool_use_id": tool_use_id,
-        "content": message[:2000],
-        "is_error": True,
-    }
+        )
+    await queue.put(Event("done", {"answer": answer, "disclaimer": DISCLAIMER}))
 
 
 def _article_json(article: Any) -> dict[str, str]:

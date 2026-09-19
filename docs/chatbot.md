@@ -192,19 +192,56 @@ user question
 Splitting plan from execution gives a separable eval target (§7) and a natural place to let a
 user correct the metric choice before anything runs.
 
-**Model and API.** Claude Opus 5 (`claude-opus-5`) via the Anthropic Python SDK, adaptive
-thinking, streamed to the UI over SSE. Run the loop with the SDK's tool runner rather than
-hand-writing it — its per-turn hooks are where quota decrements, tool-call logging, and the
-citation check hang.
+**Model and API.** Claude Opus 5 (`claude-opus-5`) by default, adaptive thinking, streamed to the
+UI over SSE. The loop is a [pydantic-ai](https://ai.pydantic.dev) `Agent` rather than a hand-rolled
+Anthropic Messages API loop — its per-request `event_stream_handler` is where quota decrements,
+tool-call logging, and the citation check hang, and it is what makes §4a's other model backends a
+few lines of `Model`/`Provider` construction rather than a second hand-written turn loop.
 
-**OM MCP client placement.** Run the MCP client *inside* hub-api (Python `mcp` SDK) rather than
-using the Anthropic API's server-side MCP connector. The connector would have Anthropic's
-servers call our catalog directly; it is less code, but it puts tool calls outside our logging
-and quota path, which §6 requires us to record.
+**OM MCP client placement.** Run the MCP client *inside* hub-api (`ohdp_agent.catalog`, ~100 lines
+of JSON-RPC — OpenMetadata's MCP server is stateless and does not want the general-purpose `mcp`
+SDK's session handshake) rather than using a model API's own server-side MCP connector. The
+connector would have the model's own servers call our catalog directly; it is less code, but it
+puts tool calls outside our logging and quota path, which §6 requires us to record, and outside
+the read-only allowlist `ohdp_agent.catalog.READ_ONLY_TOOLS` enforces. Its discovered tools are
+wrapped as pydantic-ai `Tool`s per request (`ohdp_agent.loop._catalog_toolset`) rather than reached
+through pydantic-ai's own generic `MCPToolset` — the allowlist and OM's stateless quirk are exactly
+the two things a generic MCP client does not know to do.
 
 **OM authentication.** hub-api holds a single OpenMetadata bot PAT. Per-user catalog scoping is
 deliberately not built: the data is public and identical for every user (§1.1), so there is
 nothing to scope. Persona is selected by hub-api and passed explicitly.
+
+**§4a. Additional model backends.** Claude is the default, but the chat page's model picker
+(`GET /api/models`) can also offer any OpenAI-spec chat-completions backend configured in
+`OHDP_OPENAI_API_BASE_URLS`/`OHDP_OPENAI_API_KEYS` — OpenRouter, self-hosted vLLM/Ollama, Azure
+OpenAI, anything that answers `GET {base_url}/models`. Same env-var shape as Open WebUI's own
+`OPENAI_API_BASE_URLS`/`OPENAI_API_KEYS` (§11), for the same reason: the model list an operator
+gets is exactly what their key can see, discovered at startup, never hand-maintained.
+
+`ohdp_agent.loop.build_agent` picks pydantic-ai's `AnthropicModel` or `OpenAIChatModel` from
+whether a `base_url` is given, and either way gets the identical tool loop — same
+cube/catalog/literature tools (`BUILTIN_TOOLSET`, built once and shared by every model), same
+`Event` stream the UI already renders. The one thing an OpenAI-spec backend gives up: there is no
+extended-thinking equivalent in that spec, so the "plan" event §6 asks for becomes the model's
+first text before its first tool call rather than a distinct reasoning phase.
+
+**Config-driven tool connections and per-model overrides** (`apps/api/config/tools.yaml`,
+`models.yaml`; `hub_api.tool_connections`, `hub_api.models`) let an operator go beyond bulk
+auto-discovery without a deploy. `tools.yaml` declares named MCP or OpenAPI connections — an
+OpenAPI one is fetched once at startup and wrapped as an in-process MCP server via
+`FastMCP.from_openapi` (fastmcp is already a dependency, `ohdp_mcp` is built on it), so both
+connection types end up as the same `pydantic_ai.mcp.MCPToolset`. `models.yaml` assigns those
+connections to specific models by id, and can give a model its own label, its own backend (for one
+not worth bulk-discovering), or its own system prompt.
+
+Every model still always keeps `BUILTIN_TOOLSET` — `tools:` in `models.yaml` only ever adds to it,
+never replaces it, which is this platform's actual tool-use safety boundary (ADR-0003: no raw SQL
+tool anywhere in the surface), not a per-model preference. A `tools.yaml`/`models.yaml`-configured
+tool call is logged and shown to the user exactly like a built-in one — `ohdp_agent.loop._handle_stream`
+reports every `tool_call` from pydantic-ai's own `FunctionToolCallEvent` rather than having each
+tool self-report, specifically so a connection that never runs through `_run_tool` still shows up in
+both the SSE stream and `turn.tool_calls` (the eval log, §7).
 
 ---
 
