@@ -6,7 +6,7 @@ const HIGHLIGHTS = [
   {
     icon: "🌍",
     title: "Public data, one spine",
-    body: "OpenAQ, CDC, openFDA, CMS and WHO GHO — ingested nightly, tested with dbt, and served through a single semantic layer so every number means the same thing everywhere.",
+    body: "OpenAQ, CDC, openFDA, CMS, WHO GHO, and more - served through a single semantic layer, so that every number means the same thing everywhere.",
     to: "/data-sources",
     cta: "Explore the sources",
   },
@@ -45,11 +45,11 @@ export default function Home() {
         <div className="hero-content text-center max-w-3xl">
           <div>
             <div className="badge badge-primary badge-outline mb-4">
-              Built in the open · portfolio-grade plumbing
+              Built in the open · Visible from the source, through the plumbing, and into the dashboard
             </div>
             <h1 className="text-5xl font-extrabold leading-tight">
-              Serious health data,
-              <span className="text-primary"> minus the seriousness.</span>
+              Massive health insights
+              <span className="text-primary"> - minus the effort.</span>
             </h1>
             <p className="py-6 text-lg opacity-80">
               A self-hosted analytics platform over public health data. Ask

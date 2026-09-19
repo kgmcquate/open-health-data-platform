@@ -18,7 +18,7 @@ this service is API-only.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -38,7 +38,7 @@ log = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Open the pool and create the chat-log table.
 
     A database that is not there must not stop `/healthz` from answering — the
