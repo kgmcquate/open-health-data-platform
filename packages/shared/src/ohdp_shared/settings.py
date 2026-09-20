@@ -3,6 +3,7 @@ never passed through Dagster run config or tags (ARCHITECTURE.md §5)."""
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -235,5 +236,5 @@ def env_file_values() -> dict[str, str]:
     placeholder should fall back to there.
     """
     if not _REPO_ROOT_ENV_FILE.exists():
-        return {}
+        return dict(os.environ)
     return {k: v for k, v in dotenv_values(_REPO_ROOT_ENV_FILE).items() if v is not None}

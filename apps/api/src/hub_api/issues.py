@@ -121,7 +121,17 @@ class Reporter:
 
 def get_reporter(
     request: Request,
-    authorization: Annotated[str | None, Header()] = None,
+    # include_in_schema=False: this carries the ohdp-tools connection's shared
+    # bearer, an infrastructure credential proving "this is the chat surface"
+    # — not something the model should ever see as a fillable argument. Left
+    # visible, FastMCP.from_openapi (hub_api.tool_connections) turns every
+    # declared parameter into an editable MCP tool arg, and a model with no
+    # real token will supply something for it — we saw one submit literally
+    # "Bearer " (empty), which h11 then rejects as an illegal header value
+    # before the request ever reaches this dependency. Hiding it from the
+    # spec still lets FastAPI read the real header off the request; it stops
+    # the model from ever being offered the chance to set it.
+    authorization: Annotated[str | None, Header(include_in_schema=False)] = None,
 ) -> Reporter:
     """Resolve the caller to one of two identities, by credential.
 

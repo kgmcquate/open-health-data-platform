@@ -35,6 +35,13 @@ connections:
     type: openapi
     spec_url: "http://hub-api.app.svc.cluster.local:8000/tools/openapi.json"
     base_url: "http://hub-api.app.svc.cluster.local:8000"
+    # Proves to hub_api.issues.get_reporter that the caller is the chat
+    # surface itself (source="chatbot") — not tied to any one human, since
+    # there's no per-user identity on this cluster-internal path. Kept out of
+    # the model's reach entirely: see the include_in_schema=False note next
+    # to that dependency for why it can't just be an OpenAPI parameter here.
+    headers:
+      Authorization: "Bearer ${OHDP_TOOLS_AUTH_TOKEN}"
 
   - id: mcp-cube
     type: mcp

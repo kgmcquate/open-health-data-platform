@@ -2,6 +2,7 @@ import { NavLink, Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { THEMES, applyTheme, storedTheme } from "../theme";
 import { useState } from "react";
+import GearIcon from "./icons/GearIcon";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
@@ -46,22 +47,6 @@ export default function Navbar() {
       </nav>
 
       <div className="flex-none gap-2">
-        <select
-          className="select select-bordered select-sm"
-          value={theme}
-          aria-label="Theme"
-          onChange={(e) => {
-            setTheme(e.target.value as typeof theme);
-            applyTheme(e.target.value as typeof theme);
-          }}
-        >
-          {THEMES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-
         {user === undefined ? (
           <span className="loading loading-spinner loading-sm" />
         ) : user === null ? (
@@ -96,6 +81,33 @@ export default function Navbar() {
               </li>
             ))}
           </ul>
+        </div>
+
+        <div className="dropdown dropdown-end">
+          <button tabIndex={0} className="btn btn-ghost btn-sm btn-circle" aria-label="Settings">
+            <GearIcon className="h-5 w-5" />
+          </button>
+          <div className="dropdown-content menu bg-base-100 rounded-box z-50 w-56 p-4 shadow border border-base-300 gap-2">
+            <label className="label" htmlFor="theme-select">
+              <span className="label-text">Appearance</span>
+            </label>
+            <select
+              id="theme-select"
+              className="select select-bordered select-sm"
+              value={theme}
+              aria-label="Theme"
+              onChange={(e) => {
+                setTheme(e.target.value as typeof theme);
+                applyTheme(e.target.value as typeof theme);
+              }}
+            >
+              {THEMES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
     </div>
