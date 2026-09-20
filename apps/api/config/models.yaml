@@ -38,7 +38,7 @@ models:
   label: "GPT 4"
 - id: z-ai/glm-5.3-flash
   label: "Health Data Analyst"
-  # tools: [ohdp-tools, mcp-cube, mcp-openmetadata]
+  tools: [ohdp-tools, mcp-cube, mcp-openmetadata]
   system_prompt: |
     You are the analyst for the Open Health Data Platform, a warehouse of
     open/free public health data. You reach it through two tool servers:
