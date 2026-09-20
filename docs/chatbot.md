@@ -335,8 +335,8 @@ Open WebUI side, so that narrowing *is* the access control. `test_issues.py` ass
 exact set, not a subset: adding a route to the mounted app hands the chat model a tool, and
 that should be a decision rather than a side effect.
 
-**There are two identities, and only one of them is a person.** A browser arrives through
-oauth2-proxy carrying `X-Forwarded-Email` and its issues are attributed to that address. Open
+**There are two identities, and only one of them is a person.** A browser carries the hub's own
+signed session cookie (`hub_api.auth`) and its issues are attributed to that email. Open
 WebUI arrives by cluster DNS carrying a shared bearer token, which proves the caller is Open
 WebUI and nothing about who is typing — so those issues are filed anonymously rather than
 against an identity we would be inventing. The cost is that the rate limit puts every chatbot
@@ -354,7 +354,7 @@ Deviations from the M4 sketch this replaces, all deliberate: dedupe is exact nor
 rather than embedding similarity (one API call, no model, no index — revisit when the tracker
 is large enough that near-misses actually slip through); the rate limit is per hour rather
 than per month, since it is a spam ceiling and not a quota; and issues are labelled by source
-rather than by tier, because everyone past both walls is tier `free` today.
+rather than by tier, because everyone signed in is tier `free` today.
 
 **Not configured by default.** `OHDP_GITHUB_TOKEN` and `OHDP_GITHUB_ISSUES_REPO` unset means
 this one endpoint answers 503 and nothing else changes — the same intended degradation as the
@@ -376,10 +376,11 @@ Each step should be demoable and independently reviewable.
 | **M3.5** | **Not done.** Every turn is logged to `chat_turns` in the shape §7 wants, so the eval set is accumulating; there is no harness and no seed question set. |
 | **M4** | News retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces, and dashboards-as-code landed with it (§5). |
 
-**Deployed as:** `app.open-health-data-platform.org`, behind an `oauth2-proxy` Google wall
-(`platform/helm/values/oauth2-proxy-app.yaml`) that owns the hostname; `charts/hub-api` has
-its own Ingress disabled so nothing reaches the agent without passing the wall. Everyone
-past it is tier `free` — ARCHITECTURE.md §5's real IdP with a `tier` claim is still unbuilt.
+**Deployed as:** `app.open-health-data-platform.org`, served by `charts/hub-api`'s own
+Ingress. There is no oauth2-proxy wall in front any more — the hub does its own OIDC
+sign-in (`hub_api.auth`), gated by `settings.allowed_emails_list` while this is a
+single-operator surface. Everyone who signs in is tier `free` — ARCHITECTURE.md §5's real
+IdP with a `tier` claim is still unbuilt.
 
 M3.0 and M3.1 carry the real risk and involve no model at all. Do them first.
 
@@ -417,7 +418,7 @@ chat.ohdp.org -> Traefik -> open-webui (Google SSO, its own)
                               |-> mcp-cube (ClusterIP) -> cube -> Snowflake
                               \-> openrouter.ai/api/v1  (GLM 5.3 Flash, ADR-0023)
 
-app.ohdp.org  -> Traefik -> oauth2-proxy-app -> hub-api   (§1-§10, unchanged)
+app.ohdp.org  -> Traefik -> hub-api (own OIDC sign-in)    (§1-§10, unchanged)
 ```
 
 ### 11.1 What Open WebUI does and does not get

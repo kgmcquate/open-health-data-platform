@@ -6,7 +6,9 @@ Charts we own, and values files for the upstream charts.
 charts/
   platform-base/        our chart — namespaces, generated internal secrets,
                         the shared Postgres StatefulSet, the ClusterIssuer
-  hub-api/              our chart — the FastAPI backend
+  hub-api/              our chart — the FastAPI backend, chat UI, and its own
+                        OIDC sign-in (hub_api.auth); owns app.open-health-data-platform.org's
+                        Ingress directly, no oauth2-proxy wall in front
   graphql-authz-proxy/  our chart — wraps kgmcquate/graphql-authz-proxy
   dagster-monitoring/   our chart — wraps kgmcquate/dagster-monitoring
   cube/                 our chart — Cube Core, the semantic layer (ADR-0003)
@@ -21,7 +23,6 @@ values/
   openmetadata.yaml           for open-metadata/openmetadata  (pinned to 2.0.x)
   opensearch.yaml             for opensearch/opensearch
   oauth2-proxy.yaml           for oauth2-proxy/oauth2-proxy  (Google wall → Dagster + dagster-monitoring, ADR-0007)
-  oauth2-proxy-app.yaml       for oauth2-proxy/oauth2-proxy  (Google wall → hub-api's chat UI + /api)
   open-webui.yaml             for open-webui/open-webui      (the chat UI, ADR-0017 — Google SSO is its own, not a wall)
 ```
 
@@ -96,18 +97,24 @@ kubectl -n data create secret generic ohdp-pipeline-secrets \
 kubectl -n data create secret generic cube-snowflake \
   --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$(cd ../terraform && terraform output -raw snowflake_private_key)"
 
+# OHDP_OIDC_CLIENT_ID/_SECRET are hub-api's own OIDC client (hub_api.auth) — it
+# does the Authorization Code flow itself rather than sitting behind an
+# oauth2-proxy wall. Reusing Dagster's Google client is fine as long as that
+# client also lists https://app.open-health-data-platform.org/auth/callback
+# among its authorized redirect URIs.
 kubectl -n app create secret generic hub-api-secrets \
   --from-literal=OHDP_OPENMETADATA_JWT= \
   --from-literal=STRIPE_SECRET_KEY= \
-  --from-literal=OIDC_CLIENT_SECRET=
+  --from-literal=OHDP_OIDC_CLIENT_ID= \
+  --from-literal=OHDP_OIDC_CLIENT_SECRET=
 
 # Open WebUI (ADR-0017). OPENAI_API_KEY holds the *OpenRouter* key (ADR-0023):
 # OpenRouter is OpenAI-compatible at https://openrouter.ai/api/v1, and this
 # surface runs z-ai/glm-5.3-flash there rather than Claude direct — hub-api's
 # ANTHROPIC_API_KEY is a different key for a different service now.
 # GOOGLE_CLIENT_SECRET belongs to Open WebUI's own OAuth client — redirect URI
-# https://chat.open-health-data-platform.org/oauth/google/callback — not to any
-# of the oauth2-proxy walls.
+# https://chat.open-health-data-platform.org/oauth/google/callback — not to
+# Dagster's oauth2-proxy wall or hub-api's own OIDC client below.
 kubectl -n app create secret generic openwebui-secrets \
   --from-literal=OPENAI_API_KEY="$OPENROUTER_API_KEY" \
   --from-literal=GOOGLE_CLIENT_SECRET="$OPENWEBUI_OIDC_CLIENT_SECRET"
@@ -135,8 +142,7 @@ make infra                 # platform-base, Traefik, cert-manager, ClusterIssuer
 make install                # opensearch, openmetadata, proxy, dagster
 make dagster-monitoring      # the /monitoring dashboard (before oauth2-proxy, below)
 make oauth2-proxy           # Google wall: Dagster + dagster-monitoring
-make hub-api                # deployed on its own for now
-make oauth2-proxy-app        # Google wall: hub-api's chat UI + /api
+make hub-api                # chat UI + /api — does its own OIDC sign-in, no oauth2-proxy wall
 make mcp-cube                # Cube's tool surface over MCP (before open-webui)
 OPENWEBUI_OIDC_CLIENT_ID=... make open-webui   # the chat UI (ADR-0017)
 ```

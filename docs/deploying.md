@@ -6,7 +6,7 @@ Three workflows, all runnable locally with [`act`](https://github.com/nektos/act
 |---|---|---|
 | [`build-images.yml`](../.github/workflows/build-images.yml) | Builds `ohdp-hub-api` and `ohdp-pipeline`, pushes to GHCR | no |
 | [`deploy-infra.yml`](../.github/workflows/deploy-infra.yml) | Terraform: DigitalOcean Kubernetes cluster, Spaces buckets, Cloudflare DNS records, and the Iceberg lakehouse — Snowflake as the catalog, S3 as its external volume | no |
-| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Cube, hub-api, oauth2-proxy-app | when `deploy` ticked |
+| [`deploy-platform.yml`](../.github/workflows/deploy-platform.yml) | `helm upgrade` for each chart: platform-base, Traefik, cert-manager, external secrets, OpenSearch, OpenMetadata, authz proxy, dagster-monitoring, oauth2-proxy, Dagster, Cube, hub-api | when `deploy` ticked |
 
 ## Setup
 

@@ -161,7 +161,6 @@ flowchart TB
         subgraph nsapp["namespace: app"]
             A1["hub-web"]
             A2["hub-api"]
-            A3["oauth2-proxy-app"]
             A4["open-webui"]
             A5["mcp-cube"]
         end
@@ -191,8 +190,7 @@ flowchart TB
 
     CF --> ING
     ING --> A1
-    ING --> A3
-    A3 --> A2
+    ING --> A2
     ING --> A4
     A4 --> A5
     A5 --> D6
@@ -210,7 +208,10 @@ flowchart TB
 > through ingress with **no oauth2-proxy in front**, because it has a user model
 > of its own and gates sign-in with its own Google OAuth. `mcp-cube` (A5) serves
 > Cube's tool surface to it over MCP and is ClusterIP-only. `hub-api` (A2) and
-> its own chat UI stay at `app.`, behind `oauth2-proxy-app` (A3).
+> its own chat UI stay at `app.`, reached through ingress directly — it does its
+> own OIDC sign-in (`hub_api.auth`) rather than sitting behind an oauth2-proxy
+> wall, gated by `settings.allowed_emails_list` until billing (M4) can meter
+> strangers.
 >
 > `cube` (D6) is reached directly through ingress, not behind oauth2-proxy —
 > unlike Dagster, its authn/authz is Cube's own JWT security

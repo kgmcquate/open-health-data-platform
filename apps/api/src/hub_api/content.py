@@ -1,11 +1,18 @@
 """Curated hub content: news, data sources, plots, and literature.
 
-These four tables back the hub's public pages. They are *curated*, not
-crawled — rows are written by us (seeds below, an admin surface later), never
-by users and never by the chat agent, so what the front page shows cannot be
-influenced by prompt injection or an upstream API going strange. All four
-routes are public and read-only: they are marketing surfaces, and gating them
-behind sign-in would defeat them.
+News, plots, and literature back three of the hub's public pages from tables
+here. They are *curated*, not crawled — rows are written by us (seeds below,
+an admin surface later), never by users and never by the chat agent, so what
+the front page shows cannot be influenced by prompt injection or an upstream
+API going strange.
+
+Data sources are the exception: that page reads OpenMetadata's own
+Source-aligned domains directly (`ohdp_agent.domains`) rather than a table
+here, so a domain added or edited in the catalog shows up with no redeploy —
+OpenMetadata is the source of truth for what data sources exist, the same
+shift ADR-0019 made for the lakehouse's schema. All four routes are public and
+read-only: they are marketing surfaces, and gating them behind sign-in would
+defeat them.
 """
 
 from __future__ import annotations
@@ -18,6 +25,10 @@ from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Table, 
 from sqlalchemy.engine import Engine
 
 from hub_api import db
+from ohdp_agent.domains import DomainsClient, DomainsError
+from ohdp_shared import get_logger, settings
+
+log = get_logger(__name__)
 
 # All on db.metadata so one `ensure_schema` creates everything hub-api owns.
 news_items = Table(
@@ -31,19 +42,6 @@ news_items = Table(
     # study | visualization | platform
     Column("kind", String(32), nullable=False, default="platform"),
     Column("published_at", DateTime(timezone=True), nullable=False, index=True),
-)
-
-data_sources = Table(
-    "data_sources",
-    db.metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("name", String, nullable=False, unique=True),
-    Column("provider", String, nullable=False),
-    Column("description", String, nullable=False),
-    Column("homepage_url", String, nullable=False, default=""),
-    # Deep link into the OpenMetadata UI for this source's tables.
-    Column("catalog_url", String, nullable=False, default=""),
-    Column("tags", JSON, nullable=False, default=list),
 )
 
 curated_plots = Table(
@@ -96,44 +94,6 @@ _SEED_NEWS: list[dict[str, Any]] = [
     },
 ]
 
-_SEED_SOURCES: list[dict[str, Any]] = [
-    {
-        "name": "OpenAQ",
-        "provider": "OpenAQ",
-        "description": "Ground-level air quality measurements from stations worldwide.",
-        "homepage_url": "https://openaq.org",
-        "tags": ["air quality", "environmental"],
-    },
-    {
-        "name": "CDC PLACES / Chronic Data",
-        "provider": "CDC",
-        "description": "Model-based estimates of chronic disease measures across the US.",
-        "homepage_url": "https://www.cdc.gov/places",
-        "tags": ["chronic disease", "surveillance"],
-    },
-    {
-        "name": "openFDA",
-        "provider": "US FDA",
-        "description": "Drug adverse events, recalls, and labeling from the FDA's public APIs.",
-        "homepage_url": "https://open.fda.gov",
-        "tags": ["drug safety"],
-    },
-    {
-        "name": "WHO GHO",
-        "provider": "World Health Organization",
-        "description": "Global Health Observatory indicators across member states.",
-        "homepage_url": "https://www.who.int/data/gho",
-        "tags": ["global health", "indicators"],
-    },
-    {
-        "name": "CMS",
-        "provider": "Centers for Medicare & Medicaid Services",
-        "description": "US healthcare utilization and spending open data.",
-        "homepage_url": "https://data.cms.gov",
-        "tags": ["utilization", "spending"],
-    },
-]
-
 
 def seed_if_empty(engine: Engine) -> None:
     """Insert starter rows into any content table that is empty."""
@@ -144,8 +104,6 @@ def seed_if_empty(engine: Engine) -> None:
                 news_items.insert(),
                 [{**item, "published_at": now} for item in _SEED_NEWS],
             )
-        if not connection.execute(select(data_sources.c.id)).first():
-            connection.execute(data_sources.insert(), _SEED_SOURCES)
 
 
 def _rows(request: Request, table: Table, *order_by: Any) -> list[dict[str, Any]]:
@@ -166,8 +124,28 @@ def list_news(request: Request) -> list[dict[str, Any]]:
 
 
 @router.get("/data-sources")
-def list_data_sources(request: Request) -> list[dict[str, Any]]:
-    return _rows(request, data_sources, data_sources.c.name)
+async def list_data_sources() -> list[dict[str, Any]]:
+    """Source-aligned OpenMetadata domains, not a curated table — see the
+    module docstring. Degrades to `[]` on any OpenMetadata trouble, same as
+    `_rows` does for a missing database: a public marketing page must not 503
+    because the catalog is unreachable."""
+    if not settings.openmetadata_jwt:
+        return []
+    client = DomainsClient(settings.openmetadata_url, settings.openmetadata_jwt)
+    try:
+        domains = await client.list_source_aligned()
+    except DomainsError as exc:
+        log.warning("data_sources_unavailable", error=str(exc))
+        return []
+    return [
+        {
+            "id": domain.id,
+            "name": domain.name,
+            "description": domain.description,
+            "catalog_url": domain.catalog_url,
+        }
+        for domain in domains
+    ]
 
 
 @router.get("/plots")

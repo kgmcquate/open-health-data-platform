@@ -49,7 +49,7 @@ log = get_logger(__name__)
 MCP_PATH = "/mcp"
 
 # Everyone reaching this server is tier `free` — the same assumption
-# values/oauth2-proxy-app.yaml records for hub-api, and for the same reason:
+# hub_api.chat records for hub-api's own agent, and for the same reason:
 # ARCHITECTURE.md §5's IdP with a real `tier` claim does not exist yet. The tier
 # is what Cube's `queryRewrite` reads to apply the row ceiling, so it must never
 # come from the caller.

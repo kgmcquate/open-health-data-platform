@@ -13,8 +13,9 @@ What a session carries: `{"user": {"email", "name", "tier"}}`. `tier` comes
 from the `users` table at login time, so a Stripe-driven tier change takes
 effect at next login; that is acceptable until billing ships (M4).
 
-The `/tools` sub-app keeps its own identity path (`hub_api.issues.get_reporter`)
-because its callers are tool clients, not browsers.
+The `/tools` sub-app (`hub_api.issues.get_reporter`) reads the same session
+cookie for its browser callers, and falls back to a shared bearer token for its
+other caller, Open WebUI, which has no session of its own to carry.
 """
 
 from __future__ import annotations
@@ -127,6 +128,14 @@ async def callback(request: Request) -> RedirectResponse:
     if not email:
         # An IdP that will not verify an email is not one we can quota against.
         raise HTTPException(400, "The identity provider did not return an email.")
+    allowed = settings.allowed_emails_list
+    if allowed and email.lower() not in allowed:
+        # The access control oauth2-proxy-app.yaml's `authenticatedEmailsFile`
+        # used to provide, before the hub did its own OIDC. Anthropic spend is
+        # metered per verified email (chat.py), so this is what stands between
+        # that quota and a public sign-up page until billing (M4) exists.
+        log.warning("login_rejected_not_allowlisted", email=email)
+        raise HTTPException(403, "This deployment is not open to new sign-ins yet.")
     tier = "free"
     engine: Engine | None = getattr(request.app.state, "engine", None)
     if engine is not None:

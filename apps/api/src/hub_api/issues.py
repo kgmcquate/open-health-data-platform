@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from typing import Annotated
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ohdp_shared import get_logger, settings
@@ -120,22 +120,23 @@ class Reporter:
 
 
 def get_reporter(
-    x_forwarded_email: Annotated[str | None, Header()] = None,
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
 ) -> Reporter:
     """Resolve the caller to one of two identities, by credential.
 
-    A browser arrives through oauth2-proxy, which has verified a Google session
-    and set `X-Forwarded-Email`; that is the same header `chat.get_user_email`
-    trusts, and for the same reason — the wall put it there and a client cannot.
+    A browser carries the hub's own signed session cookie (hub_api.auth) — the
+    same one `chat.get_user_email` trusts, since `tools_app` is mounted on the
+    same ASGI app and shares its SessionMiddleware scope.
 
     Open WebUI arrives by cluster DNS with no wall in front of it, so it carries
     the shared bearer token instead. That token proves the *caller* is Open
     WebUI. It proves nothing about which human is typing, so those issues are
     attributed anonymously rather than to an identity we would be inventing.
     """
-    if x_forwarded_email:
-        return Reporter(source="web", email=x_forwarded_email)
+    user = request.session.get("user")
+    if user and user.get("email"):
+        return Reporter(source="web", email=str(user["email"]))
 
     token = settings.tools_auth_token
     scheme, _, presented = (authorization or "").partition(" ")

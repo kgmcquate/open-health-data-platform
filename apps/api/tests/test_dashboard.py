@@ -15,12 +15,14 @@ which is why they are asserted rather than eyeballed:
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from hub_api import issues
 from hub_api.main import app
 from ohdp_agent.cube import CubeError
 from ohdp_agent.dashboard import (
@@ -56,6 +58,23 @@ ROWS = [
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture
+def authenticated_client() -> Iterator[TestClient]:
+    """A browser's identity comes from the hub's own signed session cookie
+    (hub_api.auth), not a header — dependency_overrides is the same
+    substitute test_chat_threads.py uses for chat.get_user_email. Tests that
+    don't exercise identity just need a "web" caller past get_reporter.
+    `tools_app` is its own FastAPI instance (mounted, not included), so the
+    override belongs on it, not on `app`."""
+    issues.tools_app.dependency_overrides[issues.get_reporter] = lambda: issues.Reporter(
+        source="web", email="a@b.test"
+    )
+    try:
+        yield TestClient(app)
+    finally:
+        issues.tools_app.dependency_overrides.clear()
 
 
 def _spec() -> DashboardSpec:
@@ -579,7 +598,7 @@ def test_the_spec_advertises_html_for_the_embed(client: TestClient) -> None:
 
 
 def test_a_successful_render_returns_an_embeddable_response(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    authenticated_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The contract with Open WebUI, asserted rather than eyeballed.
 
@@ -594,8 +613,8 @@ def test_a_successful_render_returns_an_embeddable_response(
 
     monkeypatch.setattr("ohdp_agent.cube.CubeClient.run_metric_query", fake_query)
 
-    response = client.post(
-        "/tools/render_dashboard", json=SPEC, headers={"X-Forwarded-Email": "a@b.test"}
+    response = authenticated_client.post(
+        "/tools/render_dashboard", json=SPEC
     )
 
     assert response.status_code == 200
@@ -605,7 +624,7 @@ def test_a_successful_render_returns_an_embeddable_response(
 
 
 def test_a_rejected_query_returns_cubes_own_reason(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    authenticated_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Cube names the wrong member; the model can fix its own spec from that."""
 
@@ -614,15 +633,15 @@ def test_a_rejected_query_returns_cubes_own_reason(
 
     monkeypatch.setattr("ohdp_agent.cube.CubeClient.run_metric_query", fail)
 
-    response = client.post(
-        "/tools/render_dashboard", json=SPEC, headers={"X-Forwarded-Email": "a@b.test"}
+    response = authenticated_client.post(
+        "/tools/render_dashboard", json=SPEC
     )
     assert response.status_code == 400
     assert "ed_visits.nope" in response.json()["detail"]
 
 
 def test_an_unplottable_spec_returns_an_error_not_an_embed(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    authenticated_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A spec/column mismatch must fail the tool call, not render a 200 embed.
 
@@ -646,8 +665,8 @@ def test_an_unplottable_spec_returns_an_error_not_an_embed(
 
     monkeypatch.setattr("ohdp_agent.cube.CubeClient.run_metric_query", fake_query)
 
-    response = client.post(
-        "/tools/render_dashboard", json=bad_spec, headers={"X-Forwarded-Email": "a@b.test"}
+    response = authenticated_client.post(
+        "/tools/render_dashboard", json=bad_spec
     )
     assert response.status_code == 422
     assert "ed_visits.avg_percent" in response.json()["detail"]

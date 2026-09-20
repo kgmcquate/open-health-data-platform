@@ -17,13 +17,10 @@ export interface NewsItem {
 }
 
 export interface DataSource {
-  id: number;
+  id: string;
   name: string;
-  provider: string;
   description: string;
-  homepage_url: string;
   catalog_url: string;
-  tags: string[];
 }
 
 export interface CuratedPlot {

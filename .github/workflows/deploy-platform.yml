@@ -51,11 +51,7 @@ on:
         type: boolean
         default: false
       deploy_hub_api:
-        description: "Chart: hub-api"
-        type: boolean
-        default: false
-      deploy_oauth2_proxy_app:
-        description: "Chart: oauth2-proxy (hub app wall)"
+        description: "Chart: hub-api (does its own OIDC sign-in, no oauth2-proxy wall)"
         type: boolean
         default: false
       deploy_mcp_cube:
@@ -140,11 +136,11 @@ jobs:
           CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
           OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
           DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          # The hub app's wall reuses the same Google client, which must list
-          # https://app.open-health-data-platform.org/oauth2/callback among its
+          # hub-api's own OIDC client (hub_api.auth) reuses the same Google
+          # client, which must list
+          # https://app.open-health-data-platform.org/auth/callback among its
           # authorized redirect URIs.
           APP_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           APP_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
@@ -219,10 +215,14 @@ jobs:
           # OHDP_GITHUB_TOKEN/OHDP_TOOLS_AUTH_TOKEN back /tools/report_issue.
           # Same intended degradation as the Anthropic key: unset, that one
           # endpoint answers 503 and nothing else changes.
+          # OHDP_OIDC_CLIENT_ID/_SECRET back hub-api's own sign-in
+          # (hub_api.auth) — without them /auth/login answers 503 rather than
+          # half-working.
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
-            --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET" \
+            --from-literal=OHDP_OIDC_CLIENT_ID="$APP_OIDC_CLIENT_ID" \
+            --from-literal=OHDP_OIDC_CLIENT_SECRET="$APP_OIDC_CLIENT_SECRET" \
             --from-literal=OHDP_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
             --from-literal=OHDP_GITHUB_TOKEN="$HUB_GITHUB_ISSUES_TOKEN" \
             --from-literal=OHDP_TOOLS_AUTH_TOKEN="$TOOLS_AUTH_TOKEN"
@@ -261,12 +261,6 @@ jobs:
             "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")
           kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$patch"
 
-          # Second release: the hub app's wall. Same trick again.
-          patch=$(printf '{"data":{"client-id":"%s","client-secret":"%s"}}' \
-            "$(printf %s "$APP_OIDC_CLIENT_ID" | base64 -w0)" \
-            "$(printf %s "$APP_OIDC_CLIENT_SECRET" | base64 -w0)")
-          kubectl -n app patch secret oauth2-proxy-app-secret --type merge -p "$patch"
-
       - name: OpenSearch
         if: inputs.deploy_all || inputs.deploy_opensearch
         run: make -C platform/helm opensearch
@@ -298,10 +292,6 @@ jobs:
       - name: hub-api
         if: inputs.deploy_all || inputs.deploy_hub_api
         run: make -C platform/helm hub-api TAG="$TAG"
-
-      - name: oauth2-proxy (Google login wall — hub app)
-        if: inputs.deploy_all || inputs.deploy_oauth2_proxy_app
-        run: make -C platform/helm oauth2-proxy-app
 
       # mcp-cube before open-webui: the tool-server connection is registered by
       # hand in Open WebUI's admin UI, so the Service should already exist.

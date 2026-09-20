@@ -95,9 +95,18 @@ def test_chatbot_files_anonymously(client: TestClient, github: FakeGitHub) -> No
 def test_web_user_is_attributed_to_the_verified_email(
     client: TestClient, github: FakeGitHub
 ) -> None:
-    response = client.post(
-        "/tools/report_issue", json=REPORT, headers={"X-Forwarded-Email": "a@example.org"}
+    # A browser's identity comes from the hub's own signed session cookie
+    # (hub_api.auth), not a header — dependency_overrides is the same
+    # substitute test_chat_threads.py uses for chat.get_user_email.
+    # `tools_app` is its own FastAPI instance (mounted, not included), so the
+    # override belongs on it, not on `app`.
+    issues.tools_app.dependency_overrides[issues.get_reporter] = lambda: issues.Reporter(
+        source="web", email="a@example.org"
     )
+    try:
+        response = client.post("/tools/report_issue", json=REPORT)
+    finally:
+        issues.tools_app.dependency_overrides.clear()
     assert response.status_code == 200
 
     (created,) = github.created

@@ -7,19 +7,12 @@ Order of operations matters and is the whole point of this module:
 The quota check happens *before* the agent is constructed, so a user over their
 limit costs us an index scan rather than an Opus call (§6, ARCHITECTURE.md §10.3).
 
-**Identity comes from the auth wall, never from the request body.** As deployed
-today, `app.open-health-data-platform.org` sits behind an oauth2-proxy Google
-wall (the same pattern as Dagster), which sets `X-Forwarded-Email`
-on every request it passes. hub-api's own Ingress is disabled, so the proxy is
-the only route in from outside the cluster.
-
-That makes the header trustworthy from the internet and *not* trustworthy from
-inside the cluster — any pod could call the Service directly and set it itself.
-That is the same posture Dagster and dagster-monitoring already run under, and
-it is acceptable while every pod in the cluster is ours. It stops being
-acceptable the moment ARCHITECTURE.md §5's real OIDC provider arrives and `tier`
-starts driving billing: at that point the session must be verified here, and
-`tier` must come from a signed claim rather than from `TIER`, below.
+**Identity comes from the hub's own signed session cookie, never from the
+request body.** `app.open-health-data-platform.org` reaches hub-api's Ingress
+directly — there is no oauth2-proxy wall in front of it any more (hub_api.auth
+does its own OIDC, ARCHITECTURE.md §5, gated by `settings.allowed_emails_list`
+until billing (M4) can meter strangers). `tier` still comes from `TIER`, below,
+rather than a signed claim, because the IdP does not issue one yet.
 """
 
 from __future__ import annotations
@@ -30,7 +23,7 @@ import binascii
 from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.engine import Engine
@@ -127,21 +120,11 @@ def models(agents: Annotated[AgentRegistry, Depends(get_agents)]) -> list[dict[s
     ]
 
 
-def get_user_email(
-    request: Request,
-    x_forwarded_email: Annotated[str | None, Header()] = None,
-) -> str:
-    """Identity from the hub's own OIDC session (hub_api.auth).
-
-    The `X-Forwarded-Email` fallback keeps the legacy oauth2-proxy deployment
-    working during the cutover; it is removed once the hub's built-in sign-in
-    is the only way in (the header is spoofable by any in-cluster caller).
-    """
+def get_user_email(request: Request) -> str:
+    """Identity from the hub's own OIDC session (hub_api.auth)."""
     user = request.session.get("user")
     if user and user.get("email"):
         return str(user["email"])
-    if x_forwarded_email:
-        return x_forwarded_email
     raise HTTPException(401, "Not signed in.")
 
 

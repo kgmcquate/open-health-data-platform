@@ -165,9 +165,10 @@ extraEnvVars:
   # The gate. `sso.enableSignup` below lets any Google account create an
   # account here — `pending` means that account can sign in and see nothing
   # until an admin promotes it. Open WebUI has no email allowlist of the kind
-  # values/oauth2-proxy-app.yaml uses, so this is the equivalent control, and
-  # it is the one thing standing between a public hostname and a metered
-  # Anthropic key. The first account created becomes the admin.
+  # `OHDP_ALLOWED_EMAILS` gives hub-api (charts/hub-api/values.yaml), so this is
+  # the equivalent control, and it is the one thing standing between a public
+  # hostname and a metered Anthropic key. The first account created becomes
+  # the admin.
   - name: DEFAULT_USER_ROLE
     value: "user"
   - name: BYPASS_MODEL_ACCESS_CONTROL

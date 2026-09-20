@@ -21,15 +21,7 @@ export default function DataSources() {
           <div key={source.id} className="card bg-base-200 shadow-sm hover:shadow-md transition-shadow">
             <div className="card-body">
               <h2 className="card-title">{source.name}</h2>
-              <p className="text-sm opacity-60">{source.provider}</p>
               <p className="opacity-80">{source.description}</p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {source.tags.map((tag) => (
-                  <span key={tag} className="badge badge-outline badge-sm">
-                    {tag}
-                  </span>
-                ))}
-              </div>
               <div className="card-actions justify-end mt-2">
                 {source.catalog_url && (
                   <a
@@ -39,16 +31,6 @@ export default function DataSources() {
                     className="btn btn-sm btn-secondary"
                   >
                     Open in catalog ↗
-                  </a>
-                )}
-                {source.homepage_url && (
-                  <a
-                    href={source.homepage_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-sm btn-ghost"
-                  >
-                    Source site ↗
                   </a>
                 )}
               </div>

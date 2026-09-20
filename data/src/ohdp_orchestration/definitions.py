@@ -25,6 +25,7 @@ from ohdp_orchestration import defs as _defs_module
 from ohdp_orchestration.assets.cube_metrics_sync import openmetadata_cube_metrics_sync
 from ohdp_orchestration.assets.lakehouse_dbt import DBT_RESOURCE, lakehouse_dbt_assets
 from ohdp_orchestration.assets.openmetadata_dagster_sync import openmetadata_dagster_sync
+from ohdp_orchestration.assets.openmetadata_seed_sync import openmetadata_seed_sync
 from ohdp_orchestration.assets.openmetadata_sync import (
     openmetadata_dbt_sync,
     openmetadata_snowflake_sync,
@@ -43,6 +44,7 @@ from ohdp_orchestration.jobs.healthdata_gov import (
 from ohdp_orchestration.jobs.openmetadata_sync import (
     openmetadata_dagster_sync_job,
     openmetadata_dbt_sync_job,
+    openmetadata_seed_sync_job,
     openmetadata_snowflake_sync_job,
 )
 from ohdp_orchestration.schedules.cdc import (
@@ -61,6 +63,7 @@ from ohdp_orchestration.schedules.healthdata_gov import (
 from ohdp_orchestration.schedules.openmetadata_sync import (
     openmetadata_dagster_sync_schedule,
     openmetadata_dbt_sync_schedule,
+    openmetadata_seed_sync_schedule,
     openmetadata_snowflake_sync_schedule,
 )
 from ohdp_orchestration.sensors.lakehouse_dbt import lakehouse_dbt_automation_sensor
@@ -80,6 +83,7 @@ defs = Definitions.merge(
             openmetadata_cube_metrics_sync,
             openmetadata_dagster_sync,
             openmetadata_dbt_sync,
+            openmetadata_seed_sync,
             openmetadata_snowflake_sync,
             lakehouse_dbt_assets,
         ],
@@ -94,6 +98,7 @@ defs = Definitions.merge(
             openmetadata_cube_metrics_sync_job,
             openmetadata_dagster_sync_job,
             openmetadata_dbt_sync_job,
+            openmetadata_seed_sync_job,
             openmetadata_snowflake_sync_job,
         ],
         schedules=[
@@ -106,6 +111,7 @@ defs = Definitions.merge(
             openmetadata_cube_metrics_sync_schedule,
             openmetadata_dagster_sync_schedule,
             openmetadata_dbt_sync_schedule,
+            openmetadata_seed_sync_schedule,
             openmetadata_snowflake_sync_schedule,
         ],
         sensors=[lakehouse_dbt_automation_sensor],

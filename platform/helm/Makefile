@@ -31,7 +31,7 @@ CUBESTORE_VERSION       ?= v1.7.39
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \
-        hub-api oauth2-proxy-app cube cubestore \
+        hub-api cube cubestore \
         mcp-cube open-webui
 
 help: ## List targets
@@ -133,14 +133,10 @@ oauth2-proxy: ## Install the Google login wall in front of the authz proxy + dag
 	$(HELM) upgrade --install oauth2-proxy oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
 		-n data --create-namespace -f $(VALUES)/oauth2-proxy.yaml --wait --timeout 5m
 
-hub-api: ## Install the FastAPI backend + chat UI (TAG defaults to the current commit's sha-<12>)
+hub-api: ## Install the FastAPI backend + chat UI (TAG defaults to the current commit's sha-<12>); owns its own OIDC sign-in and Ingress, no oauth2-proxy wall in front
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
 	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
 		-n app --create-namespace --set image.tag=$(TAG) --wait
-
-oauth2-proxy-app: ## Install the Google login wall in front of the hub app (chat UI + /api)
-	$(HELM) upgrade --install oauth2-proxy-app oauth2-proxy/oauth2-proxy --version $(OAUTH2_PROXY_VERSION) \
-		-n app --create-namespace -f $(VALUES)/oauth2-proxy-app.yaml --wait --timeout 5m
 
 # --------------------------------------------------------------------------
 # Open WebUI — the chat UI (ADR-0017), and the Cube MCP server it calls.
