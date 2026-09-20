@@ -106,6 +106,14 @@ class Settings(BaseSettings):
     cube_api_secret: str = ""
     openmetadata_url: str = "http://localhost:8585"
     openmetadata_jwt: str = ""
+    # Curated literature ingestion (ohdp_ingestion.literature). Not a secret —
+    # OpenAlex's "polite pool" just wants a contact address on every request for
+    # a materially higher rate limit. Empty falls back to the shared anonymous
+    # pool rather than failing. Deliberately not hard-coded here even though
+    # it's non-sensitive: every other environment-specific value in this file
+    # is env-sourced too, and this repo is public (ARCHITECTURE.md's own
+    # framing) — set OHDP_OPENALEX_CONTACT_EMAIL in the deploy's own .env.
+    openalex_contact_email: str = ""
     # GraphQL endpoint OpenMetadata's Dagster connector reads pipeline/run
     # metadata from. In-cluster this is graphql-authz-proxy, not the raw
     # dagster-webserver Service (ARCHITECTURE.md §5) — a pod-to-pod caller with
@@ -125,9 +133,8 @@ class Settings(BaseSettings):
     chat_persona: str = ""
 
     # Additional OpenAI-spec model backends (docs/chatbot.md §4a), alongside
-    # the built-in Claude model above. Same shape as Open WebUI's
-    # OPENAI_API_BASE_URLS/OPENAI_API_KEYS: semicolon-separated, index-aligned
-    # lists, one entry per backend — OpenRouter, self-hosted vLLM/Ollama, Azure
+    # the built-in Claude model above. Semicolon-separated, index-aligned lists,
+    # one entry per backend — OpenRouter, self-hosted vLLM/Ollama, Azure
     # OpenAI, anything that answers `GET {base_url}/models` and speaks
     # chat-completions. hub-api lists each backend's models at startup and
     # merges them into one picker (hub_api.models); a key can be blank for a
@@ -222,7 +229,7 @@ settings: Settings = _load()
 @lru_cache
 def env_file_values() -> dict[str, str]:
     """The repo-root `.env`, as a raw name -> value dict — every name exactly
-    as written there (`OHDP_*` and bare names like `OPENROUTER_API_KEY` alike),
+    as written there (`OHDP_*` and bare names like `CUBE_API_SECRET` alike),
     not just the `OHDP_*` subset `Settings` itself exposes as typed fields.
 
     For config files that are not `.env` and were never going to get their own

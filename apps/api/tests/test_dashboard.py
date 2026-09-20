@@ -3,7 +3,7 @@
 Two things here are load-bearing and neither is visible in a rendered picture,
 which is why they are asserted rather than eyeballed:
 
-  - **The embed headers.** Open WebUI shows a tool result as an iframe only when
+  - **The embed headers.** The Hub UI shows a tool result as an iframe only when
     the response carries `Content-Type: text/html` *and*
     `Content-Disposition: inline`. Lose either and the dashboard silently
     becomes a wall of markup in the transcript.
@@ -168,7 +168,12 @@ def test_a_nested_literal_data_block_is_rejected_too() -> None:
                     "layer": [
                         {
                             "mark": "line",
-                            "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+                            "encoding": {
+                                "y": {
+                                    "field": "ed_visits.avg_percent",
+                                    "type": "quantitative",
+                                }
+                            },
                             "data": {"values": [{"ed_visits.avg_percent": 7}]},
                         }
                     ]
@@ -540,10 +545,10 @@ def test_the_tooltip_follows_the_charts_theme() -> None:
 def test_an_unplottable_spec_raises_rather_than_rendering_silently() -> None:
     """`render_html` must not swallow the error into a 200 embed.
 
-    Open WebUI hands the model a fixed "active and visible" string for any
-    embed, success or not, so a caught-and-printed error here would be
-    invisible to the model — see `test_an_unplottable_spec_returns_an_error`
-    for the route-level contract this protects.
+    The Hub UI treats any rendered result as visible to the model, so a
+    caught-and-printed error here would be invisible — see
+    `test_an_unplottable_spec_returns_an_error` for the route-level contract
+    this protects.
     """
     spec = DashboardSpec.model_validate(
         {
@@ -591,7 +596,7 @@ def test_render_requires_a_credential(client: TestClient) -> None:
 
 
 def test_the_spec_advertises_html_for_the_embed(client: TestClient) -> None:
-    """Open WebUI needs `text/html` on the response to treat it as an embed."""
+    """The Hub UI needs `text/html` on the response to treat it as an embed."""
     spec = client.get("/tools/openapi.json").json()
     content = spec["paths"]["/render_dashboard"]["post"]["responses"]["200"]["content"]
     assert "text/html" in content
@@ -600,12 +605,12 @@ def test_the_spec_advertises_html_for_the_embed(client: TestClient) -> None:
 def test_a_successful_render_returns_an_embeddable_response(
     authenticated_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The contract with Open WebUI, asserted rather than eyeballed.
+    """The embed contract, asserted rather than eyeballed.
 
-    `process_tool_result` only turns an external tool's result into an iframe
-    when both headers are right. Lose either and the dashboard degrades into
-    several kilobytes of markup pasted into the conversation — which renders as
-    text, so nothing raises and nothing fails.
+    The chat surface only turns an external tool's result into an iframe when
+    both headers are right. Lose either and the dashboard degrades into several
+    kilobytes of markup pasted into the conversation — which renders as text, so
+    nothing raises and nothing fails.
     """
 
     async def fake_query(self: object, query: object) -> dict[str, Any]:
@@ -645,9 +650,9 @@ def test_an_unplottable_spec_returns_an_error_not_an_embed(
 ) -> None:
     """A spec/column mismatch must fail the tool call, not render a 200 embed.
 
-    Open WebUI gives the model a fixed "active and visible" string for *any*
-    embed — so a 200 here, even with an in-page error paragraph, would look
-    like success to the model and it would never retry with a fixed spec.
+    The Hub UI treats any rendered result as visible to the model — so a 200
+    here, even with an in-page error paragraph, would look like success to the
+    model and it would never retry with a fixed spec.
     """
     bad_spec = {
         **SPEC,
@@ -673,19 +678,17 @@ def test_an_unplottable_spec_returns_an_error_not_an_embed(
     assert response.headers.get("content-disposition") != "inline"
 
 
-# --- the handoff to Open WebUI's frontend ----------------------------------
+# --- the handoff to the Hub UI frontend ------------------------------------
 #
-# The embed does not travel to the browser as an HTTP body. Open WebUI puts it
-# on a `function_call_output` item, `structuredOutput.ts` JSON-stringifies it
-# into a token attribute, and `ToolCallDisplay.svelte` /
-# `ConsecutiveDetailsGroup.svelte` then run `parseJSONString(decode(attr))` —
-# an HTML-entity decode *before* the JSON parse. These two tests replay that
-# round trip, because everything it can break, it breaks silently: their
-# `parseJSONString` returns the raw string rather than raising, and the
-# `Array.isArray(...)` guard drops the embed with no error on any surface.
+# The embed does not travel to the browser as a plain HTTP body. The Hub UI
+# JSON-stringifies it into a token attribute and runs an HTML-entity decode
+# *before* the JSON parse. These two tests replay that round trip, because
+# anything that can break, breaks silently: if decoding turns escaped quotes
+# back into bare quotes inside the JSON string, the parse fails and the embed
+# is dropped without an error.
 
 
-def _through_open_webui(document: str) -> Any:
+def _through_frontend(document: str) -> Any:
     """What the frontend ends up with, given `document` as the embed."""
     import html as html_module
 
@@ -694,7 +697,7 @@ def _through_open_webui(document: str) -> Any:
     try:
         return json.loads(decoded)  # parseJSONString()
     except json.JSONDecodeError:
-        return decoded  # their catch: the raw string, not an array
+        return decoded  # fallback: the raw string, not an array
 
 
 def test_the_embed_survives_decode_before_parse() -> None:
@@ -708,7 +711,7 @@ def test_the_embed_survives_decode_before_parse() -> None:
     document = render_html(spec, ChartData(rows=ROWS, row_count=2))
 
     assert "&quot;" not in document
-    survived = _through_open_webui(document)
+    survived = _through_frontend(document)
     assert isinstance(survived, list), "the embed was dropped before it reached the iframe"
     assert survived[0] == document
 
@@ -725,7 +728,7 @@ def test_markup_in_a_title_cannot_survive_the_decode_as_markup() -> None:
     )
     document = render_html(spec, ChartData(rows=ROWS, row_count=2))
 
-    delivered = _through_open_webui(document)
+    delivered = _through_frontend(document)
     assert isinstance(delivered, list)
     assert "<script>alert(1)</script>" not in delivered[0]
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in delivered[0]

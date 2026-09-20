@@ -94,13 +94,14 @@ app.include_router(chat_router)
 app.include_router(content_router)
 
 # Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
-# its own routes. That narrow spec is what Open WebUI is pointed at, and it is
-# the reason the chat model cannot see `/api/chat` as a callable tool
+# its own routes. That narrow spec is what the hub chat's configured tool
+# connection (`ohdp-tools` in apps/api/config/tools.yaml) is pointed at, and it
+# is the reason the chat model cannot see `/api/chat` as a callable tool
 # (hub_api.issues). The hub's own page calls the same route, reading the same
 # session cookie (mounted apps share the parent's SessionMiddleware scope), so
-# there is one implementation behind both surfaces.
+# there is one implementation behind both callers.
 # The dashboard tools join the same sub-app rather than getting one of their
-# own, because Open WebUI reads one spec per registered tool server and every
+# own, because the tool connection reads one spec per registered server and every
 # operation in it becomes a tool. Keeping them together means one URL, one
 # bearer token and one place to check what the chat model can actually call.
 tools_app.include_router(dashboards_router)

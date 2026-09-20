@@ -2,11 +2,9 @@
 
 **Status:** M3.0-M3.2 and a first M3.4 are built and deployable. §3.3's personas
 and §3.5's CI-tested FQN round-trip are not. §5's charts and §8's ticket flow
-now are — both on the Open WebUI surface rather than the one this document was
-written for. See §9 for what each step's state actually is. That second surface —
-Open WebUI over an MCP server for Cube — runs alongside this one
-([ADR-0017](decisions/0017-open-webui-chat-ui.md), model backend since
-[ADR-0023](decisions/0023-openrouter-glm-model-backend.md)); see §11.
+are implemented on the Hub UI chat surface (`apps/web`). The earlier Open WebUI
+surface and its `mcp-cube`/`ohdp_mcp` support have been removed; this document
+has been updated to describe the remaining architecture.
 
 **Audience:** the implementing agent. Read [ARCHITECTURE.md](ARCHITECTURE.md) §1, §5, §6 and
 [ADR-0016](decisions/0016-chat-agent-tool-surface.md) first.
@@ -87,11 +85,11 @@ Cube's official MCP server is **Cube Cloud Premium/Enterprise only**. Cube Core 
 server, so we author this layer ourselves (ADR-0016). That is a net positive: the tool surface
 *is* the safety control, and it should be ours.
 
-These four tools have **two transports**. In this loop they are Anthropic tool
-definitions called in-process. For any MCP client — Open WebUI today — the same
-four are served over MCP streamable HTTP by `ohdp_mcp` (§11, ADR-0017), which
-delegates to the same `CubeClient` and validates the same `CubeQuery`. The safety
-property is in the model, not the transport, so it holds either way.
+These four tools are Anthropic tool definitions called in-process by the hub
+chat. The same `CubeClient` and `CubeQuery` validation also back the
+`ohdp-tools` OpenAPI connection used for dashboard rendering and issue reporting
+(§5, §8). The safety property is in the model, not the transport, so it holds
+either way.
 
 | Tool | Backed by | Notes |
 |---|---|---|
@@ -214,11 +212,13 @@ deliberately not built: the data is public and identical for every user (§1.1),
 nothing to scope. Persona is selected by hub-api and passed explicitly.
 
 **§4a. Additional model backends.** Claude is the default, but the chat page's model picker
-(`GET /api/models`) can also offer any OpenAI-spec chat-completions backend configured in
-`OHDP_OPENAI_API_BASE_URLS`/`OHDP_OPENAI_API_KEYS` — OpenRouter, self-hosted vLLM/Ollama, Azure
-OpenAI, anything that answers `GET {base_url}/models`. Same env-var shape as Open WebUI's own
-`OPENAI_API_BASE_URLS`/`OPENAI_API_KEYS` (§11), for the same reason: the model list an operator
-gets is exactly what their key can see, discovered at startup, never hand-maintained.
+(`GET /api/models`) can also offer any OpenAI-spec chat-completions backend configured via
+the `openrouter-secrets` Secret — mounted into hub-api as `OHDP_OPENAI_API_BASE_URLS`
+and `OHDP_OPENAI_API_KEYS` — OpenRouter, self-hosted vLLM/Ollama, Azure OpenAI,
+anything that answers `GET {base_url}/models`. In local dev the same two variables can be
+set in `.env`; the semicolon-separated, index-aligned shape supports one key per backend.
+The model list an operator gets is exactly what their key can see, discovered at startup,
+never hand-maintained.
 
 `ohdp_agent.loop.build_agent` picks pydantic-ai's `AnthropicModel` or `OpenAIChatModel` from
 whether a `base_url` is given, and either way gets the identical tool loop — same
@@ -231,7 +231,7 @@ first text before its first tool call rather than a distinct reasoning phase.
 `models.yaml`; `hub_api.tool_connections`, `hub_api.models`) let an operator go beyond bulk
 auto-discovery without a deploy. `tools.yaml` declares named MCP or OpenAPI connections — an
 OpenAPI one is fetched once at startup and wrapped as an in-process MCP server via
-`FastMCP.from_openapi` (fastmcp is already a dependency, `ohdp_mcp` is built on it), so both
+`FastMCP.from_openapi` (fastmcp is already a dependency), so both
 connection types end up as the same `pydantic_ai.mcp.MCPToolset`. `models.yaml` assigns those
 connections to specific models by id, and can give a model its own label, its own backend (for one
 not worth bulk-discovering), or its own system prompt.
@@ -248,16 +248,16 @@ both the SSE stream and `turn.tool_calls` (the eval log, §7).
 
 ## 5. Visualizations
 
-**Built** ([ADR-0025](decisions/0025-dashboards-as-code-in-chat.md)), on both chat
-surfaces. A dashboard is a spec, not a picture: a name, a title, and up to six panels, each
-one a validated `CubeQuery` plus a `vega` Vega-Lite spec that says how its rows
-are drawn. `render_dashboard` on hub-api's `/tools` app runs the queries, binds
-the rows, and answers with the rendered HTML under `Content-Type: text/html` and
-`Content-Disposition: inline` — Open WebUI's own signal to display a tool result
+**Built** ([ADR-0025](decisions/0025-dashboards-as-code-in-chat.md)). A dashboard is
+a spec, not a picture: a name, a title, and up to six panels, each one a
+validated `CubeQuery` plus a `vega` Vega-Lite spec that says how its rows are
+drawn. `render_dashboard` on hub-api's `/tools` app runs the queries, binds the
+rows, and answers with the rendered HTML under `Content-Type: text/html` and
+`Content-Disposition: inline` — the signal that the result should be displayed
 as an interactive iframe rather than as markup in the transcript.
 
-The Hub chat reaches the same endpoint a different way: as the `ohdp-tools`
-MCP connection (`config/tools.yaml`), wrapped via `FastMCP.from_openapi`
+The hub chat reaches the endpoint through the `ohdp-tools` OpenAPI connection
+(`config/tools.yaml`), wrapped via `FastMCP.from_openapi`
 (`hub_api.tool_connections`). That wrapper strips the HTTP response down to
 plain MCP content, so the embed headers never survive the trip — what does
 survive is the HTML text itself. `ohdp_agent.loop._handle_stream` sniffs a
@@ -266,8 +266,7 @@ none of this loop's other tools — all JSON, SQL, or prose — ever produce) an
 tags it `format: "html"` on the `tool_result` SSE event; the Hub chat's own
 frontend (`apps/web/src/pages/Chat.tsx`) then renders that as a sandboxed
 `<iframe srcDoc=...>` instead of the plain text/JSON it shows for every other
-tool result. Two independent embed paths for the one HTML document, because
-the two surfaces have no shared tool-result transport to embed it through.
+tool result.
 
 The model authors the Vega-Lite — `mark`, `encoding`, `transform`, `params` —
 but never the data. A `Panel` has nowhere to put a number and a `data` key in
@@ -333,28 +332,28 @@ broken page — either chat surface can file a GitHub issue. This is what closes
 the researcher's unanswerable question becomes the backlog.
 
 It is **one REST endpoint**, `POST /tools/report_issue` in `hub_api/issues.py`, not a second
-MCP tool. The hub's own page calls it directly; Open WebUI calls the same route because it is
-pointed at the narrow OpenAPI spec that module mounts. One implementation, one set of
-guardrails, two callers.
+MCP tool. The hub's own page calls it directly; the configured `ohdp-tools` connection calls
+the same route because it is pointed at the narrow OpenAPI spec that module mounts. One
+implementation, one set of guardrails, two callers.
 
 Two things are worth knowing before changing it:
 
 **The spec is deliberately narrow.** `/tools` is a *mounted sub-app*, so its `/openapi.json`
 lists only what is deliberately put there — `report_issue` plus ADR-0025's three dashboard
-operations, and nothing else. Open WebUI turns every operation in the spec it reads into a
-callable tool, so pointing it at hub-api's root spec would hand the chat model `POST
-/api/chat`, a chat endpoint able to invoke itself. There is no per-operation allowlist on the
-Open WebUI side, so that narrowing *is* the access control. `test_issues.py` asserts the
+operations, and nothing else. The configured tool connection turns every operation in the spec
+it reads into a callable tool, so pointing it at hub-api's root spec would hand the chat model
+`POST /api/chat`, a chat endpoint able to invoke itself. There is no per-operation allowlist on
+the connection side, so that narrowing *is* the access control. `test_issues.py` asserts the
 exact set, not a subset: adding a route to the mounted app hands the chat model a tool, and
 that should be a decision rather than a side effect.
 
 **There are two identities, and only one of them is a person.** A browser carries the hub's own
-signed session cookie (`hub_api.auth`) and its issues are attributed to that email. Open
-WebUI arrives by cluster DNS carrying a shared bearer token, which proves the caller is Open
-WebUI and nothing about who is typing — so those issues are filed anonymously rather than
-against an identity we would be inventing. The cost is that the rate limit puts every chatbot
-report in one bucket: a global ceiling on how fast chat can fill the tracker, at the price
-that one abuser locks out the rest for the hour.
+signed session cookie (`hub_api.auth`) and its issues are attributed to that email. The
+configured tool connection arrives by cluster DNS carrying a shared bearer token, which proves
+the caller is the chat surface and nothing about who is typing — so those issues are filed
+anonymously rather than against an identity we would be inventing. The cost is that the rate
+limit puts every chatbot report in one bucket: a global ceiling on how fast chat can fill the
+tracker, at the price that one abuser locks out the rest for the hour.
 
 This is the first **write** tool in the platform; everything else a chat user can reach is
 read-only. Hence: every issue labelled `user-reported` plus its source, so the tracker can be
@@ -385,7 +384,7 @@ Each step should be demoable and independently reviewable.
 | **M3.1** | **Done.** `ohdp_agent`: Cube tools over REST, OM MCP client, Europe PMC tools. Unit-tested with no model in the loop. |
 | **M3.2** | **Done, with two deviations** recorded at the top of `ohdp_agent/loop.py`: a manual loop rather than the SDK tool runner, and one phase rather than two (no user gate between plan and execute). SSE, quota gate and Postgres logging are in. |
 | **M3.3** | **Partly done.** Glossary/domain seed content (`data/src/ohdp_orchestration/seed/`) syncs via the `openmetadata_seed_sync` Dagster asset. Personas and Context Center articles are still **not done** — until those land, `get_persona_context` 404s and the agent uses its built-in system prompt. |
-| **M3.4** | **Partly done.** A chat UI exists — one static page served by hub-api, not hub-web (see `hub_api/main.py` for why); there, results still render as a table plus the compiled SQL. Charts landed on the *Open WebUI* surface instead (§5, ADR-0025) — hub-api's own page does not call `render_dashboard`. |
+| **M3.4** | **Partly done.** A chat UI exists — `apps/web`/`Chat.tsx`; hub-api serves the chat endpoint. Charts render through `render_dashboard` on hub-api's `/tools` app and are embedded in the transcript as sandboxed iframes (§5, ADR-0025). |
 | **M3.5** | **Not done.** Every turn is logged to `chat_turns` in the shape §7 wants, so the eval set is accumulating; there is no harness and no seed question set. |
 | **M4** | News retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces, and dashboards-as-code landed with it (§5). |
 
@@ -417,183 +416,12 @@ M3.0 and M3.1 carry the real risk and involve no model at all. Do them first.
 4. **Persona selection.** Explicit picker, or inferred from the question? Explicit is honest
    and testable; inferred is nicer. Start explicit.
 
+
 ---
 
-## 11. Open WebUI — the second chat surface (ADR-0017)
+## 11. Historical note: the Open WebUI surface
 
-Everything above describes `hub-api`'s own UI at `app.open-health-data-platform.org`.
-A second surface now runs at `chat.open-health-data-platform.org`: **Open WebUI**,
-deployed from its official Helm chart, calling the semantic layer through
-**`mcp-cube`** — our FastMCP server over the §2.2 tool layer.
-
-```
-chat.ohdp.org -> Traefik -> open-webui (Google SSO, its own)
-                              |-> mcp-cube (ClusterIP) -> cube -> Snowflake
-                              \-> openrouter.ai/api/v1  (GLM 5.3 Flash, ADR-0023)
-
-app.ohdp.org  -> Traefik -> hub-api (own OIDC sign-in)    (§1-§10, unchanged)
-```
-
-### 11.1 What Open WebUI does and does not get
-
-It gets a real chat product for none of our code, and the full §2.2 Cube tool
-surface with its safety properties intact — `CubeQuery` is validated in
-`ohdp_mcp`, on our side of the wire. It is also the only surface that draws
-charts: §5's dashboards render there and not on hub-api's own page.
-
-It does **not** get: the quota gate (§6), the `chat_turns` log that is also the
-eval set (§7), the Europe PMC tools and their citation check (§2.3), or
-OpenMetadata context (§3). The two surfaces also no longer run the same model:
-since [ADR-0023](decisions/0023-openrouter-glm-model-backend.md) this one is
-GLM 5.3 Flash over OpenRouter, while hub-api's loop is Claude Opus 5 over the
-Anthropic SDK with extended thinking (§4). **Those are the reasons hub-api is
-still deployed**, and why
-"which surface should exist in six months" is a question for evidence rather than
-this document.
-
-### 11.2 Post-install steps that are not in the chart
-
-The MCP tool server registration and the restriction to a single model are now
-seeded declaratively from `values/open-webui.yaml` (`TOOL_SERVER_CONNECTIONS`
-and `OPENAI_API_CONFIGS`/`DEFAULT_MODELS`) rather than clicked through the
-UI — but both are Open WebUI `PersistentConfig` values: the env var only
-writes the initial row into Open WebUI's own database on first boot. After
-that, whatever an admin sets in Settings is what persists across restarts,
-chart upgrades included. If mcp-cube isn't showing four tools, or a model other
-than `z-ai/glm-5.3-flash` is reachable, check Settings first before assuming the
-chart value isn't applying — and note that the second of those matters more
-under OpenRouter than it did under Anthropic, since one key there reaches
-several hundred models at every price point (ADR-0023) — it may simply have already been overridden there. See
-`charts/mcp-cube/templates/NOTES.txt` for the tool count.
-
-One step remains manual, because Open WebUI has no env var for it at all:
-
-- **Set the model's system prompt** (Settings → Admin → Models) to carry
-  ARCHITECTURE.md §10.2's disclaimer — population-level, not clinical decision
-  support. hub-api attaches this in code, where a model cannot forget it; here it
-  is configuration, which is weaker. The MCP server also ships it in its
-  `instructions`, so a client that honours those sees it regardless.
-
-### 11.3 Access control
-
-Open WebUI's own Google OAuth, not an oauth2-proxy wall — ADR-0017 explains why
-this one surface departs from ADR-0007's pattern. Password sign-in is off; OAuth
-sign-up is on; every new account lands in `DEFAULT_USER_ROLE=pending` and sees
-nothing until an admin promotes it. **That pending role is the whole access
-policy**, standing in for the email allowlist the other three walls use, and it is
-what separates a public hostname from a metered OpenRouter key. There is no
-quota gate behind it.
-
-### 11.4 Token usage limits (ADR-0022)
-
-The gap §11.3 calls out — no quota gate on this surface — is what
-[`openwebui-token-tracking`](https://dartmouth.github.io/openwebui-token-tracking/)
-closes: per-user/group daily credit allowances, enforced by routing the model
-through a tracked "pipe" Function instead of the direct OpenAI-compatible
-passthrough. The package is baked into the image
-(`apps/open-webui/Dockerfile`, ADR-0022) and the database is migrated
-automatically on every deploy (`platform/helm/manifests/open-webui-token-tracking-init-job.yaml`).
-What's left is manual, because Open WebUI has no declarative path for custom
-Function code or per-model visibility — the same limitation §11.2 already
-lives with for MCP tool-server registration:
-
-- **Register the Function** (Settings → Admin → Functions → New). Paste:
-
-  ```python
-  """
-  title: OpenRouter Pipe
-  author: (you)
-  requirements: openwebui-token-tracking
-  version: 0.1.0
-  """
-
-  from openwebui_token_tracking.pipes.openai import OpenAITrackedPipe
-
-  Pipe = OpenAITrackedPipe
-  ```
-
-  `OpenAITrackedPipe`, not `AnthropicTrackedPipe` — since ADR-0023 the backend
-  is OpenRouter, which is OpenAI-compatible, and this pipe exists for exactly
-  that case (its docstring: "providers that are fully compliant with OpenAI's
-  API specification... can also be used with this pipe by setting the respective
-  values in the Valves").
-
-  Name the Function `OpenRouter`. That name becomes the Function id
-  (`openrouter`), which Open WebUI prefixes onto every model the pipe lists,
-  and the pipe strips `{PROVIDER}.` back off before pricing the request — so
-  three things must agree or the pipe shows an empty model list and nothing
-  works: the Function name, the `PROVIDER` Valve, and `--provider` in the init
-  Job's `pricing upsert`. All three are `openrouter`.
-
-  Then set its Valves:
-
-  | Valve | Value | Default from env? |
-  |---|---|---|
-  | `API_KEY` | the OpenRouter key | yes — `OPENAI_API_KEY`, already in the pod |
-  | `API_BASE_URL` | `https://openrouter.ai/api/v1` | **no** — type it in |
-  | `PROVIDER` | `openrouter` | **no** — type it in |
-
-  `API_KEY` defaults from the pod's own `OPENAI_API_KEY` env var, which the
-  chart renders from `openaiApiKeyExistingSecret` (`values/open-webui.yaml`) —
-  confirm it picked that up rather than retyping it. The other two default to
-  OpenAI's own endpoint and provider name, and the package reads no env var for
-  either, so they are hand-entered. Leaving `API_BASE_URL` at its default sends
-  chat traffic to `api.openai.com` with an OpenRouter key and fails 401.
-
-- **Hide the untracked model.** Once the Function is enabled it registers a
-  new selectable model (`openrouter.z-ai/glm-5.3-flash`, pulled from the
-  pricing table the init Job seeds). The plain `z-ai/glm-5.3-flash` OpenAI-API
-  model is still directly selectable and bypasses tracking entirely — set its
-  visibility to Private/admin-only in Settings → Admin → Models so regular
-  users can only reach the model through the tracked pipe.
-
-- **Re-point the `health-data-analyst` custom model.** It's currently built
-  on top of the untracked `z-ai/glm-5.3-flash` base model
-  (`models/health-data-analyst-*.json`) — re-import it with its base model
-  changed to the tracked pipe's model, or it's a second bypass.
-
-- **Credit groups**, via `kubectl exec` into the running Open WebUI pod
-  (`kubectl -n app exec -it deploy/open-webui -- sh`):
-
-  ```sh
-  owui-token-tracking credit-group create "power users" 2000 "extra daily allowance"
-  owui-token-tracking user find --email someone@example.com
-  owui-token-tracking credit-group add-user <user-id> "power users"
-  ```
-
-  Every user already gets the base allowance seeded by the init Job
-  (`token_tracking_base_settings`, 1000 credits/day = $1 at the package's
-  1000-credits-per-USD convention — which buys far more conversation against
-  GLM 5.3 Flash at $0.075/$0.25 per MTok than it did against Sonnet at $3/$15,
-  so revisit the number rather than assuming it still bites) — credit groups
-  are additive on top of
-  that, not a replacement for it.
-
-This only covers Open WebUI's surface. hub-api's own quota gate (§6) is
-separate and unaffected.
-
-### 11.5 Dashboards (ADR-0025)
-
-Nothing in the chart changes for this: `TOOL_SERVER_CONNECTIONS` already points
-at hub-api's `/tools` spec, and the three dashboard operations appear there as
-soon as hub-api is redeployed. Two manual steps do apply, both for the same
-reason as §11.2 — Open WebUI has no declarative path for either:
-
-- **Re-import the `health-data-analyst` model** (`models/health-data-analyst-*.json`).
-  Its system prompt is what routes charts to `render_dashboard`; the copy in
-  Open WebUI's database is authoritative, so an unimported change has no effect
-  and the model keeps writing matplotlib into a void.
-- **Leave `IFRAME_CSP` unset.** The embed loads Vega from `cdn.jsdelivr.net`,
-  which the CSP in Open WebUI's hardening guide blocks outright. Tighten it by
-  allowlisting that origin in `script-src`, never by pasting the example.
-
-One upstream behaviour is worth knowing before editing the renderer: Open WebUI
-entity-**decodes** the JSON string carrying an embed before parsing it, so an
-`&quot;` anywhere in the document silently destroys the whole embed and a single
-level of escaping is silently undone. ADR-0025's consequences explain what
-`_esc` does about it; `test_dashboard.py` pins it.
-
-The per-user **iframe Sandbox Allow Same Origin** setting stays off. The
-dashboard reports its own height by `postMessage` rather than relying on the
-parent measuring it, which is the whole reason it works under the default
-sandbox.
+A second chat surface using Open WebUI and a dedicated `mcp-cube` MCP server was
+deployed during M3 but has since been removed. The Hub UI (`apps/web`) and
+`hub-api` remain the only chat surface. See the superseded
+[ADR-0017](decisions/0017-open-webui-chat-ui.md) for the original rationale.

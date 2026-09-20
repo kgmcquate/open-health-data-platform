@@ -22,12 +22,12 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0014](0014-snowflake-only-compilation.md) | Snowflake-only: drop the local/CI DuckDB targets | Superseded by [0019](0019-iceberg-on-s3-duckdb-dbt.md) |
 | [0015](0015-streamlit-over-superset.md) | Streamlit over Superset for dashboards | Superseded — Streamlit removed; dashboards-as-code in chat per [0025](0025-dashboards-as-code-in-chat.md) |
 | [0016](0016-chat-agent-tool-surface.md) | Chat agent tool surface: own Cube tools, OpenMetadata MCP for context | Accepted; tool split amended by [0025](0025-dashboards-as-code-in-chat.md) |
-| [0017](0017-open-webui-chat-ui.md) | Open WebUI as a chat UI, with our own Cube MCP server | Accepted; model backend superseded by [0023](0023-openrouter-glm-model-backend.md) |
+| [0017](0017-open-webui-chat-ui.md) | Open WebUI as a chat UI, with our own Cube MCP server | Superseded / removed — Hub UI is the single chat surface |
 | [0018](0018-socrata-ingestion-shared-across-domains.md) | One Socrata ingestion core, bound per domain (CDC) | Accepted |
 | [0019](0019-iceberg-on-s3-duckdb-dbt.md) | Snowflake as the Iceberg catalog; DuckDB builds, Snowflake serves | Accepted |
 | [0020](0020-pipeline-creates-its-own-namespaces.md) | dbt and dlt create the catalog namespaces, not Terraform | Superseded by [0021](0021-terraform-creates-the-namespaces-again.md) |
 | [0021](0021-terraform-creates-the-namespaces-again.md) | Terraform creates the catalog namespaces again | Accepted |
-| [0022](0022-token-usage-limits.md) | Per-user/group token usage limits on Open WebUI | Accepted; pipe class amended by [0023](0023-openrouter-glm-model-backend.md) |
-| [0023](0023-openrouter-glm-model-backend.md) | OpenRouter + GLM 5.3 Flash as Open WebUI's model backend | Accepted |
+| [0022](0022-token-usage-limits.md) | Per-user/group token usage limits on Open WebUI | Superseded — Open WebUI removed; hub-api quota gate remains |
+| [0023](0023-openrouter-glm-model-backend.md) | OpenRouter + GLM 5.3 Flash as Open WebUI's model backend | Superseded — Open WebUI removed |
 | [0024](0024-cube-store-pre-aggregations.md) | Cube Store and pre-aggregations | Accepted |
 | [0025](0025-dashboards-as-code-in-chat.md) | Dashboards as code, rendered in the chat turn | Accepted |

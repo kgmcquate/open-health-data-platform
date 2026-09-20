@@ -1,13 +1,11 @@
 # 0022 — Per-user/group token usage limits on Open WebUI
 
-**Status:** Accepted. **Amended by
-[ADR-0023](0023-openrouter-glm-model-backend.md)**: the tracked pipe is now
-`OpenAITrackedPipe` against OpenRouter rather than `AnthropicTrackedPipe`, and
-the init Job prices `z-ai/glm-5.3-flash`. The mechanism below — credit
-accounting in Open WebUI's Postgres, enforced by a pipe Function, seeded by an
-idempotent Job — is unchanged.
-**Extends:** [ADR-0017](0017-open-webui-chat-ui.md) — same deployment, closes
-the one gap its Consequences section named but didn't solve: "Cost control is
+**Status:** **Superseded / removed.** This mechanism was tied to the Open WebUI
+surface, which has been deleted. hub-api's per-tier quota gate remains the only
+chat spending control. This document is retained for historical context.
+
+**Extends (historically):** [ADR-0017](0017-open-webui-chat-ui.md) — same
+deployment, closed the gap its Consequences section named: "Cost control is
 weaker on the new surface... the `pending` default role and the Anthropic
 console's own spend limit are the controls until that changes."
 
@@ -97,5 +95,4 @@ limitation ADR-0017 already accepted for MCP tool-server registration.
   pricing changes — a drift risk the same way the base image tag and chart
   version already require manual bumps in step.
 
-See [docs/chatbot.md](../chatbot.md) §11.4 for the deployment and post-install
-steps.
+See [docs/chatbot.md](../chatbot.md) §11 for a historical summary.

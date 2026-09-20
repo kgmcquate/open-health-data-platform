@@ -39,8 +39,6 @@ jobs:
             dockerfile: data/Dockerfile
           - name: ohdp-cube
             dockerfile: semantic/cube/Dockerfile
-          - name: ohdp-open-webui
-            dockerfile: apps/open-webui/Dockerfile
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
     steps:

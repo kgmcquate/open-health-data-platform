@@ -22,7 +22,7 @@
 #
 #   type: openapi — any REST API with an OpenAPI spec. Wrapped as an
 #   in-process MCP server via FastMCP.from_openapi (fastmcp is already a
-#   dependency here — ohdp_mcp is built on it) — no separate server to run.
+#   dependency here) — no separate server to run.
 #     - id: petstore
 #       type: openapi
 #       spec_url: https://petstore.example.com/openapi.json
@@ -35,15 +35,3 @@ connections:
     type: openapi
     spec_url: "http://hub-api.app.svc.cluster.local:8000/tools/openapi.json"
     base_url: "http://hub-api.app.svc.cluster.local:8000"
-
-  - id: mcp-cube
-    type: mcp
-    url: "http://mcp-cube.app.svc.cluster.local:8000/mcp"
-    headers:
-      Authorization: "Bearer ${MCP_CUBE_TOKEN}"
-
-  - id: mcp-openmetadata
-    type: mcp
-    url: "http://openmetadata.meta.svc.cluster.local:8585/mcp"
-    headers:
-      Authorization: "Bearer ${OM_MCP_TOKEN}"

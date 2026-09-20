@@ -10,7 +10,7 @@ every cube reads a mart, `queryRewrite` as the safety control) is unchanged.
 ADR-0003 shipped Cube with `CUBEJS_CACHE_AND_QUEUE_DRIVER: memory` and every
 query going straight to Snowflake, deliberately deferring Cube Store: "add
 later only if query latency demands it." That latency has now shown up on
-the chatbot/MCP path specifically (`mcp-cube` → Cube's MCP endpoint) — the
+the chatbot path specifically — the chat agent builds ad hoc queries per tool
 chat agent builds ad hoc queries per tool call, each one a cold hit against
 Snowflake (warehouse spin-up plus network round trip), unlike Streamlit's
 mostly-repeated dashboard queries.

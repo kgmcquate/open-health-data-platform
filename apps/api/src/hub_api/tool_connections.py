@@ -5,8 +5,7 @@ model keeps regardless of what is configured here.
 
 An MCP connection is a URL pydantic-ai's own `MCPToolset` already knows how to
 speak to. An OpenAPI connection has no such client built in, but FastMCP does
-(`FastMCP.from_openapi` — already a dependency here, `ohdp_mcp` is built on
-it): fetch the spec once at startup, turn it into an in-process MCP server,
+(`FastMCP.from_openapi` — already a dependency here): fetch the spec once at
 and hand that server to the same `MCPToolset` — no second toolset
 implementation needed for the two connection types this file supports.
 """

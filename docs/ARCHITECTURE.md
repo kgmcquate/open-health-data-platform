@@ -161,8 +161,6 @@ flowchart TB
         subgraph nsapp["namespace: app"]
             A1["hub-web"]
             A2["hub-api"]
-            A4["open-webui"]
-            A5["mcp-cube"]
         end
 
         subgraph nsdata["namespace: data"]
@@ -191,9 +189,6 @@ flowchart TB
     CF --> ING
     ING --> A1
     ING --> A2
-    ING --> A4
-    A4 --> A5
-    A5 --> D6
     D6 --> D7
     ING --> D4
     ING --> D6
@@ -204,14 +199,10 @@ flowchart TB
     vm -.->|metrics, logs| GC
 ```
 
-> `open-webui` (A4) is the second chat surface (ADR-0017), at `chat.` — reached
-> through ingress with **no oauth2-proxy in front**, because it has a user model
-> of its own and gates sign-in with its own Google OAuth. `mcp-cube` (A5) serves
-> Cube's tool surface to it over MCP and is ClusterIP-only. `hub-api` (A2) and
-> its own chat UI stay at `app.`, reached through ingress directly — it does its
-> own OIDC sign-in (`hub_api.auth`) rather than sitting behind an oauth2-proxy
-> wall, gated by `settings.allowed_emails_list` until billing (M4) can meter
-> strangers.
+> `hub-api` (A2) serves its own chat UI at `app.`, reached through ingress directly
+> — it does its own OIDC sign-in (`hub_api.auth`) rather than sitting behind an
+> oauth2-proxy wall, gated by `settings.allowed_emails_list` until billing (M4)
+> can meter strangers.
 >
 > `cube` (D6) is reached directly through ingress, not behind oauth2-proxy —
 > unlike Dagster, its authn/authz is Cube's own JWT security
@@ -223,7 +214,7 @@ flowchart TB
 >
 > **DNS / edge, as built.** One DigitalOcean load balancer fronts everything
 > (Traefik `Service type: LoadBalancer`); Ingresses route by hostname. Public
-> hosts are `app`, `chat`, `dagster`, `catalog`, `cube` under
+> hosts are `app`, `dagster`, `catalog`, `cube` under
 > `open-health-data-platform.org`. `open-health-data-platform.org` is a Cloudflare zone; the records
 > are managed by Terraform (`platform/terraform/dns.tf`, `cloudflare` provider)
 > but are **DNS-only** — Cloudflare is not in the request path, so TLS is Let's
@@ -246,8 +237,6 @@ Steady state ~15 GB, burst ~16.5 GB during a build.
 | cube | 0.5 GB | Queries Snowflake directly only on a pre-aggregation miss (ADR-0024) |
 | cubestore | 0.25 GB | Standalone, single replica; 20Gi `do-block-storage` PVC for pre-aggregation Parquet + metastore (ADR-0024) |
 | hub-web + hub-api | 0.5 GB | |
-| open-webui | 1 GB | Chat UI (ADR-0017). Ollama, Pipelines, Tika and the bundled Redis subcharts are all off — with them it is ~2.5 GB |
-| mcp-cube | 0.25 GB | Cube's tool surface over MCP; the hub-api image with a different command |
 | ingress, cert-manager, oauth2-proxy, graphql-proxy | 0.5 GB | graphql-proxy alone idles at ~105 MiB for 2 gunicorn workers and buffers whole upstream responses; 192Mi OOMKilled it in a crash loop |
 | k3s system | 1 GB | |
 | pipeline pod | 1.5 GB | Burst only, concurrency capped at 1. **Compute is this pod now** (DuckDB, ADR-0019) — raise it if a dbt build starts spilling |
@@ -278,9 +267,8 @@ Tokens carry a `tier` claim (`free` | `paid`).
 | Surface | Authn | Authz |
 |---|---|---|
 | Hub app | OIDC session | Entitlement checks in hub-api against `tier` |
-| Open WebUI | Its own Google OAuth — no oauth2-proxy wall (ADR-0017) | New accounts default to `pending` and see nothing until an admin promotes them; no quota gate |
-| mcp-cube | Static bearer token, ClusterIP-only | `CubeQuery` validation and Cube's `queryRewrite` — the same controls the in-process agent gets |
 | OpenMetadata | Native OIDC | Default viewer role for all authenticated users |
+| Dagster | oauth2-proxy gates the hostname | GraphQL allowlist proxy enforces read-only |
 | Dagster | oauth2-proxy gates the hostname | GraphQL allowlist proxy enforces read-only |
 | dagster-monitoring | oauth2-proxy gates the hostname (same wall as Dagster, path-routed) | Reads Dagster GraphQL through graphql-authz-proxy, not the raw webserver |
 
@@ -358,7 +346,7 @@ health-data-platform/
 ├── apps/
 │   ├── web/                    # Next.js hub: landing, chat UI, links out to tools
 │   ├── api/                    # FastAPI: chat orchestration, entitlements, Stripe webhooks
-│   │                           #   src/hub_api, src/ohdp_agent, src/ohdp_mcp (the Cube MCP server, ADR-0017)
+│   │                           #   src/hub_api, src/ohdp_agent
 │
 ├── data/
 │   ├── src/                    # src layout — dir names are import names (ADR-0004)

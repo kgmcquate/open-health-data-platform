@@ -58,9 +58,7 @@ variable "dns_hostnames" {
   type        = list(string)
   # "catalog" is OpenMetadata, not the Iceberg catalog — that is Snowflake
   # (ADR-0019), reached at its own hostname; nothing of ours is served for it.
-  # "chat" is Open WebUI (ADR-0017), a second chat surface alongside "app"
-  # (hub-api's own UI); "app" is not being retired by it.
-  default = ["app", "chat", "dagster", "catalog", "cube"]
+  default = ["app", "dagster", "catalog", "cube"]
 }
 
 variable "loadbalancer_ip" {

@@ -14,8 +14,9 @@ from the `users` table at login time, so a Stripe-driven tier change takes
 effect at next login; that is acceptable until billing ships (M4).
 
 The `/tools` sub-app (`hub_api.issues.get_reporter`) reads the same session
-cookie for its browser callers, and falls back to a shared bearer token for its
-other caller, Open WebUI, which has no session of its own to carry.
+cookie for its browser callers, and falls back to a shared bearer token for
+the configured `ohdp-tools` MCP/OpenAPI connection, which has no session of its
+own to carry.
 """
 
 from __future__ import annotations

@@ -1,13 +1,12 @@
 """Render a dashboard into the chat turn itself (ADR-0025).
 
-Open WebUI renders a tool result as an interactive iframe when the tool server
-answers with `Content-Type: text/html` **and** `Content-Disposition: inline` —
-its Rich UI embed path, in core since 0.6.31 and reached by external OpenAPI
-tool servers as well as by its own Python ones. That is why these operations
-live here, on hub-api's `/tools` app, and not in `ohdp_mcp` alongside the other
-Cube tools: MCP results are JSON-RPC content with no HTTP response headers, so
-an MCP tool has no way to ask for an embed. The transport is the reason for the
-placement, and it is the same split ADR-0016 already made for `report_issue`.
+The hub chat renders a tool result as an interactive iframe when the tool
+answers with `Content-Type: text/html` **and** `Content-Disposition: inline`.
+That is why these operations live here, on hub-api's `/tools` app: the
+`ohdp-tools` connection wraps this OpenAPI spec as an in-process MCP server
+(`hub_api.tool_connections`), and that wrapper strips HTTP response headers,
+so the only signal left on the agent side that the result is a page to render
+is the HTML body itself. An MCP tool has no way to ask for an embed.
 
 The model writes its Vega-Lite, but never the data. It sends a
 `DashboardSpec` — a title, one Cube query, and a `vega` spec — and this
@@ -22,18 +21,17 @@ Two consequences worth stating plainly:
   - **The output is deterministic.** The same spec renders the same page, so a
     dashboard is reviewable as code rather than as a screenshot.
 
-One limitation to know before extending this. Open WebUI's `process_tool_result`
-only accepts the "(embed, context-for-the-model)" pair from tools it runs
-in-process; for an external server the HTTP body is the embed, and the model
-gets a fixed "Embedded UI result is active and visible to the user" string.
-So the model cannot read the rows back out of a render, and the prompt tells it
-to run `run_metric_query` first when it intends to say anything *about* the
-data. Rendering twice is cheap — every cube is pre-aggregated (ADR-0024).
+One limitation to know before extending this. The `ohdp-tools` wrapper strips
+response headers, so the model only gets the HTTP body back and cannot see
+status codes or error detail in the rendered page. So the model cannot read the
+rows back out of a render, and the prompt tells it to run `run_metric_query`
+first when it intends to say anything *about* the data. Rendering twice is
+cheap — every cube is pre-aggregated (ADR-0024).
 
 The same limitation means a rendered-but-broken chart cannot be reported inside
-a 200 embed either: the fixed "active and visible" string would tell the model
-the render succeeded even when `render_html` could not bind the spec to the
-query's columns. `_embed` turns that case into an HTTPException instead (see
+a 200 embed either: the agent would see a 200 HTML body and think the render
+succeeded even when `render_html` could not bind the spec to the query's
+columns. `_embed` turns that case into an HTTPException instead (see
 `_run_query`, which already does this for a Cube-rejected query), so the model
 gets the real reason back and can retry with a corrected spec.
 """
@@ -53,13 +51,13 @@ from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
 
-# Everyone reaching either chat surface is tier `free` (ARCHITECTURE.md §5), and
-# tier is what Cube's `queryRewrite` reads to apply its row ceiling — so it is
-# set here and never taken from the caller. Same reasoning as `ohdp_mcp.server`.
+# Everyone reaching the chat is tier `free` (ARCHITECTURE.md §5), and tier is
+# what Cube's `queryRewrite` reads to apply its row ceiling — so it is set here
+# and never taken from the caller.
 TIER = "free"
 
-# Rendering an embed means holding the chart's rows in memory and handing Open
-# WebUI a single response.
+# Rendering an embed means holding the chart's rows in memory and returning a
+# single HTML response.
 _QUERY_TIMEOUT_SECONDS = 90.0
 
 # The header pair that turns a tool result into an iframe instead of a wall of
@@ -106,11 +104,10 @@ def _embed(spec: DashboardSpec, data: ChartData) -> HTMLResponse:
     """Render the embed, or fail the render with the reason.
 
     `render_html` raises `ValueError` when the `vega` spec names a column the
-    query did not return. That must not become a 200 embed: the embed body is
-    all Open WebUI hands the model back for an external tool (a fixed
-    "active and visible" string stands in for it), so a spec/column mismatch
-    would otherwise look like success to the model and it would never retry
-    with a corrected spec. Raising instead puts the same reason `_run_query`
+    query did not return. That must not become a 200 embed: the `ohdp-tools`
+    wrapper only passes the HTML body back to the agent, so a spec/column
+    mismatch would otherwise look like success to the model and it would never
+    retry with a corrected spec. Raising instead puts the same reason `_run_query`
     already surfaces for a rejected Cube query onto this path too.
     """
     try:
@@ -129,11 +126,11 @@ def _embed(spec: DashboardSpec, data: ChartData) -> HTMLResponse:
 )
 async def render_dashboard_tool(
     spec: DashboardSpec,
-    # The identity check on hub-api's /tools app: an oauth2-proxy header from a
-    # browser, or Open WebUI's shared bearer. The caller's identity is not used
-    # here — rendering is read-only and the data is public — but an
-    # unauthenticated route on this mount would be a Cube query anyone in the
-    # cluster could run.
+    # The identity check on hub-api's /tools app: a browser's session cookie, or
+    # the shared bearer token from the configured `ohdp-tools` connection. The
+    # caller's identity is not used here — rendering is read-only and the data is
+    # public — but an unauthenticated route on this mount would be a Cube query
+    # anyone in the cluster could run.
     _caller: Annotated[Reporter, Depends(get_reporter)],
 ) -> HTMLResponse:
     """Draw a chart of semantic-layer data directly in this chat.

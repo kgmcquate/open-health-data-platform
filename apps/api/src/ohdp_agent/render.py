@@ -1,14 +1,8 @@
 """How a `CubeInfo` is described to a model.
 
-Shared by the two callers that put Cube's metadata in front of an LLM — the
-in-process tool-use loop (`ohdp_agent.loop`) and the MCP server
-(`ohdp_mcp.server`). It lives here rather than in either of them because the
-two must agree: ADR-0016 makes the OM-Metric ↔ Cube-measure mapping
-load-bearing, and a member name rendered one way in the chat agent and another
-way over MCP is exactly the kind of drift that fails quietly.
-
-Members are always fully qualified — `cube_name.field_name` — because that is
-the only form `models.CubeQuery` accepts.
+Used by the in-process tool-use loop (`ohdp_agent.loop`) to put Cube's metadata
+in front of an LLM. Members are always fully qualified — `cube_name.field_name`
+— because that is the only form `models.CubeQuery` accepts.
 
 Cube's `/v1/meta` already returns member names qualified (`air_quality.avg_value`,
 not `avg_value`), so `_qualify` prefixes only when the name is bare. Prefixing

@@ -1,9 +1,9 @@
-"""File a GitHub issue on a user's behalf, from either chat surface.
+"""File a GitHub issue on a user's behalf, from the hub chat.
 
-Both the hub's own chat page and Open WebUI reach the *same* endpoint here: the
-hub page calls it as a normal REST route, and Open WebUI is pointed at the
-narrow OpenAPI spec this module mounts, so its model sees exactly one tool.
-That is the whole reason this lives in hub-api rather than in `ohdp_mcp` — one
+The hub's own chat page reaches this endpoint as a normal REST route, and the
+configured `ohdp-tools` connection is pointed at the narrow OpenAPI spec this
+module mounts, so its model sees exactly one tool. That is the whole reason
+this lives in hub-api rather than in a separate MCP server — one
 implementation, one set of guardrails, two callers.
 
 **This is the first write tool in the platform.** Everything else a chat user
@@ -129,10 +129,11 @@ def get_reporter(
     same one `chat.get_user_email` trusts, since `tools_app` is mounted on the
     same ASGI app and shares its SessionMiddleware scope.
 
-    Open WebUI arrives by cluster DNS with no wall in front of it, so it carries
-    the shared bearer token instead. That token proves the *caller* is Open
-    WebUI. It proves nothing about which human is typing, so those issues are
-    attributed anonymously rather than to an identity we would be inventing.
+    The configured tool connection arrives by cluster DNS with no wall in
+    front of it, so it carries a shared bearer token instead. That token proves
+    the *caller* is the chat surface. It proves nothing about which human is
+    typing, so those issues are attributed anonymously rather than to an
+    identity we would be inventing.
     """
     user = request.session.get("user")
     if user and user.get("email"):
@@ -268,21 +269,21 @@ async def report_issue(body: IssueRequest, reporter: Reporter) -> IssueResponse:
     return IssueResponse(number=created["number"], url=created["html_url"], duplicate=False)
 
 
-# --- the surface Open WebUI sees ------------------------------------------
+# --- the surface the chat sees --------------------------------------------
 #
 # A separate FastAPI app, mounted at /tools, purely so that its `/openapi.json`
-# describes this one operation. Open WebUI turns *every* operation in the spec
-# it is given into a callable tool, so pointing it at hub-api's root spec would
-# hand the model `POST /api/chat` — a chat endpoint able to invoke itself — plus
-# `/api/me`. Narrowing the spec is the access control here; there is no
-# per-operation allowlist on the Open WebUI side.
+# describes this one operation. The configured tool connection turns *every*
+# operation in the spec it is given into a callable tool, so pointing it at
+# hub-api's root spec would hand the model `POST /api/chat` — a chat endpoint
+# able to invoke itself — plus `/api/me`. Narrowing the spec is the access
+# control here; there is no per-operation allowlist on the tool-connection side.
 
 tools_app = FastAPI(
     title="Open Health Data Platform — assistant tools",
     version="1.0.0",
     description="Actions the assistant can take on a user's behalf.",
-    # The interactive docs are Open WebUI's business, not a human's; the spec is
-    # the contract and it is served regardless.
+    # The interactive docs are for the configured tool connection, not a human;
+    # the spec is the contract and it is served regardless.
     docs_url=None,
     redoc_url=None,
 )

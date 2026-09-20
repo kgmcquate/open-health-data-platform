@@ -16,5 +16,4 @@ known-first-party = [
     "ohdp_ml",
     "hub_api",
     "ohdp_agent",
-    "ohdp_mcp",
 ]

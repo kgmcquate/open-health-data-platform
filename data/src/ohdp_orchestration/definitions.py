@@ -24,6 +24,7 @@ from dagster.components import load_defs
 from ohdp_orchestration import defs as _defs_module
 from ohdp_orchestration.assets.cube_metrics_sync import openmetadata_cube_metrics_sync
 from ohdp_orchestration.assets.lakehouse_dbt import DBT_RESOURCE, lakehouse_dbt_assets
+from ohdp_orchestration.assets.literature_sync import literature_sync
 from ohdp_orchestration.assets.openmetadata_dagster_sync import openmetadata_dagster_sync
 from ohdp_orchestration.assets.openmetadata_seed_sync import openmetadata_seed_sync
 from ohdp_orchestration.assets.openmetadata_sync import (
@@ -41,6 +42,7 @@ from ohdp_orchestration.jobs.healthdata_gov import (
     healthdata_gov_monthly_ingest_job,
     healthdata_gov_weekly_ingest_job,
 )
+from ohdp_orchestration.jobs.literature import literature_sync_job
 from ohdp_orchestration.jobs.openmetadata_sync import (
     openmetadata_dagster_sync_job,
     openmetadata_dbt_sync_job,
@@ -60,6 +62,7 @@ from ohdp_orchestration.schedules.healthdata_gov import (
     healthdata_gov_monthly_schedule,
     healthdata_gov_weekly_schedule,
 )
+from ohdp_orchestration.schedules.literature import literature_sync_schedule
 from ohdp_orchestration.schedules.openmetadata_sync import (
     openmetadata_dagster_sync_schedule,
     openmetadata_dbt_sync_schedule,
@@ -80,6 +83,7 @@ defs = Definitions.merge(
     load_defs(_defs_module, project_root=_project_root),
     Definitions(
         assets=[
+            literature_sync,
             openmetadata_cube_metrics_sync,
             openmetadata_dagster_sync,
             openmetadata_dbt_sync,
@@ -95,6 +99,7 @@ defs = Definitions.merge(
             healthdata_gov_daily_ingest_job,
             healthdata_gov_weekly_ingest_job,
             healthdata_gov_monthly_ingest_job,
+            literature_sync_job,
             openmetadata_cube_metrics_sync_job,
             openmetadata_dagster_sync_job,
             openmetadata_dbt_sync_job,
@@ -108,6 +113,7 @@ defs = Definitions.merge(
             healthdata_gov_daily_schedule,
             healthdata_gov_weekly_schedule,
             healthdata_gov_monthly_schedule,
+            literature_sync_schedule,
             openmetadata_cube_metrics_sync_schedule,
             openmetadata_dagster_sync_schedule,
             openmetadata_dbt_sync_schedule,

@@ -1,0 +1,88 @@
+# Domain -> OpenAlex subfield + MeSH mapping for curated literature ingestion,
+# applied by ohdp_orchestration.assets.literature_sync (monthly job).
+#
+# `openalex_subfields` are OpenAlex Topics-taxonomy subfield IDs (verified live
+# against https://api.openalex.org/subfields — not derivable from the SDK, so
+# don't guess new ones without checking that endpoint first). Selection queries
+# each subfield twice: all-time top-cited and top-cited-in-the-last-N-years, per
+# `recent_years` below, so a domain isn't only foundational decades-old papers.
+#
+# `mesh_terms`, when non-empty, cross-checks OpenAlex's subfield-based candidates
+# against Europe PMC's MeSH descriptor names for that work's PMID (PubMed's own,
+# human-indexed vocabulary — a tighter signal than a subfield guess). A work with
+# no PMID, or a domain with no mesh_terms configured, skips the cross-check and
+# keeps the subfield match as-is. Domains without a clean MeSH heading (Education,
+# Financial) are intentionally left without one — expect a thinner, noisier
+# candidate set for those, which `min_citations` and the per-bucket limits below
+# keep in check.
+#
+# This mapping is a reviewed judgment call, not derived — revisit it if a
+# domain's corpus looks off-topic rather than tuning the code around it.
+
+defaults:
+  top_cited_limit: 15
+  recent_limit: 10
+  recent_years: 2
+  min_citations: 50
+
+domains:
+  - domain: Infectious Disease
+    openalex_subfields: [2725, 2713, 2726] # Infectious Diseases, Epidemiology, Microbiology
+    mesh_terms: [Communicable Diseases, Disease Outbreaks]
+
+  - domain: Respiratory
+    openalex_subfields: [2740] # Pulmonary and Respiratory Medicine
+    mesh_terms: [Respiratory Tract Diseases]
+
+  - domain: Immunization
+    openalex_subfields: [2403] # Immunology
+    mesh_terms: [Immunization, Vaccination]
+
+  - domain: Chronic Disease
+    openalex_subfields: [2724, 2712, 2717] # Internal Medicine, Endocrinology/Diabetes/Metabolism, Geriatrics
+    mesh_terms: [Chronic Disease]
+
+  - domain: Behavioral Health
+    openalex_subfields: [2738, 3203] # Psychiatry and Mental health, Clinical Psychology
+    mesh_terms: [Mental Health, Substance-Related Disorders]
+
+  - domain: Child Welfare
+    openalex_subfields: [2735, 3319] # Pediatrics/Perinatology/Child Health, Life-span and Life-course Studies
+    mesh_terms: [Child Welfare, Child Abuse]
+
+  - domain: Environmental Health
+    openalex_subfields: [2307, 2739, 3005] # Health/Toxicology/Mutagenesis, Public Health & Occupational Health, Toxicology
+    mesh_terms: [Environmental Health, Environmental Exposure]
+
+  - domain: Access to Care
+    openalex_subfields: [2739, 2718] # Public Health & Occupational Health, Health Informatics
+    mesh_terms: [Health Services Accessibility]
+
+  - domain: Education
+    openalex_subfields: [3304] # Education
+    mesh_terms: [] # weakest fit of the 10 consumer-aligned domains — small N by design
+    top_cited_limit: 8
+    recent_limit: 5
+
+  - domain: Financial
+    openalex_subfields: [2002, 2003] # Economics and Econometrics, Finance
+    mesh_terms: []
+
+  # Source-aligned placeholder domains (no ingested data yet — seeded ahead of
+  # data, same rationale as seed/domains.yml). Literature is a reasonable thing
+  # to have ready before the underlying datasets land.
+  - domain: CMS
+    openalex_subfields: [2002, 2739] # Economics and Econometrics, Public Health & Occupational Health
+    mesh_terms: [Medicare, Medicaid]
+
+  - domain: WHO
+    openalex_subfields: [2739, 2713] # Public Health & Occupational Health, Epidemiology
+    mesh_terms: [Global Health]
+
+  - domain: openFDA
+    openalex_subfields: [2736, 3005, 3002] # Pharmacology, Toxicology, Drug Discovery
+    mesh_terms: [Drug-Related Side Effects and Adverse Reactions, Product Surveillance, Postmarketing]
+
+  - domain: OpenAQ
+    openalex_subfields: [2307, 1902, 2739] # Health/Toxicology/Mutagenesis, Atmospheric Science, Public Health & Occupational Health
+    mesh_terms: [Air Pollution]

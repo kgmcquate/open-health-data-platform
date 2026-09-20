@@ -1,10 +1,14 @@
 # 0025 — Dashboards as code, rendered in the chat turn
 
-**Status:** Accepted
+**Status:** Accepted. The HTML-embed path described below originally targeted
+Open WebUI; after Open WebUI was removed, the Hub UI (`apps/web`) renders the
+same HTML body as a sandboxed iframe. The spec-and-binding design is unchanged.
+
 **Amends:** [ADR-0016](0016-chat-agent-tool-surface.md)'s tool split — the fourth
-Cube tool group lands on hub-api's OpenAPI `/tools` app rather than in
-`ohdp_mcp`, for a transport reason given below. Implements the M3 half of
-docs/chatbot.md §5 and replaces its "hub-web renders it" assumption.
+Cube tool group lands on hub-api's OpenAPI `/tools` app rather than in a
+dedicated MCP server, because a raw MCP tool result is JSON-RPC content with no
+HTTP response headers and therefore cannot ask for an embed. Implements the M3
+half of docs/chatbot.md §5.
 
 ## Context
 
@@ -37,15 +41,14 @@ tool takes — plus a `Chart` saying which returned column goes on which axis.
 Three operations join hub-api's `/tools` app: `render_dashboard` (an ad hoc
 spec), `list_saved_dashboards`, and `open_saved_dashboard`. The two that draw
 answer with the rendered HTML under `Content-Type: text/html` and
-`Content-Disposition: inline`, which is what makes Open WebUI show a tool result
-as an interactive iframe — its Rich UI embed path, in core since 0.6.31 and
-reachable by external OpenAPI tool servers, not only by its own Python tools.
+`Content-Disposition: inline`, which is the signal the chat UI uses to show a
+tool result as an interactive iframe rather than as markup in the transcript.
 
-**They live on the OpenAPI app rather than in `ohdp_mcp` because MCP cannot do
+**They live on the OpenAPI app rather than in a dedicated MCP server because MCP cannot do
 this.** An MCP tool result is JSON-RPC content with no HTTP response headers, so
 there is no way for an MCP tool to ask for an embed. MCP Apps (SEP-1865) is the
-standard that would change that, and Open WebUI's support for it is an open
-issue, not a shipped feature. This is the same reason `report_issue` is already
+standard that would change that; at the time this was written, Open WebUI's
+support for it was an open issue, not a shipped feature. This is the same reason `report_issue` is already
 an OpenAPI operation, so the split is one the deployment had made before.
 
 The model writes neither HTML nor Vega-Lite — it supplies a `Chart` (a closed
@@ -75,18 +78,17 @@ chat model's output is a fetch issued from inside the reader's browser.
 - **Every rendered card carries its own YAML source.** Keeping a dashboard is a
   copy-and-PR, and the model never has to retype the spec — so what gets
   committed is exactly what was rendered.
-- **The model cannot read back what it drew.** Open WebUI's
-  `(embed, context-for-the-model)` pair is only available to tools it runs
-  in-process; an external server's HTTP body *is* the embed, and the model gets
-  a fixed "result is active and visible to the user" string. So the prompt tells
-  it to run `run_metric_query` first when it intends to say anything about the
-  data. That is two queries per dashboard, which is cheap against ADR-0024's
+- **The model cannot read back what it drew.** The configured tool connection's
+  wrapper strips the HTTP response down to plain MCP content, so the model only
+  gets the HTML body and not the headers. The prompt therefore tells it to run
+  `run_metric_query` first when it intends to say anything about the data. That
+  is two queries per dashboard, which is cheap against ADR-0024's
   pre-aggregations and honest besides — a model should not narrate data it has
   not seen.
-- **`IFRAME_CSP` must stay unset, or be widened deliberately.** The embed loads
-  Vega from `cdn.jsdelivr.net`, and the CSP in Open WebUI's own hardening guide
-  would block it. Tightening it means allowlisting that origin in `script-src`,
-  not pasting the example.
+- **`IFRAME_CSP` must stay unset, or be widened deliberately (historical Open
+  WebUI detail).** The embed loads Vega from `cdn.jsdelivr.net`, and the CSP in
+  Open WebUI's own hardening guide would block it. Tightening it means
+  allowlisting that origin in `script-src`, not pasting the example.
 - **The code interpreter stays enabled but is no longer the graphics path.**
   Arithmetic over a result set is still a reasonable use for it.
 - Streamlit (ADR-0015) is untouched and still queries Snowflake directly. The
@@ -96,24 +98,19 @@ chat model's output is a fetch issued from inside the reader's browser.
   the Streamlit chart, so it is a separate decision rather than a consequence of
   this one.
 - **The embed HTML must contain no `&quot;`, and must escape `&`, `<` and `>`
-  twice.** This is the one genuinely surprising constraint, and it cost a
-  release to find. The embed does not reach the browser as an HTTP body: Open
-  WebUI puts it on a `function_call_output` item, `structuredOutput.ts`
-  JSON-stringifies it into a token attribute, and `ToolCallDisplay.svelte` and
-  `ConsecutiveDetailsGroup.svelte` then evaluate `parseJSONString(decode(attr))`
-  — an HTML-entity decode *before* the JSON parse. A `&quot;` in the document
-  therefore decodes to a bare `"` inside a JSON string literal, `JSON.parse`
-  fails, their `parseJSONString` returns the raw string rather than raising, and
-  the `Array.isArray(...)` guard drops the embed. Nothing logs, nothing errors,
-  and the dashboard simply never appears — while the model is still told its
-  "Embedded UI result is active and visible to the user." The same decode also
-  undoes one level of escaping, so a single escape would hand the frontend live
-  markup built from model-supplied titles and warehouse values. `_esc` therefore
-  leaves quotes raw (valid in text content, and JSON-safe) and escapes the three
-  markup characters twice. `test_dashboard.py` replays the round trip so a
-  regression fails there rather than in front of a user.
-- Open WebUI pins matter more now: the embed contract is upstream behaviour, not
-  an API we control. It is exercised by `test_dashboard.py` only on our side of
-  the wire — the header pair and the HTML — so an upstream change to
-  `process_tool_result` would surface as markup in a transcript rather than as a
-  failing test.
+  twice (historical Open WebUI detail).** Under Open WebUI the embed did not
+  reach the browser as an HTTP body: it was placed on a `function_call_output`
+  item, JSON-stringified into a token attribute, and then evaluated with
+  `parseJSONString(decode(attr))` — an HTML-entity decode *before* the JSON
+  parse. A `&quot;` in the document therefore decoded to a bare `"` inside a JSON
+  string literal, `JSON.parse` failed, the fallback returned the raw string, and
+  the embed was silently dropped. The same decode also undid one level of
+  escaping, so a single escape would hand the frontend live markup built from
+  model-supplied titles and warehouse values. `_esc` therefore leaves quotes raw
+  (valid in text content, and JSON-safe) and escapes the three markup characters
+  twice. `test_dashboard.py` replays the round trip so a regression fails there
+  rather than in front of a user.
+- Open WebUI-specific pin behaviour mattered because the embed contract was
+  upstream behaviour, not an API we controlled. With Open WebUI removed, the Hub
+  UI owns the iframe rendering; the header pair and the HTML are still exercised
+  by `test_dashboard.py` on our side of the wire.

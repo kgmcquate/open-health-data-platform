@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
       image_tag:
-        description: Override the dagster + hub-api + mcp-cube + cube image tag (blank = the sha-<12> of the deployed commit).
+        description: Override the dagster + hub-api + cube image tag (blank = the sha-<12> of the deployed commit).
         type: string
         default: ""
       deploy_all:
@@ -54,14 +54,6 @@ on:
         description: "Chart: hub-api (does its own OIDC sign-in, no oauth2-proxy wall)"
         type: boolean
         default: false
-      deploy_mcp_cube:
-        description: "Chart: Cube MCP server"
-        type: boolean
-        default: false
-      deploy_open_webui:
-        description: "Chart: Open WebUI"
-        type: boolean
-        default: false
 
 concurrency:
   group: deploy-platform
@@ -100,7 +92,7 @@ jobs:
         with:
           kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
 
-      # dagster + hub-api + mcp-cube + cube run this tag. Defaults to the sha-<12> of
+      # dagster + hub-api + cube run this tag. Defaults to the sha-<12> of
       # the checked-out commit — the tag build-images.yml pushed for it. Never
       # `latest`, so `helm rollback` and pod restarts stay pinned to a known build.
       - name: Resolve image tag
@@ -144,44 +136,20 @@ jobs:
           # authorized redirect URIs.
           APP_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           APP_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          # Open WebUI's Google client (ADR-0017). A *separate* repo secret from
-          # the three walls above, not a reuse: this one is Open WebUI's own
-          # OAuth integration rather than an oauth2-proxy wall, its redirect URI
-          # is https://chat.open-health-data-platform.org/oauth/google/callback,
-          # and it is the only credential standing in front of a metered
-          # OpenRouter key. Set OPENWEBUI_OIDC_CLIENT_ID / _SECRET in the repo;
-          # they fall back to Dagster's client, which works only if that client
-          # also lists the chat redirect URI.
-          OPENWEBUI_OIDC_CLIENT_ID: ${{ secrets.OPENWEBUI_OIDC_CLIENT_ID || secrets.DAGSTER_OIDC_CLIENT_ID }}
-          OPENWEBUI_OIDC_CLIENT_SECRET: ${{ secrets.OPENWEBUI_OIDC_CLIENT_SECRET || secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           # hub-api's own agent, still Anthropic direct (docs/chatbot.md §4).
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Open WebUI's model backend since ADR-0023: an OpenRouter key
-          # (sk-or-v1-...), not an Anthropic one. Deliberately a separate repo
-          # secret from ANTHROPIC_API_KEY above — the two surfaces bill
-          # different providers now, and giving the public chat host its own key
-          # means its spend can be capped and rotated at OpenRouter without
-          # touching hub-api. Create at https://openrouter.ai/settings/keys with
-          # a credit limit on it, then:
-          #   gh secret set OPENROUTER_API_KEY
+          # OpenAI-spec backend for the Hub UI model picker (docs/chatbot.md §4a).
+          # Without it the OpenRouter-backed models simply don't appear; the rest
+          # of the app works normally.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # JWT for the dedicated "openwebui-mcp" OpenMetadata Bot (read-only
-          # Data Consumer role) — deliberately not OPENMETADATA_JWT below,
-          # which backs the pipeline's/hub-api's broader-permission bot. Chat
-          # users querying the catalog through Open WebUI's MCP connection
-          # should only ever get read-only access. Created once by hand via
-          # Settings -> Bots in the OM UI (no API for it), then:
-          #   gh secret set OPENWEBUI_OPENMETADATA_MCP_TOKEN
-          OPENWEBUI_OPENMETADATA_MCP_TOKEN: ${{ secrets.OPENWEBUI_OPENMETADATA_MCP_TOKEN }}
           # Fine-grained PAT, issues:write on OHDP_GITHUB_ISSUES_REPO and nothing
           # else. It backs a tool a chat user can trigger (hub_api.issues), so
           # its scope is the blast radius — never a classic PAT, never `repo`.
           # Create at github.com/settings/personal-access-tokens, then:
           #   gh secret set HUB_GITHUB_ISSUES_TOKEN
           HUB_GITHUB_ISSUES_TOKEN: ${{ secrets.HUB_GITHUB_ISSUES_TOKEN }}
-          # Shared bearer between hub-api's /tools app and Open WebUI, which
-          # reaches it by cluster DNS with no wall in between. Any random string;
-          # rotate by re-running this job after `gh secret set`.
+          # Shared bearer for hub-api's /tools app. Rotate by re-running this job
+          # after `gh secret set TOOLS_AUTH_TOKEN`.
           TOOLS_AUTH_TOKEN: ${{ secrets.TOOLS_AUTH_TOKEN }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
         run: |
@@ -218,6 +186,12 @@ jobs:
           # OHDP_OIDC_CLIENT_ID/_SECRET back hub-api's own sign-in
           # (hub_api.auth) — without them /auth/login answers 503 rather than
           # half-working.
+          # OHDP_OPENAI_API_BASE_URLS/_KEYS enable OpenAI-spec backends such as
+          # OpenRouter. They live in their own Secret so the key is rotated
+          # without touching hub-api-secrets.
+          upsert app openrouter-secrets \
+            --from-literal=OHDP_OPENAI_API_BASE_URLS="https://openrouter.ai/api/v1" \
+            --from-literal=OHDP_OPENAI_API_KEYS="$OPENROUTER_API_KEY"
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
@@ -226,23 +200,6 @@ jobs:
             --from-literal=OHDP_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
             --from-literal=OHDP_GITHUB_TOKEN="$HUB_GITHUB_ISSUES_TOKEN" \
             --from-literal=OHDP_TOOLS_AUTH_TOKEN="$TOOLS_AUTH_TOKEN"
-          # Open WebUI's externally-issued half. The Secret entry is named
-          # OPENAI_API_KEY but holds the *OpenRouter* key (ADR-0023): OpenRouter
-          # is OpenAI-compatible at https://openrouter.ai/api/v1, and that name
-          # is what values/open-webui.yaml's openaiApiKeyExistingSecretKey and
-          # the token-tracking pipe's API_KEY Valve both read. The generated
-          # half — DATABASE_URL and WEBUI_SECRET_KEY — is the `openwebui-db`
-          # Secret from platform-base.
-          upsert app openwebui-secrets \
-            --from-literal=OPENAI_API_KEY="$OPENROUTER_API_KEY" \
-            --from-literal=GOOGLE_CLIENT_SECRET="$OPENWEBUI_OIDC_CLIENT_SECRET"
-
-          # Open WebUI's MCP connection to the OpenMetadata catalog
-          # (values/open-webui.yaml). OM_MCP_BOT_TOKEN is the key name that
-          # file's secretKeyRef expects.
-          upsert app openmetadata-mcp-secret \
-            --from-literal=OM_MCP_BOT_TOKEN="$OPENWEBUI_OPENMETADATA_MCP_TOKEN"
-
           # OHDP_SNOWFLAKE_PRIVATE_KEY is the RSA key pair's private half
           # (PKCS#8 PEM) — Snowflake SERVICE users don't accept password auth,
           # so this is what the SQL connector authenticates with. The REST
@@ -292,29 +249,6 @@ jobs:
       - name: hub-api
         if: inputs.deploy_all || inputs.deploy_hub_api
         run: make -C platform/helm hub-api TAG="$TAG"
-
-      # mcp-cube before open-webui: the tool-server connection is registered by
-      # hand in Open WebUI's admin UI, so the Service should already exist.
-      - name: Cube MCP server
-        if: inputs.deploy_all || inputs.deploy_mcp_cube
-        run: make -C platform/helm mcp-cube TAG="$TAG"
-
-      - name: Open WebUI (chat UI — Google SSO is its own, not an oauth2-proxy wall)
-        if: inputs.deploy_all || inputs.deploy_open_webui
-        env:
-          OPENWEBUI_OIDC_CLIENT_ID: ${{ secrets.OPENWEBUI_OIDC_CLIENT_ID || secrets.DAGSTER_OIDC_CLIENT_ID }}
-        run: make -C platform/helm open-webui TAG="$TAG"
-
-      # ADR-0022: idempotent, so safe to re-apply on every deploy. Not a Helm
-      # hook — see the comment at the top of the manifest for why. Jobs are
-      # immutable, hence delete-then-apply rather than `kubectl apply` alone.
-      - name: Open WebUI token-tracking DB init
-        if: inputs.deploy_all || inputs.deploy_open_webui
-        run: |
-          set -euo pipefail
-          kubectl delete job/open-webui-token-tracking-init -n app --ignore-not-found
-          envsubst < platform/helm/manifests/open-webui-token-tracking-init-job.yaml | kubectl apply -f -
-          kubectl wait --for=condition=complete job/open-webui-token-tracking-init -n app --timeout=120s
 
       - name: Pods
         if: always()

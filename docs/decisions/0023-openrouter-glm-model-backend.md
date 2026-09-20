@@ -1,12 +1,14 @@
 # 0023 — OpenRouter + GLM 5.3 Flash as Open WebUI's model backend
 
-**Status:** Accepted
-**Supersedes in part:** [ADR-0017](0017-open-webui-chat-ui.md) — only its "model
-backend is Anthropic through its OpenAI-compatible endpoint" decision. Everything
-else in 0017 (the deployment, the MCP tool surface, Open WebUI's own Google SSO,
-`DEFAULT_USER_ROLE=pending`) stands.
-**Amends:** [ADR-0022](0022-token-usage-limits.md) — the tracked pipe changes
-class, not purpose.
+**Status:** **Superseded / removed.** This backend was tied to the Open WebUI
+surface, which has been deleted. hub-api continues to use Anthropic directly.
+This document is retained for historical context.
+
+**Supersedes in part (historically):** [ADR-0017](0017-open-webui-chat-ui.md) —
+at the time it changed only 0017's "model backend is Anthropic through its
+OpenAI-compatible endpoint" decision.
+**Amends (historically):** [ADR-0022](0022-token-usage-limits.md) — the tracked
+pipe changed class, not purpose.
 
 ## Context
 

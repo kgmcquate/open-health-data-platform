@@ -22,7 +22,6 @@ DAGSTER_VERSION         ?= 1.13.21
 TRAEFIK_VERSION         ?= 41.5.0
 CERT_MANAGER_VERSION    ?= v1.21.1
 OAUTH2_PROXY_VERSION    ?= 10.7.0
-OPENWEBUI_VERSION       ?= 16.5.0
 # Cube Store image tag (charts/cubestore is ours, but the image is upstream
 # cubejs/cubestore — same pin discipline as the upstream charts above, just
 # via image.tag instead of --version). Same v1.7 train as the cubejs/cube
@@ -31,8 +30,7 @@ CUBESTORE_VERSION       ?= v1.7.39
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \
-        hub-api cube cubestore \
-        mcp-cube open-webui
+        hub-api cube cubestore
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -44,7 +42,6 @@ repos: ## Add and update upstream chart repos
 	$(HELM) repo add traefik https://traefik.github.io/charts
 	$(HELM) repo add jetstack https://charts.jetstack.io
 	$(HELM) repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
-	$(HELM) repo add open-webui https://helm.openwebui.com
 	$(HELM) repo update
 
 lint: ## Lint the charts we own
@@ -54,7 +51,6 @@ lint: ## Lint the charts we own
 	$(HELM) lint $(CHARTS)/dagster-monitoring
 	$(HELM) lint $(CHARTS)/cube --set image.tag=0.0.0-dev
 	$(HELM) lint $(CHARTS)/cubestore --set image.tag=$(CUBESTORE_VERSION)
-	$(HELM) lint $(CHARTS)/mcp-cube --set image.tag=0.0.0-dev
 
 template: ## Render the charts we own locally (catches template errors without a cluster)
 	$(HELM) template platform-base $(CHARTS)/platform-base >/dev/null && echo "platform-base OK"
@@ -63,7 +59,6 @@ template: ## Render the charts we own locally (catches template errors without a
 	$(HELM) template dagster-monitoring $(CHARTS)/dagster-monitoring >/dev/null && echo "dagster-monitoring OK"
 	$(HELM) template cube $(CHARTS)/cube --set image.tag=0.0.0-dev >/dev/null && echo "cube OK"
 	$(HELM) template cubestore $(CHARTS)/cubestore --set image.tag=$(CUBESTORE_VERSION) >/dev/null && echo "cubestore OK"
-	$(HELM) template mcp-cube $(CHARTS)/mcp-cube --set image.tag=0.0.0-dev >/dev/null && echo "mcp-cube OK"
 
 # --------------------------------------------------------------------------
 # Cluster foundation
@@ -137,31 +132,5 @@ hub-api: ## Install the FastAPI backend + chat UI (TAG defaults to the current c
 	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
 	$(HELM) upgrade --install hub-api $(CHARTS)/hub-api \
 		-n app --create-namespace --set image.tag=$(TAG) --wait
-
-# --------------------------------------------------------------------------
-# Open WebUI — the chat UI (ADR-0017), and the Cube MCP server it calls.
-#
-# Deploy mcp-cube first: Open WebUI's tool-server connection is registered by
-# hand in its admin UI (there is no declarative env var for it), and doing that
-# against a Service that does not exist yet just means doing it twice.
-# --------------------------------------------------------------------------
-mcp-cube: ## Install the Cube MCP server (runs the hub-api image; TAG defaults to the current commit's sha-<12>)
-	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
-	$(HELM) upgrade --install mcp-cube $(CHARTS)/mcp-cube \
-		-n app --create-namespace --set image.tag=$(TAG) --wait --timeout 5m
-
-# OPENWEBUI_OIDC_CLIENT_ID is the Google client's ID — not a secret, but it must
-# be the same client whose secret is in the `openwebui-secrets` Secret, so it is
-# passed in rather than written into the values file. deploy-platform.yml
-# supplies it; for a manual deploy, export it first.
-open-webui: ## Install Open WebUI, the chat UI (needs OPENWEBUI_OIDC_CLIENT_ID; TAG defaults to the current commit's sha-<12>)
-	@test -n "$(OPENWEBUI_OIDC_CLIENT_ID)" || { \
-		echo "OPENWEBUI_OIDC_CLIENT_ID is empty — Google sign-in is the only way into this app"; exit 1; }
-	@test -n "$(TAG)" || { echo "TAG is empty and HEAD is unknown — pass TAG=sha-abc123def456"; exit 1; }
-	$(HELM) upgrade --install open-webui open-webui/open-webui --version $(OPENWEBUI_VERSION) \
-		-n app --create-namespace -f $(VALUES)/open-webui.yaml \
-		--set sso.google.clientId=$(OPENWEBUI_OIDC_CLIENT_ID) \
-		--set image.tag=$(TAG) \
-		--wait --timeout 10m
 
 install: opensearch openmetadata proxy dagster ## The data platform (hub-api is deployed on its own)

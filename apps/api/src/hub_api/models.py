@@ -7,7 +7,7 @@ Three layers, in the order they are applied:
      `OHDP_ANTHROPIC_API_KEY` is set.
   2. Bulk auto-discovery: every model reported by `GET /models` on each
      backend in `settings.openai_backends` (`OHDP_OPENAI_API_BASE_URLS`/
-     `_KEYS`) — the same call Open WebUI makes to build its model picker, so
+     `_KEYS`) — the same call the hub chat makes to build its model picker, so
      the list an operator gets is exactly what their key can see, never a
      hand-maintained duplicate of it that can drift.
   3. Explicit overrides (`apps/api/config/models.yaml`): a model id already
