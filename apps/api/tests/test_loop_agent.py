@@ -148,7 +148,6 @@ async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
     # plan is part of what the reader is shown as the answer too (rule 2 and
     # rule 4 of the system prompt).
     assert turn.answer == "Here is my plan.\n\nHere is the answer."
-    assert turn.tool_calls == [{"name": "list_metrics", "input": {}}]
     assert events[-1].data["answer"] == turn.answer
 
     tool_call_event, tool_result_event = events[3], events[4]
@@ -159,6 +158,20 @@ async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
     assert tool_result_event.data["tool_call_id"] == "call_1"
     assert tool_result_event.data["is_error"] is False
     assert "format" not in tool_result_event.data
+    # turn.tool_calls is what gets persisted to chat_turns.tool_calls and
+    # rebuilt into the tool-call/tool-result bubble on reload
+    # (apps/web/src/chat/runtime.ts's turnToMessages) — the call and its
+    # result must already be folded into one dict, since a reloaded thread
+    # has no separate SSE events left to pair up.
+    assert turn.tool_calls == [
+        {
+            "tool_call_id": "call_1",
+            "name": "list_metrics",
+            "input": {},
+            "result": tool_result_event.data["result"],
+            "is_error": False,
+        }
+    ]
 
 
 async def test_a_rejected_query_is_a_tool_error_the_model_can_recover_from() -> None:

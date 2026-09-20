@@ -87,6 +87,18 @@ export interface ThreadSummary {
   updated_at: string;
 }
 
+/** One call+result pair from `ohdp_agent.loop`'s `turn.tool_calls` — `result`/
+ * `is_error`/`format` are absent for a call whose result never arrived (the
+ * turn was cancelled or errored mid-call). */
+export interface ThreadTurnToolCall {
+  tool_call_id: string;
+  name: string;
+  input: Record<string, unknown>;
+  result?: unknown;
+  is_error?: boolean;
+  format?: "html";
+}
+
 export interface ThreadTurn {
   id: number;
   question: string;
@@ -94,6 +106,7 @@ export interface ThreadTurn {
   plan: string;
   error: string | null;
   feedback: "positive" | "negative" | null;
+  tool_calls: ThreadTurnToolCall[];
 }
 
 export interface ThreadDetail extends ThreadSummary {

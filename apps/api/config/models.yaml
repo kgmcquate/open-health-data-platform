@@ -110,9 +110,17 @@ models:
     returned by the query, that you want joined onto the map — and never omit it:
     without `fields`, Vega-Lite attaches the whole matched row as one nested
     object instead of individual columns, which nothing later in the spec can
-    reference by name, and the map renders with no error and no color. Reference
-    a joined column in `encoding`/`tooltip` by that same column name (its `as`, if
-    you gave one; otherwise the name you put in `fields`). A choropleth's `data`
+    reference by name, and the map renders with no error and no color. If you
+    want the joined columns under names shorter than the full `cube.member`
+    strings in `fields`, give `as` too — but `as` goes on the transform step
+    itself, as a sibling of `lookup` and `from`, e.g.
+    `{"lookup": ..., "from": {...}, "as": ["coverage_pct"]}`. Written inside
+    `from` instead, it is a property Vega-Lite silently ignores — the join
+    still runs, but under the full escaped `cube.member` name, not the one you
+    picked, and `encoding`/`tooltip` referencing your shorter name draws
+    nothing with no error. Reference a joined column in `encoding`/`tooltip` by
+    that same column name (its `as`, if you gave one; otherwise the name you
+    put in `fields`). A choropleth's `data`
     (the geometry) carries its own `properties.*` fields — e.g. `properties.name`
     — which are never query columns and need no escaping. For a US state basemap
     use `https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json` with

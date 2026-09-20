@@ -520,7 +520,13 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
             text_parts.append(event.part.content)
         elif isinstance(event, FunctionToolCallEvent):
             arguments = event.part.args_as_dict()
-            ctx.deps.turn.tool_calls.append({"name": event.part.tool_name, "input": arguments})
+            ctx.deps.turn.tool_calls.append(
+                {
+                    "tool_call_id": event.tool_call_id,
+                    "name": event.part.tool_name,
+                    "input": arguments,
+                }
+            )
             await ctx.deps.queue.put(
                 Event(
                     "tool_call",
@@ -532,7 +538,21 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
                 )
             )
         elif isinstance(event, FunctionToolResultEvent):
-            await ctx.deps.queue.put(Event("tool_result", _tool_result_payload(event)))
+            payload = _tool_result_payload(event)
+            await ctx.deps.queue.put(Event("tool_result", payload))
+            # Folded into the matching call's own dict (by tool_call_id) rather
+            # than a separate `turn` list — `chat_turns.tool_calls` is what a
+            # reloaded thread has to rebuild the tool-call/tool-result bubble
+            # from (`apps/web/src/chat/runtime.ts`'s `turnToMessages`), so the
+            # persisted shape needs to already be call+result paired, the same
+            # way the live `tool_call`/`tool_result` events pair up by id.
+            for call in ctx.deps.turn.tool_calls:
+                if call.get("tool_call_id") == payload["tool_call_id"]:
+                    call["result"] = payload["result"]
+                    call["is_error"] = payload["is_error"]
+                    if "format" in payload:
+                        call["format"] = payload["format"]
+                    break
 
     text = "".join(text_parts)
     # Some backends emit the full part in one shot (no deltas) while others

@@ -13,6 +13,7 @@ import {
   submitFeedback,
   type ThreadSummary,
   type ThreadTurn,
+  type ThreadTurnToolCall,
 } from "../lib/api";
 
 /**
@@ -73,17 +74,37 @@ function turnIdFromMessageId(id: string): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
+/** Mirrors the `tool_call`/`tool_result` cases of `applyEvent` below, but from
+ * a persisted `chat_turns.tool_calls` entry (`ohdp_agent.loop`'s `Turn`)
+ * instead of the two separate live SSE events it was built from — the result
+ * is already folded into the call there, so this is a single step. */
+function toolCallPart(call: ThreadTurnToolCall): Part {
+  return {
+    type: "tool-call",
+    toolCallId: call.tool_call_id,
+    toolName: call.name,
+    args: (call.input ?? {}) as Record<string, never>,
+    argsText: JSON.stringify(call.input ?? {}),
+    result: call.result,
+    isError: Boolean(call.is_error),
+    resultFormat: call.format === "html" ? "html" : undefined,
+  } as Part;
+}
+
 function turnToMessages(turn: ThreadTurn): ThreadMessageLike[] {
   const messages: ThreadMessageLike[] = [
     { id: `u${turn.id}`, role: "user", content: [{ type: "text", text: turn.question }] },
   ];
-  if (turn.answer || turn.error) {
+  const toolParts = turn.tool_calls.map(toolCallPart);
+  if (toolParts.length > 0 || turn.answer || turn.error) {
     let text = turn.answer;
     if (turn.error) text += `\n\n> ❌ ${turn.error}`;
+    const content: Part[] = [...toolParts];
+    if (text) content.push({ type: "text", text });
     messages.push({
       id: `a${turn.id}`,
       role: "assistant",
-      content: [{ type: "text", text }],
+      content,
       metadata: turn.feedback
         ? { custom: {}, submittedFeedback: { type: turn.feedback } }
         : undefined,
