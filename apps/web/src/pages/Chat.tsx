@@ -9,6 +9,7 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ArrowUpIcon,
   CheckIcon,
@@ -42,7 +43,7 @@ import {
 // MarkdownTextPrimitive reads the current text part from message-part
 // context, so it needs no props — wrap it to satisfy the part-component type.
 function MarkdownText() {
-  return <MarkdownTextPrimitive className="prose-chat" />;
+  return <MarkdownTextPrimitive className="prose-chat" remarkPlugins={[remarkGfm]} />;
 }
 
 const SUGGESTIONS = [
@@ -315,11 +316,59 @@ function UserMessage() {
   );
 }
 
-function ToolCallFallback({ toolName }: { toolName: string }) {
+function ToolCallFallback({
+  toolName,
+  args,
+  result,
+  isError,
+  status,
+}: {
+  toolName: string;
+  args: unknown;
+  result: unknown;
+  isError?: boolean;
+  status: { type: string };
+}) {
+  const [open, setOpen] = useState(false);
+  const isRunning = status.type === "running";
+
   return (
-    <div className="my-1 flex items-center gap-2 text-xs opacity-70">
-      <span className="loading loading-spinner loading-xs" />
-      <span className="font-mono">{toolName}</span>
+    <div className="my-1 text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 text-base-content/70 transition-colors hover:text-base-content"
+      >
+        {isRunning ? (
+          <span className="loading loading-spinner loading-xs" />
+        ) : isError ? (
+          <XIcon className="size-3.5 text-error" />
+        ) : (
+          <CheckIcon className="size-3.5 text-success" />
+        )}
+        <span className="font-mono">{toolName}</span>
+        <ChevronDownIcon
+          className={`size-3.5 opacity-60 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div className="mt-1 ml-5 space-y-2 rounded-field border border-base-300 bg-base-200 p-2">
+          <div>
+            <div className="mb-0.5 font-semibold opacity-50">Input</div>
+            <pre className="overflow-x-auto font-mono whitespace-pre-wrap">
+              {JSON.stringify(args, null, 2)}
+            </pre>
+          </div>
+          {result !== undefined && (
+            <div>
+              <div className="mb-0.5 font-semibold opacity-50">Output</div>
+              <pre className="overflow-x-auto font-mono whitespace-pre-wrap">
+                {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -358,7 +407,15 @@ function AssistantMessage() {
               );
             }
             if (part.type === "tool-call") {
-              return <ToolCallFallback toolName={part.toolName} />;
+              return (
+                <ToolCallFallback
+                  toolName={part.toolName}
+                  args={part.args}
+                  result={part.result}
+                  isError={part.isError}
+                  status={part.status}
+                />
+              );
             }
             return null;
           }}
