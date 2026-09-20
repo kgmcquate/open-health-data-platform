@@ -74,7 +74,7 @@ async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
     turn, events = await _run(_agent(stream_function))
 
     kinds = [e.type for e in events]
-    assert kinds == ["status", "plan", "tool_call", "done"]
+    assert kinds == ["status", "plan", "tool_call", "tool_result", "done"]
     assert turn.plan == "Here is my plan."
     # The answer is every turn's text joined, not just the final one — the
     # plan is part of what the reader is shown as the answer too (rule 2 and
@@ -82,6 +82,15 @@ async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
     assert turn.answer == "Here is my plan.\n\nHere is the answer."
     assert turn.tool_calls == [{"name": "list_metrics", "input": {}}]
     assert events[-1].data["answer"] == turn.answer
+
+    tool_call_event, tool_result_event = events[2], events[3]
+    # Both share the id the model gave the call — what lets the frontend
+    # attach the result (and, for render_dashboard's HTML, an embedded chart)
+    # to the call it belongs to (apps/web/src/chat/runtime.ts).
+    assert tool_call_event.data["tool_call_id"] == "call_1"
+    assert tool_result_event.data["tool_call_id"] == "call_1"
+    assert tool_result_event.data["is_error"] is False
+    assert "format" not in tool_result_event.data
 
 
 async def test_a_rejected_query_is_a_tool_error_the_model_can_recover_from() -> None:
@@ -111,6 +120,14 @@ async def test_a_rejected_query_is_a_tool_error_the_model_can_recover_from() -> 
     assert "list_metrics" not in tool_errors[0].data["message"]
     assert events[-1].type == "done"
     assert turn.answer == "I could not run that query."
+
+    # A ModelRetry (here, from the rejected query) becomes a RetryPromptPart,
+    # which _tool_result_payload always reports as an error — there is no
+    # `outcome` field on that part to read instead (ohdp_agent.loop).
+    tool_results = [e for e in events if e.type == "tool_result"]
+    assert len(tool_results) == 1
+    assert tool_results[0].data["tool_call_id"] == "call_1"
+    assert tool_results[0].data["is_error"] is True
 
 
 async def test_gives_up_after_too_many_steps() -> None:

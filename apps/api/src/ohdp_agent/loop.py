@@ -54,8 +54,10 @@ from pydantic_ai.messages import (
     AgentStreamEvent,
     BinaryContent,
     FunctionToolCallEvent,
+    FunctionToolResultEvent,
     PartDeltaEvent,
     PartEndEvent,
+    RetryPromptPart,
     TextPart,
     TextPartDelta,
     ThinkingPartDelta,
@@ -420,21 +422,66 @@ async def _catalog_toolset(catalog: CatalogClient | None) -> FunctionToolset[Dep
     return FunctionToolset([_catalog_tool(spec) for spec in specs]) if specs else None
 
 
+def _looks_like_html_document(text: str) -> bool:
+    """Whether a tool result is a full HTML document rather than data.
+
+    Narrow on purpose: every other tool result in this loop is `json.dumps`
+    output, SQL text, or plain prose, none of which starts this way. The one
+    thing that does is `render_dashboard` (`hub_api.dashboards.render_html`),
+    reached through the `ohdp-tools` connection (`config/tools.yaml`) — its
+    HTTP `Content-Disposition: inline` embed header is stripped by the MCP
+    wrapper (`hub_api.tool_connections`), so this is the only signal left on
+    this side of that boundary that the result is a page to render, not text
+    to print.
+    """
+    head = text.lstrip()[:100].lower()
+    return head.startswith("<!doctype html") or head.startswith("<html")
+
+
+def _tool_result_payload(event: FunctionToolResultEvent) -> dict[str, Any]:
+    """The `tool_result` event body for one completed tool call.
+
+    `RetryPromptPart` (a rejected query, a validation error, a raised
+    `ModelRetry`) has no `outcome` — reaching the model as a retry request is
+    itself the failure signal — so it is always reported as an error here.
+    """
+    part = event.part
+    if isinstance(part, RetryPromptPart):
+        return {
+            "tool_call_id": event.tool_call_id,
+            "is_error": True,
+            "result": part.model_response(),
+        }
+
+    text = part.model_response_str(wrap_if_error=False)
+    payload: dict[str, Any] = {
+        "tool_call_id": event.tool_call_id,
+        "is_error": part.outcome != "success",
+        "result": text,
+    }
+    if _looks_like_html_document(text):
+        payload["format"] = "html"
+    return payload
+
+
 async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStreamEvent]) -> None:
     """Forward text/thinking deltas live, log every tool call, and build this
     turn's text from `PartEndEvent` rather than the deltas themselves.
 
-    The `tool_call` event and `turn.tool_calls` are reported from
-    `FunctionToolCallEvent` here, not self-reported by `_run_tool`, because
-    this is the only place that sees a tool call regardless of which toolset
-    it came from — `BUILTIN_TOOLSET`, the catalog's per-request tools, *and*
-    an operator-configured MCP/OpenAPI connection from tools.yaml, which
-    pydantic-ai's own `MCPToolset` dispatches without ever going through
-    `_run_tool` at all. Self-reporting inside `_run_tool` would leave every
-    tools.yaml connection invisible to both the UI and the eval log — this
-    was caught by manually driving a real OpenAPI connection end to end, not
-    by a unit test, since a mocked tool call has no independent event stream
-    to disagree with the code under test.
+    The `tool_call`/`tool_result` events and `turn.tool_calls` are reported
+    from `FunctionToolCallEvent`/`FunctionToolResultEvent` here, not
+    self-reported by `_run_tool`, because this is the only place that sees a
+    tool call regardless of which toolset it came from — `BUILTIN_TOOLSET`,
+    the catalog's per-request tools, *and* an operator-configured MCP/OpenAPI
+    connection from tools.yaml, which pydantic-ai's own `MCPToolset`
+    dispatches without ever going through `_run_tool` at all. Self-reporting
+    inside `_run_tool` would leave every tools.yaml connection invisible to
+    both the UI and the eval log — this was caught by manually driving a real
+    OpenAPI connection end to end, not by a unit test, since a mocked tool
+    call has no independent event stream to disagree with the code under
+    test. The two events share `tool_call_id`, which is what lets the
+    frontend attach a result — and, for `render_dashboard`'s HTML, an
+    embedded chart — to the call it belongs to (`apps/web/src/chat/runtime.ts`).
 
     A backend that hands back a whole text part in one piece — no incremental
     chunks — emits `PartStartEvent`/`PartEndEvent` with the full content and
@@ -460,8 +507,17 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
             arguments = event.part.args_as_dict()
             ctx.deps.turn.tool_calls.append({"name": event.part.tool_name, "input": arguments})
             await ctx.deps.queue.put(
-                Event("tool_call", {"name": event.part.tool_name, "input": arguments})
+                Event(
+                    "tool_call",
+                    {
+                        "tool_call_id": event.tool_call_id,
+                        "name": event.part.tool_name,
+                        "input": arguments,
+                    },
+                )
             )
+        elif isinstance(event, FunctionToolResultEvent):
+            await ctx.deps.queue.put(Event("tool_result", _tool_result_payload(event)))
 
     text = "".join(text_parts)
     if not text:

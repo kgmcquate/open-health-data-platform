@@ -14,6 +14,7 @@ from ohdp_agent.loop import (
     DISCLAIMER,
     SYSTEM_PROMPT,
     _check_citations,
+    _looks_like_html_document,
     cube_tool_specs,
     literature_tool_specs,
 )
@@ -98,3 +99,20 @@ def test_a_clean_answer_is_returned_unchanged() -> None:
 
     assert stripped == []
     assert answer == "No citations here at all."
+
+
+def test_html_detection_matches_render_dashboards_output_only() -> None:
+    """`_looks_like_html_document` is the only signal left, once a
+    `render_dashboard` result has crossed the `ohdp-tools` MCP wrapper
+    (hub_api.tool_connections), that a tool result is a page to embed rather
+    than text to print — so it must catch what render_html actually emits and
+    nothing every other tool in this loop already returns.
+    """
+    assert _looks_like_html_document('<!DOCTYPE html>\n<html lang="en">\n<head>')
+    assert _looks_like_html_document("  <html><head></head></html>")
+    # Every other tool result: json.dumps output, SQL text, or plain prose.
+    assert not _looks_like_html_document('{"rows": [], "row_count": 0}')
+    assert not _looks_like_html_document("[]")
+    assert not _looks_like_html_document("SELECT 1")
+    assert not _looks_like_html_document("This chart could not be drawn: bad column")
+    assert not _looks_like_html_document("")

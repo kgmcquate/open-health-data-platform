@@ -248,13 +248,26 @@ both the SSE stream and `turn.tool_calls` (the eval log, §7).
 
 ## 5. Visualizations
 
-**Built, on the Open WebUI surface** ([ADR-0025](decisions/0025-dashboards-as-code-in-chat.md)).
-A dashboard is a spec, not a picture: a name, a title, and up to six panels, each
+**Built** ([ADR-0025](decisions/0025-dashboards-as-code-in-chat.md)), on both chat
+surfaces. A dashboard is a spec, not a picture: a name, a title, and up to six panels, each
 one a validated `CubeQuery` plus a `vega` Vega-Lite spec that says how its rows
 are drawn. `render_dashboard` on hub-api's `/tools` app runs the queries, binds
 the rows, and answers with the rendered HTML under `Content-Type: text/html` and
-`Content-Disposition: inline`, which is what makes Open WebUI display a tool
-result as an interactive iframe rather than as markup in the transcript.
+`Content-Disposition: inline` — Open WebUI's own signal to display a tool result
+as an interactive iframe rather than as markup in the transcript.
+
+The Hub chat reaches the same endpoint a different way: as the `ohdp-tools`
+MCP connection (`config/tools.yaml`), wrapped via `FastMCP.from_openapi`
+(`hub_api.tool_connections`). That wrapper strips the HTTP response down to
+plain MCP content, so the embed headers never survive the trip — what does
+survive is the HTML text itself. `ohdp_agent.loop._handle_stream` sniffs a
+completed tool result for a leading `<!doctype html`/`<html` (the one shape
+none of this loop's other tools — all JSON, SQL, or prose — ever produce) and
+tags it `format: "html"` on the `tool_result` SSE event; the Hub chat's own
+frontend (`apps/web/src/pages/Chat.tsx`) then renders that as a sandboxed
+`<iframe srcDoc=...>` instead of the plain text/JSON it shows for every other
+tool result. Two independent embed paths for the one HTML document, because
+the two surfaces have no shared tool-result transport to embed it through.
 
 The model authors the Vega-Lite — `mark`, `encoding`, `transform`, `params` —
 but never the data. A `Panel` has nowhere to put a number and a `data` key in

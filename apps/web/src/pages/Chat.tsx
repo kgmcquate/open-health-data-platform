@@ -26,7 +26,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useHubChatRuntime } from "../chat/runtime";
 import {
@@ -316,21 +316,59 @@ function UserMessage() {
   );
 }
 
+// `render_dashboard` (hub_api.dashboards) answers with a full HTML document —
+// Vega loaded from a CDN, the chart's own data table/query in a <details>,
+// and a script that posts its rendered height so this frame can size itself
+// (there is no same-origin access into a sandboxed iframe to measure it
+// directly). `sandbox` omits allow-same-origin for exactly that isolation,
+// but keeps allow-scripts (Vega must run) and allow-popups (the chart's own
+// "..." export menu opens a new tab).
+function DashboardEmbed({ html }: { html: string }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(320);
+
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      const data = e.data as { type?: string; height?: number } | undefined;
+      if (data?.type === "iframe:height" && typeof data.height === "number") {
+        setHeight(Math.max(160, Math.ceil(data.height)));
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={html}
+      sandbox="allow-scripts allow-popups"
+      title="Dashboard"
+      className="w-full rounded-box border border-base-300 bg-base-100"
+      style={{ height }}
+    />
+  );
+}
+
 function ToolCallFallback({
   toolName,
   args,
   result,
   isError,
   status,
+  resultFormat,
 }: {
   toolName: string;
   args: unknown;
   result: unknown;
   isError?: boolean;
   status: { type: string };
+  resultFormat?: string;
 }) {
   const [open, setOpen] = useState(false);
   const isRunning = status.type === "running";
+  const isDashboard = resultFormat === "html" && !isError && typeof result === "string";
 
   return (
     <div className="my-1 text-xs">
@@ -351,6 +389,11 @@ function ToolCallFallback({
           className={`size-3.5 opacity-60 transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
+      {isDashboard && (
+        <div className="mt-1 ml-5">
+          <DashboardEmbed html={result} />
+        </div>
+      )}
       {open && (
         <div className="mt-1 ml-5 space-y-2 rounded-field border border-base-300 bg-base-200 p-2">
           <div>
@@ -359,7 +402,7 @@ function ToolCallFallback({
               {JSON.stringify(args, null, 2)}
             </pre>
           </div>
-          {result !== undefined && (
+          {result !== undefined && !isDashboard && (
             <div>
               <div className="mb-0.5 font-semibold opacity-50">Output</div>
               <pre className="overflow-x-auto font-mono whitespace-pre-wrap">
@@ -414,6 +457,9 @@ function AssistantMessage() {
                   result={part.result}
                   isError={part.isError}
                   status={part.status}
+                  // Set by runtime.ts's "tool_result" handler for a
+                  // render_dashboard call; not part of assistant-ui's own type.
+                  resultFormat={(part as { resultFormat?: string }).resultFormat}
                 />
               );
             }

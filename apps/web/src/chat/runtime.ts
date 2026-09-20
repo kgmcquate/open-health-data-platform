@@ -21,8 +21,8 @@ import {
  * accounting, and the thread/turn log; this client only renders the event
  * stream and reflects the persisted history back once a turn lands. Events
  * the backend emits (ohdp_agent.loop):
- *   status, thinking, text, plan, tool_call, rows, sql, articles,
- *   tool_error, warning, done, error
+ *   status, thinking, text, plan, tool_call, tool_result, rows, sql,
+ *   articles, tool_error, warning, done, error
  *
  * Thread *switching* is not this hook's job — `Chat.tsx` owns the sidebar and
  * the list of threads; this hook only drives whichever thread it is told is
@@ -125,12 +125,30 @@ function applyEvent(parts: Part[], event: ServerEvent): Part[] {
         ...parts,
         {
           type: "tool-call",
-          toolCallId: localId(),
+          // Falls back to a local id only if the backend ever omits one —
+          // real turns always carry pydantic-ai's `tool_call_id`, which is
+          // what lets the matching `tool_result` event below find this part.
+          toolCallId: event.tool_call_id ? String(event.tool_call_id) : localId(),
           toolName: String(event.name ?? "tool"),
           args: (event.input ?? {}) as Record<string, never>,
           argsText: JSON.stringify(event.input ?? {}),
         } as Part,
       ];
+    case "tool_result": {
+      const toolCallId = String(event.tool_call_id ?? "");
+      return parts.map((part) => {
+        if (part.type !== "tool-call" || part.toolCallId !== toolCallId) return part;
+        return {
+          ...part,
+          result: event.result,
+          isError: Boolean(event.is_error),
+          // Set only for `render_dashboard`'s HTML embed (ohdp_agent.loop
+          // ._looks_like_html_document) — everything else is plain text/JSON,
+          // which the tool-call renderer shows as-is.
+          resultFormat: event.format === "html" ? "html" : undefined,
+        } as Part;
+      });
+    }
     case "tool_error":
       return appendText(
         parts,
