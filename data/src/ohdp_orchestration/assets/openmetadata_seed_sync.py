@@ -69,7 +69,7 @@ def _sync_domain(
             name=EntityName(entry["name"]),
             domainType=DomainType(entry["domainType"]),
             description=Markdown(entry["description"].strip()),
-            parent=FullyQualifiedEntityName(parent) if parent else None,
+            parent=parent,
         )
     )
     count = 1
