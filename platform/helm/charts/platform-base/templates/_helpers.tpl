@@ -25,6 +25,7 @@ value is freshly random — fine for validation, never written anywhere.
 {{- $oauth2App := (lookup "v1" "Secret" "app" "oauth2-proxy-app-secret").data | default dict -}}
 {{- $openwebui := (lookup "v1" "Secret" "app" "openwebui-db").data | default dict -}}
 {{- $mcpCube := (lookup "v1" "Secret" "app" "mcp-cube-secret").data | default dict -}}
+{{- $hubApiDb := (lookup "v1" "Secret" "app" "hub-api-db").data | default dict -}}
 postgres: {{ (index $pg "postgres-password") | default (randAlphaNum $len | b64enc) }}
 dagster: {{ (index $pg "dagster-password") | default (randAlphaNum $len | b64enc) }}
 openmetadata: {{ (index $pg "openmetadata-password") | default (randAlphaNum $len | b64enc) }}
@@ -45,4 +46,8 @@ webuiSecretKey: {{ (index $openwebui "WEBUI_SECRET_KEY") | default (randAlphaNum
      sides read the same generated value, so there is no manual step to keep
      them in sync and nothing to paste into a values file. */}}
 mcpAuthToken: {{ (index $mcpCube "OHDP_MCP_AUTH_TOKEN") | default (randAlphaNum $len | b64enc) }}
+{{/* Signs hub-api's session cookie (main.py). Left unset outside `local`,
+     hub-api refuses to start rather than sign cookies with a hardcoded
+     dev secret — so this must exist before the very first deploy. */}}
+sessionSecretKey: {{ (index $hubApiDb "OHDP_SESSION_SECRET_KEY") | default (randAlphaNum $len | b64enc) }}
 {{- end -}}
