@@ -9,5 +9,9 @@ this term mean" (§6).
   - Cube model -> Metric entities
   - freshness / row counts -> asset metadata (row counts OK; sample rows and
     file paths are NOT — §5)
-- `seed/` — glossary terms, domains, custom properties. Checked in, applied
-  idempotently.
+
+Glossary terms and domains are seeded from
+`data/src/ohdp_orchestration/seed/{glossary,domains}.yml` — checked in there
+(not here) so the YAML ships inside the Dagster image for free, and applied
+idempotently by the `openmetadata_seed_sync` Dagster asset
+(`ohdp_orchestration.assets.openmetadata_seed_sync`).

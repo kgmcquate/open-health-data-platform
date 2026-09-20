@@ -213,7 +213,7 @@ class CatalogClient:
         missing persona degrades to the built-in system prompt rather than
         failing the user's question or feeding "No active persona is configured"
         into the model as though it were curated guidance. Personas are seeded in
-        `catalog/openmetadata/seed/` (M3.3) and edited in OM by a human after.
+        `data/src/ohdp_orchestration/seed/` (M3.3) and edited in OM by a human after.
 
         The argument is `personaName` — OM's own schema calls it that, and it
         wants a persona FQN, not a display name.

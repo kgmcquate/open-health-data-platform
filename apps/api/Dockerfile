@@ -1,9 +1,20 @@
-# hub-api — FastAPI backend.
-# Built from the repo root (build context = .) so ../packages/shared is present:
+# hub-api — FastAPI backend, plus the apps/web chat UI it serves as static
+# files (hub_api/main.py).
+# Built from the repo root (build context = .) so ../packages/shared and
+# ../web are present:
 #   docker build -f apps/api/Dockerfile -t ohdp-hub-api .
 #
 # `apps/api` is a standalone uv project; `ohdp-shared` is a path dependency at
 # ../../packages/shared.
+
+FROM node:22-slim AS web-builder
+
+WORKDIR /web
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci
+COPY apps/web/ ./
+RUN npm run build
+
 
 FROM ghcr.io/astral-sh/uv:0.5-python3.12-bookworm-slim AS builder
 
@@ -38,6 +49,7 @@ RUN groupadd --gid 10001 app \
 
 WORKDIR /app
 COPY --from=builder --chown=10001:10001 /app/.venv /app/.venv
+COPY --from=web-builder --chown=10001:10001 /web/dist /app/web/dist
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

@@ -143,7 +143,8 @@ Disease-area notes, metric semantics, known data limitations, and the standing c
 agent calls `find_context` before it plans, and quotes definitions with `get_knowledge_content`
 rather than paraphrasing them.
 
-Seed content extends `catalog/openmetadata/seed/glossary.yml`.
+Seed content extends `data/src/ohdp_orchestration/seed/glossary.yml`, applied via the
+`openmetadata_seed_sync` Dagster asset.
 
 ### 3.3 `get_asset_context` replaces hand-rolled retrieval
 
@@ -370,7 +371,7 @@ Each step should be demoable and independently reviewable.
 | **M3.0** | **Partly done.** Tool inventory verified against the live server (§2.1). The OM-Metric ↔ Cube-measure round-trip test (§3.5) is **not written** — still the most likely quiet failure. |
 | **M3.1** | **Done.** `ohdp_agent`: Cube tools over REST, OM MCP client, Europe PMC tools. Unit-tested with no model in the loop. |
 | **M3.2** | **Done, with two deviations** recorded at the top of `ohdp_agent/loop.py`: a manual loop rather than the SDK tool runner, and one phase rather than two (no user gate between plan and execute). SSE, quota gate and Postgres logging are in. |
-| **M3.3** | **Not done.** Personas and Context Center seed content in `catalog/openmetadata/seed/`. Until this lands, `get_persona_context` 404s and the agent uses its built-in system prompt. |
+| **M3.3** | **Partly done.** Glossary/domain seed content (`data/src/ohdp_orchestration/seed/`) syncs via the `openmetadata_seed_sync` Dagster asset. Personas and Context Center articles are still **not done** — until those land, `get_persona_context` 404s and the agent uses its built-in system prompt. |
 | **M3.4** | **Partly done.** A chat UI exists — one static page served by hub-api, not hub-web (see `hub_api/main.py` for why); there, results still render as a table plus the compiled SQL. Charts landed on the *Open WebUI* surface instead (§5, ADR-0025) — hub-api's own page does not call `render_dashboard`. |
 | **M3.5** | **Not done.** Every turn is logged to `chat_turns` in the shape §7 wants, so the eval set is accumulating; there is no harness and no seed question set. |
 | **M4** | News retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces, and dashboards-as-code landed with it (§5). |

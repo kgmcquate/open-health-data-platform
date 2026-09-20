@@ -393,8 +393,7 @@ health-data-platform/
 │
 ├── catalog/
 │   └── openmetadata/
-│       ├── sync/               # Cube meta -> Metric entities; dbt -> lineage
-│       └── seed/               # Glossary terms, domains, custom properties
+│       └── sync/               # Cube meta -> Metric entities; dbt -> lineage
 │
 ├── platform/
 │   ├── terraform/              # Hetzner VM + firewall, Cloudflare DNS + R2, k3s via cloud-init

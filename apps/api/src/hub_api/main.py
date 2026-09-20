@@ -12,16 +12,21 @@ raw SQL tool — ever.
 
 hub-api used to serve the chat page itself at `/` as a shortcut to ship chat
 without a second image. That page is gone now that `apps/web` (the Vite/React
-hub) is the real UI — the chat there calls the same `/api/chat` route, and
-this service is API-only.
+hub) is the real UI — the chat there calls the same `/api/chat` route. Rather
+than run a second image for it, the Dockerfile builds `apps/web` and this
+service serves the result as static files (below), so there is still one
+image and one Deployment.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from hub_api import db
@@ -105,6 +110,27 @@ app.mount("/tools", tools_app)
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "environment": settings.environment}
+
+
+# The Dockerfile builds `apps/web` and copies its dist/ here. Locally the
+# directory doesn't exist — `apps/web` runs under `vite dev` instead, proxying
+# /api and /auth to this service (apps/web/vite.config.ts) — so this is a
+# production-only mount, not a local-dev branch like the ones above.
+_web_dist = Path("/app/web/dist")
+if _web_dist.is_dir():
+    app.mount("/assets", StaticFiles(directory=_web_dist / "assets"), name="web-assets")
+
+    @app.get("/{full_path:path}")
+    async def web_app(full_path: str) -> FileResponse:
+        """Every GET not claimed by a router above falls through to the SPA
+        shell, so react-router can handle deep links (e.g. a reload on
+        /chat) without a matching server-side route.
+
+        Except under the API prefixes: a typo'd or removed endpoint there
+        should 404, not silently return the HTML shell with a 200."""
+        if full_path.startswith(("api/", "auth/", "tools/")):
+            raise HTTPException(404)
+        return FileResponse(_web_dist / "index.html")
 
 
 # Routers to be added per milestone:

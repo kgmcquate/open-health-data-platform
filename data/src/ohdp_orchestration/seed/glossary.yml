@@ -1,6 +1,10 @@
-# Seed glossary. Keep definitions population-level and non-clinical (ARCHITECTURE.md §10).
+# Seed glossary, applied by ohdp_orchestration.assets.openmetadata_seed_sync.
+# Keep definitions population-level and non-clinical (ARCHITECTURE.md §10).
 glossary:
   name: Public Health Data
+  description: >
+    Population-level public health terminology used across curated datasets.
+    Definitions are population-level and non-clinical (ARCHITECTURE.md §10).
   terms:
     - name: PM2.5
       description: >

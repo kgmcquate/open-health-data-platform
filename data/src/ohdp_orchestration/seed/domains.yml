@@ -1,0 +1,127 @@
+# Seed domains, applied by ohdp_orchestration.assets.openmetadata_seed_sync.
+# Source-aligned domains mirror ingestion sources (ADR-0018); consumer-aligned
+# domains mirror the dbt curated/ subject areas.
+domains:
+  source_aligned:
+    - name: HealthData.gov
+      domainType: Source-aligned
+      description: >
+        Datasets from HealthData.gov's Socrata catalog — primarily HHS and its
+        component offices (ACF, ASPR, HHS Office of the Chief Data Officer/Budget).
+        ~142 datasets ingested via the shared Socrata pipeline.
+
+    - name: CDC
+      domainType: Source-aligned
+      description: >
+        Datasets from data.cdc.gov. Parent domain for CDC's largest surveillance
+        programs (see children below); also covers smaller/generic CDC groups not
+        broken out separately (Motor Vehicle Safety, Public Health Surveillance,
+        Environmental Health & Toxicology, Global Health, HRSA). ~1,077 datasets
+        ingested.
+      children:
+        - name: NNDSS
+          domainType: Source-aligned
+          description: >
+            National Notifiable Diseases Surveillance System — weekly
+            state/territory case counts for nationally notifiable infectious
+            diseases. ~295 datasets.
+        - name: NCHS
+          domainType: Source-aligned
+          description: >
+            National Center for Health Statistics — vital statistics and
+            health-survey data (mortality, natality, survey-based indicators).
+            ~205 datasets.
+        - name: NCIRD
+          domainType: Source-aligned
+          description: >
+            National Center for Immunization and Respiratory Diseases —
+            immunization coverage and respiratory disease (flu, RSV, COVID-19)
+            surveillance. ~82 datasets.
+
+    - name: OpenAQ
+      domainType: Source-aligned
+      description: >
+        Global air-quality measurements (PM2.5, ozone, etc.) from OpenAQ's API.
+        Ingestion deferred past M0 pending an API key (docs/ARCHITECTURE.md §7);
+        domain created ahead of data to reserve the mapping.
+
+    - name: openFDA
+      domainType: Source-aligned
+      description: >
+        FDA regulatory data (adverse events, recalls, labeling) via the openFDA
+        API. Ingestion deferred past M0; placeholder domain.
+
+    - name: WHO
+      domainType: Source-aligned
+      description: >
+        Global health statistics from WHO's data APIs. Ingestion deferred past
+        M0; placeholder domain.
+
+    - name: CMS
+      domainType: Source-aligned
+      description: >
+        Centers for Medicare & Medicaid Services data (claims, spending, quality
+        measures). Ingestion deferred past M0; placeholder domain, expected to
+        feed the Financial consumer-aligned domain once ingested.
+
+  consumer_aligned:
+    - name: Infectious Disease
+      domainType: Consumer-aligned
+      description: >
+        Case counts, outbreak surveillance, and wastewater detection/activity
+        (SARS-CoV-2, H5, measles). Maps to dbt curated/infectious_disease.
+
+    - name: Respiratory
+      domainType: Consumer-aligned
+      description: >
+        RSV, influenza, and COVID-19 burden — hospital capacity/load, ED visit
+        share. Maps to dbt curated/respiratory.
+
+    - name: Behavioral Health
+      domainType: Consumer-aligned
+      description: >
+        Drug overdose deaths and mental-health-related ED visits. Maps to dbt
+        curated/behavioral_health.
+
+    - name: Chronic Disease
+      domainType: Consumer-aligned
+      description: >
+        County/state chronic disease prevalence (PLACES/BRFSS), Alzheimer's/
+        healthy aging. Maps to dbt curated/chronic_disease.
+
+    - name: Child Welfare
+      domainType: Consumer-aligned
+      description: >
+        Child maltreatment, CPS referral-to-outcome funnel, perpetrator/victim
+        trends. Maps to dbt curated/child_welfare.
+
+    - name: Immunization
+      domainType: Consumer-aligned
+      description: >
+        Vaccination coverage by population and vaccine type. Maps to dbt
+        curated/immunization.
+
+    - name: Environmental Health
+      domainType: Consumer-aligned
+      description: >
+        Air quality (PM2.5) and other environmental exposure indicators
+        relevant to population health; expected to grow once OpenAQ ingestion
+        lands.
+
+    - name: Education
+      domainType: Consumer-aligned
+      description: >
+        School operating status / learning modality data, used as a
+        social-determinants-of-health signal. Maps to dbt curated/education.
+
+    - name: Access to Care
+      domainType: Consumer-aligned
+      description: >
+        Treatment site locations and healthcare access/availability data. Maps
+        to dbt curated/access.
+
+    - name: Financial
+      domainType: Consumer-aligned
+      description: >
+        Healthcare spending/budget data now, claims/cost data once CMS
+        ingestion lands. Seeded ahead of data to reserve the mapping.
