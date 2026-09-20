@@ -18,7 +18,7 @@ from sqlalchemy.engine import Engine
 from hub_api import chat, db
 from hub_api.main import app
 from hub_api.models import ModelConfig
-from ohdp_agent.loop import MODEL, Deps
+from ohdp_agent.loop import Deps
 
 USER = "researcher@example.org"
 OTHER = "other@example.org"
@@ -46,7 +46,9 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     # Override the agent registry after lifespan has run so the /models endpoint
     # sees predictable entries without needing real API keys.
     app.state.agents = {
-        MODEL: ModelConfig(agent=_minimal_agent(), label="Claude Opus 5", configured=False),
+        "openrouter/llama-3": ModelConfig(
+            agent=_minimal_agent(), label="Llama 3", configured=False
+        ),
         "openai/gpt-4o-mini": ModelConfig(agent=_minimal_agent(), label="GPT 4", configured=True),
         "openai/gpt-4o": ModelConfig(agent=_minimal_agent(), label="GPT-4o", configured=False),
     }
@@ -139,7 +141,9 @@ def test_models_lists_only_configured_models_from_models_yaml(client: TestClient
 
 def test_models_returns_empty_when_no_models_are_configured(client: TestClient) -> None:
     app.state.agents = {
-        MODEL: ModelConfig(agent=_minimal_agent(), label="Claude Opus 5", configured=False),
+        "openrouter/llama-3": ModelConfig(
+            agent=_minimal_agent(), label="Llama 3", configured=False
+        ),
         "openai/gpt-4o": ModelConfig(agent=_minimal_agent(), label="GPT-4o", configured=False),
     }
     response = client.get("/api/models")

@@ -156,10 +156,10 @@ act -l
   itself at `/` on `app.open-health-data-platform.org` (`hub_api/main.py`) — a
   deliberate shortcut while the UI is one static page, to be replaced by
   `apps/web` when the hub grows a landing page, billing, and dashboards.
-- **The chat agent needs two things set by hand** before it works, neither of
-  which a deploy can do for you:
-  1. An `ANTHROPIC_API_KEY` repo secret. Without it the app deploys fine and
-     `/api/chat` answers 503.
+- **The chat agent needs one thing set by hand** before it works, which a deploy
+  cannot do for you:
+  1. An `OPENROUTER_API_KEY` repo secret. Without it the app deploys fine and
+     `/api/chat` answers 503 because no model backend is configured.
   2. `https://app.open-health-data-platform.org/oauth2/callback` added to the
      authorized redirect URIs of the Google OAuth client that
      `DAGSTER_OIDC_CLIENT_ID` names — the hub app's wall reuses it. Without it,

@@ -36,7 +36,7 @@ that context lives in OpenMetadata, not in our prompt (§3).
 ## 2. Tool surface
 
 Three groups, no raw SQL anywhere (ARCHITECTURE.md §9, ADR-0003). The agent is a
-Claude tool-use loop in `hub-api`; every group below is a set of tools it can call.
+tool-use loop in `hub-api`; every group below is a set of tools it can call.
 
 ### 2.1 Context — OpenMetadata MCP (`{OM_URL}/mcp`)
 
@@ -85,7 +85,7 @@ Cube's official MCP server is **Cube Cloud Premium/Enterprise only**. Cube Core 
 server, so we author this layer ourselves (ADR-0016). That is a net positive: the tool surface
 *is* the safety control, and it should be ours.
 
-These four tools are Anthropic tool definitions called in-process by the hub
+These four tools are pydantic-ai `Tool` definitions called in-process by the hub
 chat. The same `CubeClient` and `CubeQuery` validation also back the
 `ohdp-tools` OpenAPI connection used for dashboard rendering and issue reporting
 (§5, §8). The safety property is in the model, not the transport, so it holds
@@ -191,11 +191,13 @@ user question
 Splitting plan from execution gives a separable eval target (§7) and a natural place to let a
 user correct the metric choice before anything runs.
 
-**Model and API.** Claude Opus 5 (`claude-opus-5`) by default, adaptive thinking, streamed to the
-UI over SSE. The loop is a [pydantic-ai](https://ai.pydantic.dev) `Agent` rather than a hand-rolled
-Anthropic Messages API loop — its per-request `event_stream_handler` is where quota decrements,
-tool-call logging, and the citation check hang, and it is what makes §4a's other model backends a
-few lines of `Model`/`Provider` construction rather than a second hand-written turn loop.
+**Model and API.** The chat agent uses an OpenAI-spec chat-completions backend
+configured via `OHDP_OPENAI_API_BASE_URLS`/`OHDP_OPENAI_API_KEYS` (OpenRouter by
+default), streamed to the UI over SSE. The loop is a
+[pydantic-ai](https://ai.pydantic.dev) `Agent` rather than a hand-rolled
+turn loop — its per-request `event_stream_handler` is where quota decrements,
+tool-call logging, and the citation check hang. A new backend is just a different
+`base_url`/`model_id`; the tool loop, event stream, and citation logic stay the same.
 
 **OM MCP client placement.** Run the MCP client *inside* hub-api (`ohdp_agent.catalog`, ~100 lines
 of JSON-RPC — OpenMetadata's MCP server is stateless and does not want the general-purpose `mcp`
@@ -211,21 +213,21 @@ the two things a generic MCP client does not know to do.
 deliberately not built: the data is public and identical for every user (§1.1), so there is
 nothing to scope. Persona is selected by hub-api and passed explicitly.
 
-**§4a. Additional model backends.** Claude is the default, but the chat page's model picker
-(`GET /api/models`) can also offer any OpenAI-spec chat-completions backend configured via
-the `openrouter-secrets` Secret — mounted into hub-api as `OHDP_OPENAI_API_BASE_URLS`
-and `OHDP_OPENAI_API_KEYS` — OpenRouter, self-hosted vLLM/Ollama, Azure OpenAI,
-anything that answers `GET {base_url}/models`. In local dev the same two variables can be
-set in `.env`; the semicolon-separated, index-aligned shape supports one key per backend.
-The model list an operator gets is exactly what their key can see, discovered at startup,
-never hand-maintained.
+**§4a. Model backends.** The chat page's model picker (`GET /api/models`) offers
+every OpenAI-spec chat-completions backend configured via the `openrouter-secrets`
+Secret — mounted into hub-api as `OHDP_OPENAI_API_BASE_URLS` and
+`OHDP_OPENAI_API_KEYS` — OpenRouter, self-hosted vLLM/Ollama, Azure OpenAI,
+anything that answers `GET {base_url}/models`. In local dev the same two variables
+can be set in `.env`; the semicolon-separated, index-aligned shape supports one key
+per backend. The model list an operator gets is exactly what their key can see,
+discovered at startup, never hand-maintained.
 
-`ohdp_agent.loop.build_agent` picks pydantic-ai's `AnthropicModel` or `OpenAIChatModel` from
-whether a `base_url` is given, and either way gets the identical tool loop — same
+`ohdp_agent.loop.build_agent` always builds an `OpenAIChatModel` against the supplied
+`base_url` and `model_id`, so every backend gets the identical tool loop — same
 cube/catalog/literature tools (`BUILTIN_TOOLSET`, built once and shared by every model), same
-`Event` stream the UI already renders. The one thing an OpenAI-spec backend gives up: there is no
-extended-thinking equivalent in that spec, so the "plan" event §6 asks for becomes the model's
-first text before its first tool call rather than a distinct reasoning phase.
+`Event` stream the UI already renders. The chat-completions spec has no extended-thinking
+equivalent, so the "plan" event §6 asks for becomes the model's first text before its first
+tool call rather than a distinct reasoning phase.
 
 **Config-driven tool connections and per-model overrides** (`apps/api/config/tools.yaml`,
 `models.yaml`; `hub_api.tool_connections`, `hub_api.models`) let an operator go beyond bulk
@@ -369,8 +371,8 @@ than per month, since it is a spam ceiling and not a quota; and issues are label
 rather than by tier, because everyone signed in is tier `free` today.
 
 **Not configured by default.** `OHDP_GITHUB_TOKEN` and `OHDP_GITHUB_ISSUES_REPO` unset means
-this one endpoint answers 503 and nothing else changes — the same intended degradation as the
-Anthropic key. Set `GITHUB_ISSUES_TOKEN` and `TOOLS_AUTH_TOKEN` as repo secrets to turn it on.
+this one endpoint answers 503 and nothing else changes — the same intended degradation as a
+missing chat model key. Set `GITHUB_ISSUES_TOKEN` and `TOOLS_AUTH_TOKEN` as repo secrets to turn it on.
 
 ---
 
@@ -405,10 +407,10 @@ M3.0 and M3.1 carry the real risk and involve no model at all. Do them first.
    versioned system prompts is needed. The live gaps are configuration, not licensing —
    vector embeddings are off (killing `find_context` and `semantic_search`) and no persona
    is bound to the bot user. See §2.1.
-2. **Cost per question.** Opus 5 at $5/$25 per MTok, with a plan phase that may load several
-   `get_asset_context` documents. Measure before setting the free-tier quota (§10.3 of
-   ARCHITECTURE.md proposes 20/month). Prompt caching on the persona preamble and the
-   `/v1/meta` surface is the first lever; both are stable across turns and across users.
+2. **Cost per question.** Depends on whichever model and provider are configured; measure
+   before setting the free-tier quota (§10.3 of ARCHITECTURE.md proposes 20/month).
+   Prompt caching on the persona preamble and the `/v1/meta` surface is the first lever; both
+   are stable across turns and across users.
 3. **Correlation claims.** P2's journey ends at "does our data show anything," which invites
    exactly the spurious correlation §1 of this doc names as their failure mode. Decide whether
    the agent may compute cross-source correlations at all in M3, or only place two series side

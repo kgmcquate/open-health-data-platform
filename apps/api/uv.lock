@@ -38,24 +38,6 @@ wheels = [
 ]
 
 [[package]]
-name = "anthropic"
-version = "1.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "docstring-parser" },
-    { name = "httpx2" },
-    { name = "jiter" },
-    { name = "pydantic" },
-    { name = "sniffio" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6e/43/6f3f6006f5216d43a059a1a856d275ef6536cdfa94883b64cc04d7873cb7/anthropic-1.5.0.tar.gz", hash = "sha256:b25f87f5758861f25993383a5c9bf274eb6e0f1b010c84019ad91854cb4e1bc6", size = 1156657, upload-time = "2026-09-10T17:45:35.93Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/1c/c32fce35ca0be0205f2377d2238e3ed73dea5abc2be09d15fbd032091d60/anthropic-1.5.0-py3-none-any.whl", hash = "sha256:d9ce04b29ad1f7025dda3e3bc478cde8d2924d2de5417d2d4a4bb0378ecbc2a6", size = 1235236, upload-time = "2026-09-10T17:45:34.216Z" },
-]
-
-[[package]]
 name = "anyio"
 version = "4.15.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1345,7 +1327,6 @@ name = "ohdp-api"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "anthropic" },
     { name = "authlib" },
     { name = "fastapi" },
     { name = "fastmcp" },
@@ -1356,7 +1337,7 @@ dependencies = [
     { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
-    { name = "pydantic-ai-slim", extra = ["anthropic", "mcp", "openai"] },
+    { name = "pydantic-ai-slim", extra = ["mcp", "openai"] },
     { name = "python-jose", extra = ["cryptography"] },
     { name = "pyyaml" },
     { name = "sqlalchemy" },
@@ -1374,7 +1355,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=1.5" },
     { name = "authlib", specifier = ">=1.3" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastmcp", specifier = ">=4.0,<5" },
@@ -1385,7 +1365,7 @@ requires-dist = [
     { name = "openai", specifier = ">=1.50" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.8" },
-    { name = "pydantic-ai-slim", extras = ["anthropic", "mcp", "openai"], specifier = ">=1.0" },
+    { name = "pydantic-ai-slim", extras = ["mcp", "openai"], specifier = ">=1.0" },
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "sqlalchemy", specifier = ">=2.0" },
@@ -1652,9 +1632,6 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-anthropic = [
-    { name = "anthropic" },
-]
 mcp = [
     { name = "fastmcp-slim", extra = ["client"] },
 ]

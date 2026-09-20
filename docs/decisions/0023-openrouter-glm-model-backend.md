@@ -1,7 +1,8 @@
 # 0023 — OpenRouter + GLM 5.3 Flash as Open WebUI's model backend
 
 **Status:** **Superseded / removed.** This backend was tied to the Open WebUI
-surface, which has been deleted. hub-api continues to use Anthropic directly.
+surface, which has been deleted. hub-api originally used Anthropic directly,
+but that backend was also removed in favor of OpenAI-spec backends (OpenRouter).
 This document is retained for historical context.
 
 **Supersedes in part (historically):** [ADR-0017](0017-open-webui-chat-ui.md) —

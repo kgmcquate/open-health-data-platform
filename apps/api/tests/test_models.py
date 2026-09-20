@@ -1,27 +1,24 @@
-"""hub_api.models — layering explicit models.yaml overrides on top of the
-built-in Claude model and bulk-auto-discovered OpenAI-spec models, without
-hitting a real model API (build_agent's Agent construction makes no network
-call — see ohdp_agent.loop.build_agent).
+"""hub_api.models — layering explicit models.yaml overrides on top of bulk
+auto-discovered OpenAI-spec models, without hitting a real model API
+(build_agent's Agent construction makes no network call — see
+ohdp_agent.loop.build_agent).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from pydantic_ai.toolsets import FunctionToolset
 
 from hub_api import models as hub_models
-from hub_api.models import MODEL, ModelOverride, ModelsConfig, build_agents
-from ohdp_shared import settings
+from hub_api.models import ModelOverride, ModelsConfig, build_agents
 
 
 async def _noop() -> str:
     return "ok"
 
 
-def test_override_customizes_an_auto_discovered_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "anthropic_api_key", "", raising=False)
+def test_override_customizes_an_auto_discovered_model() -> None:
     openai_models = {"openai/gpt-4o-mini": ("https://openrouter.ai/api/v1", "sk-or-1")}
     weather = FunctionToolset([_noop])
     overrides = ModelsConfig(
@@ -39,10 +36,7 @@ def test_override_customizes_an_auto_discovered_model(monkeypatch: pytest.Monkey
     assert base_url.startswith("https://openrouter.ai")
 
 
-def test_override_with_its_own_backend_registers_independently(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "anthropic_api_key", "", raising=False)
+def test_override_with_its_own_backend_registers_independently() -> None:
     overrides = ModelsConfig(
         models=[
             ModelOverride(
@@ -57,10 +51,9 @@ def test_override_with_its_own_backend_registers_independently(
     assert agents["on-prem-llama"].label == "On-prem Llama"
 
 
-def test_unresolvable_override_is_skipped_not_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "anthropic_api_key", "", raising=False)
-    # No base_url given, and this id is not in openai_models or the built-in
-    # Claude model — nothing tells us what backend to use.
+def test_unresolvable_override_is_skipped_not_fatal() -> None:
+    # No base_url given, and this id is not in openai_models — nothing tells
+    # us what backend to use.
     overrides = ModelsConfig(models=[ModelOverride(id="mystery-model")])
 
     agents = build_agents({}, {}, overrides)
@@ -68,8 +61,7 @@ def test_unresolvable_override_is_skipped_not_fatal(monkeypatch: pytest.MonkeyPa
     assert agents == {}
 
 
-def test_unknown_tool_id_is_dropped_not_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "anthropic_api_key", "", raising=False)
+def test_unknown_tool_id_is_dropped_not_fatal() -> None:
     openai_models = {"openai/gpt-4o-mini": ("https://openrouter.ai/api/v1", "sk-or-1")}
     overrides = ModelsConfig(
         models=[ModelOverride(id="openai/gpt-4o-mini", tools=["does-not-exist"])]
@@ -78,17 +70,6 @@ def test_unknown_tool_id_is_dropped_not_fatal(monkeypatch: pytest.MonkeyPatch) -
     agents = build_agents(openai_models, {}, overrides)
 
     assert "openai/gpt-4o-mini" in agents
-
-
-def test_default_claude_model_is_registered_when_a_key_is_set(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "anthropic_api_key", "sk-ant-test", raising=False)
-
-    agents = build_agents({}, {}, ModelsConfig())
-
-    assert MODEL in agents
-    assert agents[MODEL].label == "Claude Opus 5"
 
 
 def test_load_models_config_missing_file_is_empty() -> None:

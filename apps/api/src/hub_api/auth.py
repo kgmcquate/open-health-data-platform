@@ -132,7 +132,7 @@ async def callback(request: Request) -> RedirectResponse:
     allowed = settings.allowed_emails_list
     if allowed and email.lower() not in allowed:
         # The access control oauth2-proxy-app.yaml's `authenticatedEmailsFile`
-        # used to provide, before the hub did its own OIDC. Anthropic spend is
+        # used to provide, before the hub did its own OIDC. Model API spend is
         # metered per verified email (chat.py), so this is what stands between
         # that quota and a public sign-up page until billing (M4) exists.
         log.warning("login_rejected_not_allowlisted", email=email)

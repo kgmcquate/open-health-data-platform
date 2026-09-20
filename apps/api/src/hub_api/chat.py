@@ -33,7 +33,7 @@ from hub_api.models import AgentRegistry, ModelConfig
 from ohdp_agent.catalog import CatalogClient
 from ohdp_agent.cube import CubeClient
 from ohdp_agent.literature import LiteratureClient
-from ohdp_agent.loop import MODEL, Event, Turn
+from ohdp_agent.loop import Event, Turn
 from ohdp_agent.loop import run as run_agent
 from ohdp_shared import get_logger, settings
 
@@ -60,9 +60,9 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     # Explicit, not inferred — "explicit is honest and testable" (§10.4).
     persona: str = Field(default="", max_length=128)
-    # Empty means the built-in Claude model (MODEL, below). Anything else must
-    # be one GET /api/models just offered — never a base_url or key from the
-    # client, which would make the browser choose what hub-api talks to.
+    # Must be one of the ids returned by GET /api/models. The browser never
+    # sends a base_url or key — that would let the client choose what hub-api
+    # talks to.
     model: str = Field(default="", max_length=256)
     # Every question belongs to a thread — the chat page creates one
     # (POST /api/threads) before the first message, never implicitly here.
@@ -110,11 +110,11 @@ def get_agents(request: Request) -> AgentRegistry:
 def models(agents: Annotated[AgentRegistry, Depends(get_agents)]) -> list[dict[str, object]]:
     """The models explicitly listed in config/models.yaml, for the picker —
     not the full registry, which also holds every auto-discovered model an
-    OpenAI-spec backend key can see and the built-in Claude model. Those stay
-    usable by id (an existing thread, or a direct API call) but are not listed
-    in the picker."""
+    OpenAI-spec backend key can see. Those stay usable by id (an existing
+    thread, or a direct API call) but are not listed in the picker.
+    """
     return [
-        {"id": model_id, "label": agents[model_id].label, "default": model_id == MODEL}
+        {"id": model_id, "label": agents[model_id].label, "default": False}
         for model_id in sorted(agents)
         if agents[model_id].configured
     ]
@@ -279,15 +279,16 @@ async def chat(
             f"You have used all {allowance} questions included this month.",
         )
 
-    model = body.model or MODEL
+    model = body.model
+    if not model:
+        if not agents:
+            raise HTTPException(
+                503, "The chat agent is not configured (no model API key)."
+            )
+        raise HTTPException(400, "A model must be selected. See GET /api/models.")
     config = agents.get(model)
     if config is None:
-        detail = (
-            "The chat agent is not configured (no model API key)."
-            if model == MODEL
-            else f"Unknown model {model!r}. See GET /api/models."
-        )
-        raise HTTPException(503 if model == MODEL else 400, detail)
+        raise HTTPException(400, f"Unknown model {model!r}. See GET /api/models.")
 
     thread = _get_owned_thread(engine, thread_id=body.thread_id, user_email=user_email)
     if body.truncate_from_turn_id is not None:

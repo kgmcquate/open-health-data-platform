@@ -691,10 +691,9 @@ export default function Chat() {
       .then((fetched) => {
         setModels(fetched);
         // Keep whichever the server flags default; fall back to the first
-        // entry so `model` is never "" while `fetched` is non-empty — an
-        // empty string falls back server-side to the built-in Claude model,
-        // which 503s the moment no OHDP_ANTHROPIC_API_KEY is configured,
-        // even though the picker visibly shows a different model selected.
+        // entry so `model` is never "" while `fetched` is non-empty. The
+        // server returns 503 for an empty request only when no backend is
+        // configured; otherwise it rejects an empty model field with a 400.
         setModel((current) => current || fetched.find((m) => m.default)?.id || fetched[0]?.id || "");
       })
       .catch(() => setModels([]));

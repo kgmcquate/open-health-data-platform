@@ -33,7 +33,8 @@ Two consequences of "stateless" shape this client:
     future OM release becomes stateful, `_rpc` is the only thing that changes.
   - **The client is ours**, which is the point ADR-0016 makes about the Cube
     layer too: tool calls stay inside hub-api's logging and quota path rather
-    than being made by Anthropic's servers through the API's MCP connector.
+    than being made by a model provider's servers through an API-side MCP
+    connector.
 
 Eleven of those 24 tools write to the catalog (`patch_entity`,
 `create_glossary`, `create_tag`, `create_lineage`, ...). They are excluded by an
@@ -91,7 +92,7 @@ class CatalogError(RuntimeError):
 
 @dataclass(frozen=True)
 class ToolSpec:
-    """One MCP tool. Field names match `anthropic.types.ToolParam`'s."""
+    """One MCP tool. Field names match pydantic-ai's `Tool` schema."""
 
     name: str
     description: str

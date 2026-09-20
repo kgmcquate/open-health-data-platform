@@ -202,8 +202,9 @@ export interface HubChatRuntime {
   isRunning: boolean;
 }
 
-/** `model` is a GET /api/models id, or "" for the built-in Claude default.
- * `onThreadChanged` fires once a thread exists to report — on lazy creation,
+/** `model` is a GET /api/models id. The UI falls back to the first model
+ * returned by the server while `fetched` is non-empty, so this is normally
+ * a configured model id. `onThreadChanged` fires once a thread exists to report
  * and after every turn (title/updated_at can both change) — so `Chat.tsx`
  * can keep its own sidebar list in sync without re-fetching it wholesale. */
 export function useHubChatRuntime(

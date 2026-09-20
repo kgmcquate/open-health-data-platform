@@ -42,8 +42,8 @@ ingress:
 # ARCHITECTURE.md §4 budgets 0.5 GB for hub-web + hub-api combined. There is no
 # hub-web container — hub-api serves the chat page itself (hub_api/main.py) — so
 # hub-api takes the whole budget rather than a share of it. The headroom over
-# the previous 320Mi is for the Anthropic SDK and a streaming turn's message
-# history, which grows with every tool result in the loop.
+# the previous 320Mi is for the pydantic-ai/OpenAI SDKs and a streaming turn's
+# message history, which grows with every tool result in the loop.
 # Limits are mandatory on every pod — the node runs near its ceiling.
 resources:
   requests:
@@ -122,7 +122,7 @@ envFrom:
   # hub-api-secrets — external, injected by deploy-platform.yml `secrets` step:
   #                   OHDP_OPENMETADATA_JWT, STRIPE_SECRET_KEY,
   #                   OHDP_OIDC_CLIENT_ID, OHDP_OIDC_CLIENT_SECRET,
-  #                   OHDP_ANTHROPIC_API_KEY, OHDP_GITHUB_TOKEN, OHDP_TOOLS_AUTH_TOKEN
+  #                   OHDP_GITHUB_TOKEN, OHDP_TOOLS_AUTH_TOKEN
   # openrouter-secrets — external, injected by deploy-platform.yml `secrets` step:
   #                      OHDP_OPENAI_API_BASE_URLS and OHDP_OPENAI_API_KEYS
   #                      (OpenRouter backend for the Hub UI model picker).

@@ -1,9 +1,8 @@
 # Explicit per-model overrides for the chat page's model picker
-# (docs/chatbot.md §4a), layered on top of:
-#   - the built-in Claude model (OHDP_ANTHROPIC_API_KEY), and
-#   - whatever OHDP_OPENAI_API_BASE_URLS/_KEYS auto-discovers in bulk
-#     (hub_api.models.discover_openai_models) — every model a configured
-#     OpenAI-spec key can see, with the default tools and system prompt.
+# (docs/chatbot.md §4a), layered on top of whatever
+# OHDP_OPENAI_API_BASE_URLS/_KEYS auto-discovers in bulk
+# (hub_api.models.discover_openai_models) — every model a configured
+# OpenAI-spec key can see, with the default tools and system prompt.
 #
 # An entry here whose `id` matches one of those gets its label/system_prompt/
 # tools overridden; give `base_url` + `api_key_env` too and it instead

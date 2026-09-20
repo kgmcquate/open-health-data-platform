@@ -1,35 +1,19 @@
 """The chat agent's tool-use loop (docs/chatbot.md §4), built on pydantic-ai.
 
-Claude Opus 5 with adaptive thinking by default, streamed, over three tool
-groups: catalog context (OpenMetadata MCP), execution (Cube), and literature
-(Europe PMC). Any OpenAI-spec chat-completions backend can also be configured
-(§4a) and gets the identical tool loop. No raw SQL tool exists anywhere in the
+An OpenAI-spec chat-completions backend (OpenRouter, self-hosted vLLM/Ollama,
+Azure OpenAI, etc.) configured via `OHDP_OPENAI_API_BASE_URLS`/`OHDP_OPENAI_API_KEYS`,
+streamed over three tool groups: catalog context (OpenMetadata MCP), execution
+(Cube), and literature (Europe PMC). No raw SQL tool exists anywhere in the
 surface — §2.2, ADR-0003.
 
-**Why pydantic-ai instead of the raw Anthropic/OpenAI SDKs.** hub-api used to
-drive Anthropic's Messages API by hand (a manual turn loop) and, for §4a,
-OpenAI's chat-completions API by hand a second time (reassembling
-streamed tool-call argument fragments itself). pydantic-ai's `Agent` runs the
-turn loop and the tool-call round trip for both, so `Deps`/`_run_tool` below
-is the *only* thing shared between backends — everything else it used to take
-to keep two model APIs in sync is gone. What it does not give us for free is
-this app's specific shape: the SSE `Event` stream `apps/web/src/chat/runtime.ts`
-already renders, the "plan is the first thing the model writes" rule (§4, rule
-2), and the citation check — those still live here.
-
-**Deviations from §4 as written, both deliberate, both worth revisiting.**
-
-1. *One phase, not two.* §4 splits PLAN from EXECUTE so a user can correct the
-   metric choice before anything runs. The system prompt below requires the model
-   to state its plan before its first `run_metric_query`, and that plan is emitted
-   as its own event — but there is no gate where the user can intervene. The eval
-   target §7 wants (grade the plan separately from the prose) is therefore not yet
-   separable. Adding the gate is a UI and state-machine change, not a model one.
-
-2. *No extended thinking for §4a backends.* The chat-completions spec has no
-   equivalent of Claude's adaptive thinking, so an OpenAI-spec model's "plan"
-   is its first text before its first tool call, not a distinct reasoning
-   phase — the same UI, a weaker guarantee that planning precedes execution.
+**Why pydantic-ai instead of the raw OpenAI SDK.** hub-api used to drive the
+chat-completions API by hand (reassembling streamed tool-call argument fragments
+itself). pydantic-ai's `Agent` runs the turn loop and the tool-call round trip
+for us, so `Deps`/`_run_tool` below is the *only* thing this module owns —
+everything else it used to take to keep model APIs in sync is gone. What it does
+not give us for free is this app's specific shape: the SSE `Event` stream
+`apps/web/src/chat/runtime.ts` already renders, the "plan is the first thing the
+model writes" rule (§4, rule 2), and the citation check — those still live here.
 
 Everything a tool returns — catalog descriptions, glossary terms, article
 abstracts — is untrusted input that lands in the prompt (§6). It is passed to the
@@ -46,7 +30,6 @@ from collections.abc import AsyncIterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from anthropic.types.beta import BetaThinkingConfigAdaptiveParam
 from pydantic import ValidationError
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.exceptions import AgentRunError, UsageLimitExceeded
@@ -62,9 +45,7 @@ from pydantic_ai.messages import (
     TextPartDelta,
     ThinkingPartDelta,
 )
-from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import Tool
@@ -80,7 +61,6 @@ from ohdp_shared import get_logger
 
 log = get_logger(__name__)
 
-MODEL = "claude-opus-5"
 MAX_TOKENS = 16_000
 
 # A turn is one model request. Ten is generous for the plan-then-execute shape
@@ -567,7 +547,7 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
 def build_agent(
     *,
     model_id: str,
-    base_url: str = "",
+    base_url: str,
     api_key: str = "",
     extra_toolsets: Sequence[AbstractToolset[Deps]] = (),
 ) -> Agent[Deps, str]:
@@ -576,42 +556,25 @@ def build_agent(
     catalog's per-request tools are supplied at run time instead (`run`,
     below), which is what lets the same `Agent` serve every user and persona.
 
-    `base_url` set means an OpenAI-spec backend (§4a); empty means the
-    built-in Claude model over Anthropic's own API, with adaptive thinking and
-    prompt caching turned on — pydantic-ai exposes both directly as
-    `AnthropicModelSettings`, so there is no hand-rolled equivalent to keep
-    in sync with the SDK any more.
+    Only OpenAI-spec chat-completions backends are supported. `base_url` must
+    point to one (OpenRouter, self-hosted vLLM/Ollama, Azure OpenAI, etc.).
 
     `extra_toolsets` is this model's operator-configured tool connections
     (`apps/api/config/tools.yaml`/`models.yaml`, via `hub_api.models`) — added
     on top of `BUILTIN_TOOLSET`, never in place of it (docs/chatbot.md §4a).
     """
-    model: AnthropicModel | OpenAIChatModel
-    settings: ModelSettings
-    if base_url:
-        # The openai SDK refuses to construct a client with an empty api_key
-        # at all (`OpenAIError: Missing credentials`) — even for a local
-        # server that ignores auth entirely, so a keyless backend (settings.py
-        # explicitly allows one) needs *something* non-empty here.
-        provider = OpenAIProvider(base_url=base_url, api_key=api_key or "not-required")
-        model = OpenAIChatModel(model_id, provider=provider)
-        settings = ModelSettings(max_tokens=MAX_TOKENS)
-    else:
-        model = AnthropicModel(model_id, provider=AnthropicProvider(api_key=api_key))
-        settings = AnthropicModelSettings(
-            max_tokens=MAX_TOKENS,
-            # Adaptive: the reader watching a 30-second plan phase should see
-            # it happening, whatever budget the model decides that needs.
-            anthropic_thinking=BetaThinkingConfigAdaptiveParam(type="adaptive"),
-            # The system prompt is stable across turns and across users with
-            # the same persona — the first prompt-caching lever §10.2 asks for.
-            anthropic_cache_instructions=True,
-        )
+    # The openai SDK refuses to construct a client with an empty api_key at all
+    # (`OpenAIError: Missing credentials`) — even for a local server that ignores
+    # auth entirely, so a keyless backend (settings.py explicitly allows one)
+    # needs *something* non-empty here.
+    provider = OpenAIProvider(base_url=base_url, api_key=api_key or "not-required")
+    model = OpenAIChatModel(model_id, provider=provider)
+    model_settings = ModelSettings(max_tokens=MAX_TOKENS)
     return Agent(
         model,
         deps_type=Deps,
         toolsets=[BUILTIN_TOOLSET, *extra_toolsets],
-        model_settings=settings,
+        model_settings=model_settings,
         retries=MAX_TURNS,
     )
 

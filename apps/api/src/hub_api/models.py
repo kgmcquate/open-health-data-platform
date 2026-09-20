@@ -1,19 +1,17 @@
 """Discovering what models this deployment can answer with, and building the
 pydantic-ai `Agent` for each one (§4a).
 
-Three layers, in the order they are applied:
+Two layers, in the order they are applied:
 
-  1. hub-api's own Claude model (`ohdp_agent.loop.MODEL`), when
-     `OHDP_ANTHROPIC_API_KEY` is set.
-  2. Bulk auto-discovery: every model reported by `GET /models` on each
+  1. Bulk auto-discovery: every model reported by `GET /models` on each
      backend in `settings.openai_backends` (`OHDP_OPENAI_API_BASE_URLS`/
      `_KEYS`) — the same call the hub chat makes to build its model picker, so
      the list an operator gets is exactly what their key can see, never a
      hand-maintained duplicate of it that can drift.
-  3. Explicit overrides (`apps/api/config/models.yaml`): a model id already
-     covered by (1) or (2) gets its label/system prompt/extra tools
-     customized; an id that is not gets registered as its own model, for a
-     backend not worth bulk-discovering.
+  2. Explicit overrides (`apps/api/config/models.yaml`): a model id already
+     covered by (1) gets its label/system prompt/extra tools customized; an id
+     that is not gets registered as its own model, for a backend not worth
+     bulk-discovering.
 
 An `Agent` is built once per model here, at startup, and reused for every
 request that model answers (`ohdp_agent.loop.Deps` is what carries
@@ -32,7 +30,7 @@ from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.toolsets import AbstractToolset
 
-from ohdp_agent.loop import MODEL, SYSTEM_PROMPT, Deps, build_agent
+from ohdp_agent.loop import SYSTEM_PROMPT, Deps, build_agent
 from ohdp_shared import env_file_values, get_logger, settings
 
 log = get_logger(__name__)
@@ -47,9 +45,9 @@ class ModelConfig:
     system_prompt: str = SYSTEM_PROMPT
     # True only for an id explicitly listed in models.yaml. The chat page's
     # model picker (hub_api.chat.models) shows only these — auto-discovered
-    # and built-in-Claude entries stay usable (an existing thread or a direct
-    # API call can still name them) but stop cluttering the picker with every
-    # model a configured OpenAI-spec key happens to see.
+    # entries stay usable (an existing thread or a direct API call can still
+    # name them) but stop cluttering the picker with every model a configured
+    # OpenAI-spec key happens to see.
     configured: bool = False
 
 
@@ -140,11 +138,6 @@ def build_agents(
     overrides: ModelsConfig | None = None,
 ) -> AgentRegistry:
     agents: AgentRegistry = {}
-    if settings.anthropic_api_key:
-        agents[MODEL] = ModelConfig(
-            agent=build_agent(model_id=MODEL, api_key=settings.anthropic_api_key),
-            label="Claude Opus 5",
-        )
     for model_id, (base_url, api_key) in openai_models.items():
         agents[model_id] = ModelConfig(
             agent=build_agent(model_id=model_id, base_url=base_url, api_key=api_key),
@@ -159,8 +152,6 @@ def build_agents(
             )
         elif override.id in openai_models:
             base_url, api_key = openai_models[override.id]
-        elif override.id == MODEL:
-            api_key = settings.anthropic_api_key
         else:
             log.warning("model_override_unresolvable", id=override.id)
             continue

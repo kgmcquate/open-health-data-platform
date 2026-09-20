@@ -121,24 +121,18 @@ class Settings(BaseSettings):
     # group, same as dagster-monitoring.
     dagster_graphql_url: str = "http://localhost:3000"
 
-    # Chat agent (docs/chatbot.md §4). Read as OHDP_ANTHROPIC_API_KEY, which is
-    # deliberately *not* the SDK's own ANTHROPIC_API_KEY: every secret this
-    # platform holds arrives through the OHDP_ prefix and one Kubernetes Secret,
-    # and an SDK that silently picks a key up from an unprefixed env var would
-    # be the one exception (§5).
-    anthropic_api_key: str = ""
     # OpenMetadata persona FQN whose curated context becomes the system-prompt
     # preamble (docs/chatbot.md §3.1). Empty until personas are seeded (M3.3),
     # and the loop falls back to its built-in prompt when it is.
     chat_persona: str = ""
 
-    # Additional OpenAI-spec model backends (docs/chatbot.md §4a), alongside
-    # the built-in Claude model above. Semicolon-separated, index-aligned lists,
-    # one entry per backend — OpenRouter, self-hosted vLLM/Ollama, Azure
-    # OpenAI, anything that answers `GET {base_url}/models` and speaks
-    # chat-completions. hub-api lists each backend's models at startup and
-    # merges them into one picker (hub_api.models); a key can be blank for a
-    # backend that needs none (e.g. a local server).
+    # OpenAI-spec chat-completions model backends (docs/chatbot.md §4a).
+    # Semicolon-separated, index-aligned lists, one entry per backend —
+    # OpenRouter, self-hosted vLLM/Ollama, Azure OpenAI, anything that answers
+    # `GET {base_url}/models` and speaks chat-completions. hub-api lists each
+    # backend's models at startup and merges them into one picker
+    # (hub_api.models); a key can be blank for a backend that needs none
+    # (e.g. a local server).
     openai_api_base_urls: str = ""
     openai_api_keys: str = ""
 

@@ -24,7 +24,6 @@ from ohdp_agent.cube import CubeInfo
 from ohdp_agent.literature import LiteratureClient
 from ohdp_agent.loop import (
     BUILTIN_TOOLSET,
-    MODEL,
     Deps,
     Turn,
     _extract_followups,
@@ -117,7 +116,7 @@ def test_extract_followups_without_a_block_changes_nothing() -> None:
 
 async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
     """One model turn can carry both plan text and a tool call, exactly like a
-    real Claude response often does — pydantic-ai delivers `plan` before
+    real tool-using response often does — pydantic-ai delivers `plan` before
     `tool_call` for such a turn, asserted here rather than assumed.
     """
     calls = 0
@@ -246,11 +245,7 @@ async def test_cancellation_persists_partial_answer() -> None:
 
 
 def test_build_agent_picks_the_backend_from_base_url() -> None:
-    from pydantic_ai.models.anthropic import AnthropicModel
     from pydantic_ai.models.openai import OpenAIChatModel
-
-    anthropic_agent = build_agent(model_id=MODEL, api_key="sk-ant-test")
-    assert isinstance(anthropic_agent.model, AnthropicModel)
 
     openai_agent = build_agent(
         model_id="openai/gpt-4o-mini", base_url="https://openrouter.ai/api/v1", api_key="sk-or-test"

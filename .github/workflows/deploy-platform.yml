@@ -136,8 +136,6 @@ jobs:
           # authorized redirect URIs.
           APP_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           APP_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          # hub-api's own agent, still Anthropic direct (docs/chatbot.md §4).
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # OpenAI-spec backend for the Hub UI model picker (docs/chatbot.md §4a).
           # Without it the OpenRouter-backed models simply don't appear; the rest
           # of the app works normally.
@@ -177,12 +175,8 @@ jobs:
           # role/key — the same identity the pipeline writes with (ADR-0019).
           upsert data cube-snowflake \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
-          # OHDP_ANTHROPIC_API_KEY is what the chat agent bills against
-          # (docs/chatbot.md §4). Without it /api/chat answers 503 and the rest
-          # of the app still works, which is the intended degradation.
           # OHDP_GITHUB_TOKEN/OHDP_TOOLS_AUTH_TOKEN back /tools/report_issue.
-          # Same intended degradation as the Anthropic key: unset, that one
-          # endpoint answers 503 and nothing else changes.
+          # Unset, that endpoint answers 503 and nothing else changes.
           # OHDP_OIDC_CLIENT_ID/_SECRET back hub-api's own sign-in
           # (hub_api.auth) — without them /auth/login answers 503 rather than
           # half-working.
@@ -197,7 +191,6 @@ jobs:
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OHDP_OIDC_CLIENT_ID="$APP_OIDC_CLIENT_ID" \
             --from-literal=OHDP_OIDC_CLIENT_SECRET="$APP_OIDC_CLIENT_SECRET" \
-            --from-literal=OHDP_ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
             --from-literal=OHDP_GITHUB_TOKEN="$HUB_GITHUB_ISSUES_TOKEN" \
             --from-literal=OHDP_TOOLS_AUTH_TOKEN="$TOOLS_AUTH_TOKEN"
           # OHDP_SNOWFLAKE_PRIVATE_KEY is the RSA key pair's private half

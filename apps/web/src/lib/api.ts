@@ -72,8 +72,7 @@ export interface ChatModel {
 }
 
 /** The models explicitly configured in config/models.yaml, for the picker.
- * Auto-discovered and built-in Claude models are usable by id but omitted
- * from the picker. */
+ * Auto-discovered models are usable by id but omitted from the picker. */
 export const fetchModels = () => getJson<ChatModel[]>("/api/models");
 
 export async function logout(): Promise<void> {
