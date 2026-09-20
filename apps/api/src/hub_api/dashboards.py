@@ -121,7 +121,21 @@ def _embed(spec: DashboardSpec, data: ChartData) -> HTMLResponse:
     "/render_dashboard",
     operation_id="render_dashboard",
     summary="Draw a dashboard in the chat",
-    response_class=HTMLResponse,
+    # No `response_class=HTMLResponse` here: the handler always returns an
+    # `HTMLResponse` instance directly, which FastAPI serves as-is regardless
+    # of the route's declared `response_class` — that declaration only feeds
+    # OpenAPI generation. Declaring it made FastAPI record a `{"type":
+    # "string"}` schema for the 200 response (`fastapi.openapi.utils.
+    # get_openapi_path` fills one in for any non-`JSONResponse` response
+    # class, before the `responses=` override below is even merged in).
+    # FastMCP's OpenAPI-to-MCP conversion then read that as a real output
+    # schema and advertised it on `render_dashboard` in `list_tools()` — but
+    # this tool's HTTP response is never JSON, so `OpenAPITool.run()` can
+    # never populate `structured_content` for it, and the MCP client raises
+    # "Tool render_dashboard has an output schema but did not return
+    # structured content" on every call. Leaving `response_class` at
+    # FastAPI's default (`JSONResponse`) makes it record an empty `{}`
+    # schema instead, which FastMCP correctly treats as no output schema.
     responses={200: {"content": {"text/html": {}}, "description": "The rendered dashboard"}},
 )
 async def render_dashboard_tool(

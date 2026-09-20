@@ -136,7 +136,13 @@ async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
     turn, events = await _run(_agent(stream_function))
 
     kinds = [e.type for e in events]
-    assert kinds == ["status", "plan", "tool_call", "tool_result", "done"]
+    # "text" precedes "plan"/the final "done" answer for each turn — a whole
+    # part delivered in one piece (as FunctionModel does here) still rides in
+    # on PartStartEvent, so the live UI sees it before _handle_stream folds
+    # it into the plan/answer.
+    assert kinds == ["status", "text", "plan", "tool_call", "tool_result", "text", "done"]
+    assert events[1].data["text"] == "Here is my plan."
+    assert events[5].data["text"] == "Here is the answer."
     assert turn.plan == "Here is my plan."
     # The answer is every turn's text joined, not just the final one — the
     # plan is part of what the reader is shown as the answer too (rule 2 and
@@ -145,7 +151,7 @@ async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
     assert turn.tool_calls == [{"name": "list_metrics", "input": {}}]
     assert events[-1].data["answer"] == turn.answer
 
-    tool_call_event, tool_result_event = events[2], events[3]
+    tool_call_event, tool_result_event = events[3], events[4]
     # Both share the id the model gave the call — what lets the frontend
     # attach the result (and, for render_dashboard's HTML, an embedded chart)
     # to the call it belongs to (apps/web/src/chat/runtime.ts).

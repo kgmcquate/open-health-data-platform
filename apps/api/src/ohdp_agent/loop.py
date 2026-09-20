@@ -44,9 +44,11 @@ from pydantic_ai.messages import (
     FunctionToolResultEvent,
     PartDeltaEvent,
     PartEndEvent,
+    PartStartEvent,
     RetryPromptPart,
     TextPart,
     TextPartDelta,
+    ThinkingPart,
     ThinkingPartDelta,
 )
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -528,7 +530,19 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
     """
     text_parts: list[str] = []
     async for event in events:
-        if isinstance(event, PartDeltaEvent):
+        if isinstance(event, PartStartEvent):
+            # A new part's first chunk of content rides on PartStartEvent, not
+            # a PartDeltaEvent — pydantic-ai's own part manager folds it into
+            # the part it constructs before any delta is emitted. Forwarding
+            # only deltas here dropped that opening chunk from the live UI on
+            # every part after the first (most visibly: the first word of the
+            # text that follows a tool-call/thinking part).
+            if isinstance(event.part, TextPart) and event.part.content:
+                await ctx.deps.queue.put(Event("text", {"text": event.part.content}))
+                ctx.deps.current_text += event.part.content
+            elif isinstance(event.part, ThinkingPart) and event.part.content:
+                await ctx.deps.queue.put(Event("thinking", {"text": event.part.content}))
+        elif isinstance(event, PartDeltaEvent):
             delta = event.delta
             if isinstance(delta, TextPartDelta):
                 await ctx.deps.queue.put(Event("text", {"text": delta.content_delta}))
