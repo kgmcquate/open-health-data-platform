@@ -22,6 +22,7 @@ value is freshly random — fine for validation, never written anywhere.
 {{- $fernet := (lookup "v1" "Secret" "meta" "openmetadata-fernet-secret").data | default dict -}}
 {{- $cube := (lookup "v1" "Secret" "data" "cube-secret").data | default dict -}}
 {{- $oauth2 := (lookup "v1" "Secret" "data" "oauth2-proxy-secret").data | default dict -}}
+{{- $mcpCube := (lookup "v1" "Secret" "app" "mcp-cube-secret").data | default dict -}}
 {{- $hubApiDb := (lookup "v1" "Secret" "app" "hub-api-db").data | default dict -}}
 postgres: {{ (index $pg "postgres-password") | default (randAlphaNum $len | b64enc) }}
 dagster: {{ (index $pg "dagster-password") | default (randAlphaNum $len | b64enc) }}
@@ -33,6 +34,10 @@ cube: {{ (index $cube "OHDP_CUBE_API_SECRET") | default (randAlphaNum $len | b64
      retired once hub_api.auth started doing its own OIDC). Must decode to
      exactly 32 bytes. */}}
 oauth2Cookie: {{ (index $oauth2 "cookie-secret") | default (randAlphaNum 32 | b64enc) }}
+{{/* Bearer token the Cube MCP server requires of its caller (ADR-0017). Both
+     sides read the same generated value, so there is no manual step to keep
+     them in sync and nothing to paste into a values file. */}}
+mcpAuthToken: {{ (index $mcpCube "OHDP_MCP_AUTH_TOKEN") | default (randAlphaNum $len | b64enc) }}
 {{/* Signs hub-api's session cookie (main.py). Left unset outside `local`,
      hub-api refuses to start rather than sign cookies with a hardcoded
      dev secret — so this must exist before the very first deploy. */}}

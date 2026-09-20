@@ -1,10 +1,14 @@
 # 0017 — Open WebUI as a chat UI, with our own Cube MCP server
 
-**Status:** **Superseded / removed.** The Open WebUI surface, the `mcp-cube`
-chart and the `ohdp_mcp` package were deleted after the Hub UI chatbot
-(`apps/web` + `hub-api`) proved sufficient. This document is kept as a record of
-the decision and its consequences. The model-backend note about ADR-0023 is
-historical; OpenRouter is no longer a deployed backend either.
+**Status:** **Partially superseded.** The Open WebUI surface itself was removed
+after the Hub UI chatbot (`apps/web` + `hub-api`) proved sufficient. The
+`mcp-cube` chart and the `ohdp_mcp` package it runs were *not* meant to go with
+it — they were deleted alongside Open WebUI by mistake and later restored —
+because the Hub UI chatbot's own agent calls the same MCP server declaratively,
+via the `mcp-cube` connection in `apps/api/config/tools.yaml`. This document is
+kept as a record of the original decision. The model-backend note about
+ADR-0023 is historical; OpenRouter is no longer a deployed backend for a chat
+*UI*, though the Hub UI's model picker can still route to it (docs/chatbot.md §4a).
 
 **Extends:** [ADR-0016](0016-chat-agent-tool-surface.md) — the Cube tool surface
 is unchanged; at the time this ADR gave it a second transport and front end.

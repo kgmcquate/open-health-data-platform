@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
       image_tag:
-        description: Override the dagster + hub-api + cube image tag (blank = the sha-<12> of the deployed commit).
+        description: Override the dagster + hub-api + mcp-cube + cube image tag (blank = the sha-<12> of the deployed commit).
         type: string
         default: ""
       deploy_all:
@@ -54,6 +54,10 @@ on:
         description: "Chart: hub-api (does its own OIDC sign-in, no oauth2-proxy wall)"
         type: boolean
         default: false
+      deploy_mcp_cube:
+        description: "Chart: Cube MCP server"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-platform
@@ -92,7 +96,7 @@ jobs:
         with:
           kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
 
-      # dagster + hub-api + cube run this tag. Defaults to the sha-<12> of
+      # dagster + hub-api + mcp-cube + cube run this tag. Defaults to the sha-<12> of
       # the checked-out commit — the tag build-images.yml pushed for it. Never
       # `latest`, so `helm rollback` and pod restarts stay pinned to a known build.
       - name: Resolve image tag
@@ -242,6 +246,10 @@ jobs:
       - name: hub-api
         if: inputs.deploy_all || inputs.deploy_hub_api
         run: make -C platform/helm hub-api TAG="$TAG"
+
+      - name: Cube MCP server
+        if: inputs.deploy_all || inputs.deploy_mcp_cube
+        run: make -C platform/helm mcp-cube TAG="$TAG"
 
       - name: Pods
         if: always()

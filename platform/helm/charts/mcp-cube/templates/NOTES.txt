@@ -1,0 +1,22 @@
+mcp-cube {{ .Chart.Version }} deployed as {{ include "mcp-cube.fullname" . }}.
+
+MCP endpoint (in-cluster only — there is no Ingress):
+
+  http://{{ include "mcp-cube.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}/mcp
+
+hub-api's chat agent reaches this declaratively via the `mcp-cube` connection
+in apps/api/config/tools.yaml, whose `${OHDP_MCP_AUTH_TOKEN}` resolves against
+the same env var this chart's Secret generates — nothing to register by hand.
+To use it from another MCP client instead, the bearer token is:
+
+  kubectl -n {{ .Release.Namespace }} get secret mcp-cube-secret \
+    -o jsonpath='{.data.OHDP_MCP_AUTH_TOKEN}' | base64 -d
+
+Four tools should appear: list_metrics, describe_metric, run_metric_query,
+explain_query. There is no SQL tool and no way to express one (ADR-0016) — if a
+fifth tool ever shows up here, something changed that should not have.
+
+Secrets expected in namespace {{ .Release.Namespace }}:
+{{- range .Values.envFrom.secrets }}
+  - {{ . }}
+{{- end }}

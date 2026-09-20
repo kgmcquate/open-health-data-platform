@@ -129,9 +129,10 @@ make oauth2-proxy           # Google wall: Dagster + dagster-monitoring
 make hub-api                # chat UI + /api — does its own OIDC sign-in, no oauth2-proxy wall
 ```
 
-The `mcp-cube` chart and `open-webui` values file were removed once the Hub UI
-chatbot became the single chat surface. See [ADR-0017](../../docs/decisions/0017-open-webui-chat-ui.md)
-for the historical record.
+The `open-webui` values file was removed once the Hub UI chatbot became the
+single chat surface. `mcp-cube` stayed: the Hub UI chatbot's own agent calls it
+too, declaratively, via `apps/api/config/tools.yaml`'s `mcp-cube` connection.
+See [ADR-0017](../../docs/decisions/0017-open-webui-chat-ui.md) for the history.
 
 Order matters — OpenSearch must be green before OpenMetadata starts or its
 migration job fails (`make install` sequences this for you).

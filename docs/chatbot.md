@@ -3,8 +3,11 @@
 **Status:** M3.0-M3.2 and a first M3.4 are built and deployable. §3.3's personas
 and §3.5's CI-tested FQN round-trip are not. §5's charts and §8's ticket flow
 are implemented on the Hub UI chat surface (`apps/web`). The earlier Open WebUI
-surface and its `mcp-cube`/`ohdp_mcp` support have been removed; this document
-has been updated to describe the remaining architecture.
+surface has been removed; this document has been updated to describe the
+remaining architecture. `mcp-cube`/`ohdp_mcp` (§11) is not part of that removal
+— it was deleted by mistake alongside Open WebUI and has since been restored,
+and now serves the Hub UI chatbot's own agent as well, declaratively, via the
+`mcp-cube` connection in `apps/api/config/tools.yaml`.
 
 **Audience:** the implementing agent. Read [ARCHITECTURE.md](ARCHITECTURE.md) §1, §5, §6 and
 [ADR-0016](decisions/0016-chat-agent-tool-surface.md) first.
@@ -423,7 +426,14 @@ M3.0 and M3.1 carry the real risk and involve no model at all. Do them first.
 
 ## 11. Historical note: the Open WebUI surface
 
-A second chat surface using Open WebUI and a dedicated `mcp-cube` MCP server was
-deployed during M3 but has since been removed. The Hub UI (`apps/web`) and
-`hub-api` remain the only chat surface. See the superseded
-[ADR-0017](decisions/0017-open-webui-chat-ui.md) for the original rationale.
+A second chat surface using Open WebUI was deployed during M3 but has since
+been removed. The Hub UI (`apps/web`) and `hub-api` remain the only chat
+surface. See the superseded [ADR-0017](decisions/0017-open-webui-chat-ui.md)
+for the original rationale.
+
+The `mcp-cube` MCP server that ADR-0017 built alongside Open WebUI was *not*
+Open-WebUI-specific — it is a thin FastMCP wrapper over `ohdp_agent.cube`
+(`apps/api/src/ohdp_mcp/server.py`) — and it is still deployed. The Hub UI
+chatbot's own agent is now its caller, via the `mcp-cube` connection in
+`apps/api/config/tools.yaml` (§2.1 covers the OpenMetadata MCP connection the
+same tool-connection mechanism also carries).
