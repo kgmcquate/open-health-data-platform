@@ -589,7 +589,7 @@ function ChatThread({
     <ThreadPrimitive.Root className="flex h-full flex-col">
       <AuiIf condition={(s) => s.thread.isEmpty}>
         <div className="flex grow flex-col items-center justify-center px-4">
-          <div className="mx-auto flex w-full max-w-2xl flex-col items-stretch gap-5">
+          <div className="mx-auto flex w-full max-w-5xl flex-col items-stretch gap-5">
             <p className="flex items-center justify-center gap-3 text-2xl font-bold sm:text-3xl">
               <span className="inline-flex h-9 w-9 items-center justify-center rounded-box bg-primary text-primary-content">
                 ✚
@@ -621,7 +621,7 @@ function ChatThread({
 
       <AuiIf condition={(s) => !s.thread.isEmpty}>
         <ThreadPrimitive.Viewport className="flex grow flex-col overflow-y-auto px-4 pt-6">
-          <div className="mx-auto w-full max-w-3xl">
+          <div className="mx-auto w-full max-w-5xl">
             <ThreadPrimitive.Messages
               components={{
                 UserMessage,
@@ -631,7 +631,7 @@ function ChatThread({
             />
           </div>
         </ThreadPrimitive.Viewport>
-        <div className="sticky bottom-0 mx-auto w-full max-w-3xl bg-gradient-to-b from-transparent via-base-100/90 to-base-100 px-4 pt-4 pb-3">
+        <div className="sticky bottom-0 mx-auto w-full max-w-5xl bg-gradient-to-b from-transparent via-base-100/90 to-base-100 px-4 pt-4 pb-3">
           {/* Follow-ups for the answer that just landed — same chips as the
               welcome screen, but proposed by the model about its own answer
               (the `done` event's `suggestions`). Hidden while a turn runs so
