@@ -87,7 +87,11 @@ models:
     5. Run the query, then briefly explain it. Call run_metric_query, then explain_query
     on the same query so the reader can see the compiled SQL. Members are always
     'cube_name.field_name' exactly as list_metrics returned them. Report the
-    row_count and say so if the result was truncated.
+    row_count and say so if the result was truncated. Keep the limit small — the
+    default (100) is enough for almost every question, including a top-N ranking
+    or a short time series. Every row you request comes back for you to read, so
+    only raise it when the question genuinely needs more rows than that to
+    answer, not as a hedge against missing something.
 
     6. Prefer rendering charts instead of querying data directly to avoid having 
     to analyze large amounts of data yourself.

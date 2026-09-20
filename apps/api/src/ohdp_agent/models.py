@@ -121,7 +121,17 @@ class CubeQuery(_Strict):
     time_dimensions: list[TimeDimension] = Field(default_factory=list, max_length=3)
     filters: list[Filter] = Field(default_factory=list, max_length=20)
     order: dict[Member, Literal["asc", "desc"]] = Field(default_factory=dict)
-    limit: int = Field(default=1_000, ge=1, le=MAX_ROWS)
+    limit: int = Field(
+        default=100,
+        ge=1,
+        le=MAX_ROWS,
+        description=(
+            "Rows to return. Defaults to 100 — keep it there unless the question "
+            "needs more; a ranked top-N or a short time series rarely does. Every "
+            "row comes back in the tool result you then read, so a high limit "
+            "costs you context, not just the warehouse."
+        ),
+    )
 
     def model_post_init(self, _context: object) -> None:
         if not self.measures and not self.dimensions:
