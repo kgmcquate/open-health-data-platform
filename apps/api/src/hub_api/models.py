@@ -28,7 +28,7 @@ from pathlib import Path
 
 import openai
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.toolsets import AbstractToolset
 
@@ -45,6 +45,12 @@ class ModelConfig:
     agent: Agent[Deps, str]
     label: str
     system_prompt: str = SYSTEM_PROMPT
+    # True only for an id explicitly listed in models.yaml. The chat page's
+    # model picker (hub_api.chat.models) shows only these — auto-discovered
+    # and built-in-Claude entries stay usable (an existing thread or a direct
+    # API call can still name them) but stop cluttering the picker with every
+    # model a configured OpenAI-spec key happens to see.
+    configured: bool = False
 
 
 # model id -> its reusable Agent plus how it should be presented and prompted.
@@ -75,10 +81,30 @@ class ModelsConfig(BaseModel):
 
 
 def load_models_config(path: Path = CONFIG_PATH) -> ModelsConfig:
+    """Skips a model entry that fails to parse rather than raising — same
+    reasoning as `hub_api.tool_connections.load_config`: one operator typo
+    must cost that model, not every other configured model, and must not
+    take hub-api's startup down with it.
+    """
     if not path.exists():
         return ModelsConfig()
-    raw = yaml.safe_load(path.read_text()) or {}
-    return ModelsConfig.model_validate(raw)
+    try:
+        raw = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError as exc:
+        log.error("models_config_invalid", path=str(path), error=str(exc))
+        return ModelsConfig()
+
+    overrides: list[ModelOverride] = []
+    for item in raw.get("models", []) or []:
+        try:
+            overrides.append(ModelOverride.model_validate(item))
+        except ValidationError as exc:
+            log.error(
+                "model_override_invalid",
+                id=item.get("id") if isinstance(item, dict) else None,
+                error=str(exc),
+            )
+    return ModelsConfig(models=overrides)
 
 
 async def discover_openai_models() -> dict[str, tuple[str, str]]:
@@ -153,6 +179,7 @@ def build_agents(
             ),
             label=override.label or override.id,
             system_prompt=override.system_prompt or SYSTEM_PROMPT,
+            configured=True,
         )
 
     return agents

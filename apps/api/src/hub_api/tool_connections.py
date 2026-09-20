@@ -20,7 +20,7 @@ from typing import Annotated, Literal
 import httpx2
 import yaml
 from fastmcp import FastMCP
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.toolsets import AbstractToolset
 
@@ -66,6 +66,7 @@ class OpenApiConnection(BaseModel):
 
 
 Connection = Annotated[McpConnection | OpenApiConnection, Field(discriminator="type")]
+_connection_adapter: TypeAdapter[Connection] = TypeAdapter(Connection)
 
 
 class ToolsConfig(BaseModel):
@@ -73,10 +74,32 @@ class ToolsConfig(BaseModel):
 
 
 def load_config(path: Path = CONFIG_PATH) -> ToolsConfig:
+    """Skips a connection that fails to parse rather than raising — this file
+    is hand-edited by an operator, and a typo in *one* entry (the wrong field
+    for its `type`, most commonly) must cost that connection, not silently
+    drop every other one in the file, and must not take hub-api's startup
+    down with it. Broken YAML syntax (the whole file, not one entry) still
+    empties the config — there is no per-entry unit left to salvage from that.
+    """
     if not path.exists():
         return ToolsConfig()
-    raw = yaml.safe_load(path.read_text()) or {}
-    return ToolsConfig.model_validate(raw)
+    try:
+        raw = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError as exc:
+        log.error("tools_config_invalid", path=str(path), error=str(exc))
+        return ToolsConfig()
+
+    connections: list[Connection] = []
+    for item in raw.get("connections", []) or []:
+        try:
+            connections.append(_connection_adapter.validate_python(item))
+        except ValidationError as exc:
+            log.error(
+                "tool_connection_invalid",
+                id=item.get("id") if isinstance(item, dict) else None,
+                error=str(exc),
+            )
+    return ToolsConfig(connections=connections)
 
 
 def _build_mcp_toolset(conn: McpConnection) -> AbstractToolset[Deps]:

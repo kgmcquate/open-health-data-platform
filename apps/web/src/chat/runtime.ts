@@ -1,17 +1,40 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
+  SimpleImageAttachmentAdapter,
   useExternalStoreRuntime,
   type AppendMessage,
+  type AssistantRuntime,
+  type FeedbackAdapter,
   type ThreadMessageLike,
 } from "@assistant-ui/react";
+import {
+  createThread,
+  fetchThread,
+  submitFeedback,
+  type ThreadSummary,
+  type ThreadTurn,
+} from "../lib/api";
 
 /**
  * Bridges hub-api's SSE stream (hub_api.chat) into assistant-ui's external
- * store. The backend owns the agent, the tools, the quota and the token
- * accounting; this client only renders the event stream. Events the backend
- * emits (ohdp_agent.loop):
+ * store. The backend owns the agent, the tools, the quota, the token
+ * accounting, and the thread/turn log; this client only renders the event
+ * stream and reflects the persisted history back once a turn lands. Events
+ * the backend emits (ohdp_agent.loop):
  *   status, thinking, text, plan, tool_call, rows, sql, articles,
  *   tool_error, warning, done, error
+ *
+ * Thread *switching* is not this hook's job — `Chat.tsx` owns the sidebar and
+ * the list of threads; this hook only drives whichever thread it is told is
+ * active, via `threadId`.
+ *
+ * Message ids double as the pointer back into hub-api's turn log: a
+ * persisted user/assistant pair is `u{turnId}`/`a{turnId}` — one turn is one
+ * question and one answer, never split across more than two messages — which
+ * is what lets `onEdit`/`onReload`/feedback address a specific turn without a
+ * second id scheme. An in-flight turn gets a throwaway local id; once the
+ * stream ends the whole thread is re-fetched, so the local id never has to
+ * mean anything past that point.
  */
 
 type Part = Exclude<ThreadMessageLike["content"], string>[number];
@@ -21,8 +44,66 @@ interface ServerEvent {
   [key: string]: unknown;
 }
 
-let nextId = 0;
-const uid = () => `m${++nextId}`;
+let nextLocalId = 0;
+const localId = () => `pending-${++nextLocalId}`;
+
+// Module-level, not created inline in the store object passed to
+// useExternalStoreRuntime: that hook's effect that resyncs the runtime
+// (`runtime.setAdapter(...)`) is keyed on that object's *identity*, and a
+// fresh SimpleImageAttachmentAdapter / feedback closure / convertMessage
+// function on every render meant `store` never had a stable reference —
+// every unrelated re-render (every keystroke while editing a message, among
+// others) forced a resync, which was silently closing the edit composer
+// before its `onEdit` ever fired. None of these three need per-render state,
+// so hoisting them is what actually fixes it, not a memo with a chance of a
+// wrong dependency.
+const attachmentAdapter = new SimpleImageAttachmentAdapter();
+
+const feedbackAdapter: FeedbackAdapter = {
+  submit: ({ message, type }) => {
+    const turnId = turnIdFromMessageId(message.id);
+    if (turnId !== undefined) void submitFeedback(turnId, type);
+  },
+};
+
+const convertMessage = (m: ThreadMessageLike) => m;
+
+function turnIdFromMessageId(id: string): number | undefined {
+  const match = /^[ua](\d+)$/.exec(id);
+  return match ? Number(match[1]) : undefined;
+}
+
+function turnToMessages(turn: ThreadTurn): ThreadMessageLike[] {
+  const messages: ThreadMessageLike[] = [
+    { id: `u${turn.id}`, role: "user", content: [{ type: "text", text: turn.question }] },
+  ];
+  if (turn.answer || turn.error) {
+    let text = turn.answer;
+    if (turn.error) text += `\n\n> ❌ ${turn.error}`;
+    messages.push({
+      id: `a${turn.id}`,
+      role: "assistant",
+      content: [{ type: "text", text }],
+      metadata: turn.feedback
+        ? { custom: {}, submittedFeedback: { type: turn.feedback } }
+        : undefined,
+    });
+  }
+  return messages;
+}
+
+function textOf(content: readonly { type: string; text?: string }[]): string {
+  return content
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("\n");
+}
+
+function imagesOf(content: readonly { type: string; image?: string }[]): string[] {
+  return content
+    .filter((p): p is { type: "image"; image: string } => p.type === "image")
+    .map((p) => p.image);
+}
 
 function appendText(parts: Part[], text: string): Part[] {
   const last = parts[parts.length - 1];
@@ -38,16 +119,13 @@ function applyEvent(parts: Part[], event: ServerEvent): Part[] {
     case "text":
       return appendText(parts, String(event.text ?? ""));
     case "thinking":
-      return [
-        ...parts,
-        { type: "reasoning", text: String(event.text ?? "") } as Part,
-      ];
+      return [...parts, { type: "reasoning", text: String(event.text ?? "") } as Part];
     case "tool_call":
       return [
         ...parts,
         {
           type: "tool-call",
-          toolCallId: uid(),
+          toolCallId: localId(),
           toolName: String(event.name ?? "tool"),
           args: (event.input ?? {}) as Record<string, never>,
           argsText: JSON.stringify(event.input ?? {}),
@@ -89,34 +167,81 @@ async function* readSse(response: Response): AsyncGenerator<ServerEvent> {
   }
 }
 
-/** `model` is a GET /api/models id, or "" for the built-in Claude default. */
-export function useHubChatRuntime(model: string) {
+export interface HubChatRuntime {
+  runtime: AssistantRuntime;
+  /** `null` means a not-yet-persisted draft — sending the first message
+   * creates the thread lazily, rather than littering the sidebar with one
+   * empty thread per page visit. */
+  threadId: number | null;
+  newThread: () => void;
+  switchThread: (id: number) => Promise<void>;
+}
+
+/** `model` is a GET /api/models id, or "" for the built-in Claude default.
+ * `onThreadChanged` fires once a thread exists to report — on lazy creation,
+ * and after every turn (title/updated_at can both change) — so `Chat.tsx`
+ * can keep its own sidebar list in sync without re-fetching it wholesale. */
+export function useHubChatRuntime(
+  model: string,
+  onThreadChanged: (thread: ThreadSummary) => void,
+): HubChatRuntime {
+  const [threadId, setThreadId] = useState<number | null>(null);
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  // A ref, not state: aborting a stream is an imperative action, not
+  // something the UI renders off of, and — as with the module-level adapters
+  // above — anything reached through the store object passed to
+  // useExternalStoreRuntime forces a runtime resync when its identity
+  // changes, so this must not be part of what triggers a re-render.
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const onNew = async (message: AppendMessage) => {
-    const question = message.content
-      .filter((p): p is { type: "text"; text: string } => p.type === "text")
-      .map((p) => p.text)
-      .join("\n");
+  const newThread = () => {
+    setThreadId(null);
+    setMessages([]);
+  };
+
+  const switchThread = async (id: number) => {
+    const detail = await fetchThread(id);
+    setMessages(detail.turns.flatMap(turnToMessages));
+    setThreadId(id);
+  };
+
+  const runTurn = async (
+    question: string,
+    images: string[],
+    truncateFromTurnId: number | undefined,
+  ) => {
     if (!question.trim()) return;
 
+    let activeThreadId = threadId;
+    let base = messages;
+    if (activeThreadId === null) {
+      const created = await createThread();
+      activeThreadId = created.id;
+      setThreadId(created.id);
+      onThreadChanged(created);
+      base = [];
+    } else if (truncateFromTurnId !== undefined) {
+      const cutIndex = base.findIndex((m) => m.id === `u${truncateFromTurnId}`);
+      if (cutIndex !== -1) base = base.slice(0, cutIndex);
+    }
+
     const userMessage: ThreadMessageLike = {
-      id: uid(),
+      id: localId(),
       role: "user",
-      content: [{ type: "text", text: question }],
-      createdAt: new Date(),
+      content: [
+        { type: "text", text: question },
+        ...images.map((image): Part => ({ type: "image", image })),
+      ],
     };
-    const assistantId = uid();
+    const assistantId = localId();
     const assistantMessage: ThreadMessageLike = {
       id: assistantId,
       role: "assistant",
       content: [],
-      createdAt: new Date(),
       status: { type: "running" },
     };
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    setMessages([...base, userMessage, assistantMessage]);
     setIsRunning(true);
 
     const update = (parts: Part[], status?: ThreadMessageLike["status"]) =>
@@ -125,14 +250,21 @@ export function useHubChatRuntime(model: string) {
       );
 
     let parts: Part[] = [];
-    abortRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, model }),
-        signal: abortRef.current.signal,
+        body: JSON.stringify({
+          question,
+          model,
+          thread_id: activeThreadId,
+          truncate_from_turn_id: truncateFromTurnId ?? null,
+          images,
+        }),
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) {
         const detail = await response.text().catch(() => "");
@@ -169,15 +301,67 @@ export function useHubChatRuntime(model: string) {
       }
     } finally {
       setIsRunning(false);
-      abortRef.current = null;
+      abortControllerRef.current = null;
+    }
+
+    // The server is the source of truth for ids, the final answer, and the
+    // thread's title/updated_at — reload rather than trust the optimistic
+    // draft, the same way a page refresh would show it.
+    try {
+      const detail = await fetchThread(activeThreadId);
+      setMessages(detail.turns.flatMap(turnToMessages));
+      onThreadChanged(detail);
+    } catch {
+      // The turn already rendered from the stream; a failed refresh just
+      // means ids stay local until the next successful switch/reload.
     }
   };
 
-  return useExternalStoreRuntime<ThreadMessageLike>({
-    messages,
-    isRunning,
-    onNew,
-    onCancel: async () => abortRef.current?.abort(),
-    convertMessage: (m) => m,
-  });
+  const onNew = async (message: AppendMessage) => {
+    await runTurn(textOf(message.content), imagesOf(message.content), undefined);
+  };
+
+  const onEdit = async (message: AppendMessage) => {
+    const turnId = message.sourceId ? turnIdFromMessageId(message.sourceId) : undefined;
+    await runTurn(textOf(message.content), imagesOf(message.content), turnId);
+  };
+
+  const onReload = async (parentId: string | null) => {
+    if (parentId === null) return;
+    const turnId = turnIdFromMessageId(parentId);
+    if (turnId === undefined) return;
+    const original = messages.find((m) => m.id === parentId);
+    const content = original ? original.content : "";
+    const question = typeof content === "string" ? content : textOf(content);
+    await runTurn(question, [], turnId);
+  };
+
+  // Memoized for the same reason the module-level adapters above are hoisted:
+  // useExternalStoreRuntime resyncs the whole runtime whenever this object's
+  // *identity* changes, so it must only get a new one when `messages`/
+  // `isRunning` (or something `onNew`/`onEdit`/`onReload` close over)
+  // actually changed — not on every render this hook happens to run for.
+  const store = useMemo(
+    () => ({
+      messages,
+      isRunning,
+      onNew,
+      onEdit,
+      onReload,
+      onCancel: async () => abortControllerRef.current?.abort(),
+      convertMessage,
+      adapters: {
+        attachments: attachmentAdapter,
+        feedback: feedbackAdapter,
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onNew/onEdit/onReload
+    // are recreated each render but only ever close over threadId/model/messages,
+    // already listed below; adding the closures themselves would defeat the memo.
+    [messages, isRunning, threadId, model],
+  );
+
+  const runtime = useExternalStoreRuntime<ThreadMessageLike>(store);
+
+  return { runtime, threadId, newThread, switchThread };
 }

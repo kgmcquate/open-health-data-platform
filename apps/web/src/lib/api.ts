@@ -81,3 +81,54 @@ export const fetchModels = () => getJson<ChatModel[]>("/api/models");
 export async function logout(): Promise<void> {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
 }
+
+export interface ThreadSummary {
+  id: number;
+  title: string;
+  status: "regular" | "archived";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ThreadTurn {
+  id: number;
+  question: string;
+  answer: string;
+  plan: string;
+  error: string | null;
+  feedback: "positive" | "negative" | null;
+}
+
+export interface ThreadDetail extends ThreadSummary {
+  turns: ThreadTurn[];
+}
+
+async function sendJson<T>(
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: unknown,
+): Promise<T> {
+  const response = await fetch(path, {
+    method,
+    credentials: "same-origin",
+    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`${method} ${path} failed: ${response.status}`);
+  return (await response.json()) as T;
+}
+
+export const fetchThreads = () => getJson<ThreadSummary[]>("/api/threads");
+export const fetchThread = (id: number) => getJson<ThreadDetail>(`/api/threads/${id}`);
+export const createThread = (title = "") =>
+  sendJson<ThreadDetail>("/api/threads", "POST", { title });
+export const renameThread = (id: number, title: string) =>
+  sendJson<ThreadDetail>(`/api/threads/${id}`, "PATCH", { title });
+export const archiveThread = (id: number) =>
+  sendJson<ThreadDetail>(`/api/threads/${id}/archive`, "POST");
+export const unarchiveThread = (id: number) =>
+  sendJson<ThreadDetail>(`/api/threads/${id}/unarchive`, "POST");
+export const deleteThread = (id: number) => sendJson<{ ok: true }>(`/api/threads/${id}`, "DELETE");
+
+export const submitFeedback = (turnId: number, rating: "positive" | "negative") =>
+  sendJson<{ ok: true }>("/api/feedback", "POST", { turn_id: turnId, rating });

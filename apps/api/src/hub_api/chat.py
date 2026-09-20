@@ -25,8 +25,10 @@ starts driving billing: at that point the session must be verified here, and
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -57,6 +59,10 @@ KEEPALIVE = ": keepalive\n\n"
 KEEPALIVE_SECONDS = 15.0
 
 
+MAX_IMAGES_PER_QUESTION = 4
+TITLE_MAX_LENGTH = 60
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     # Explicit, not inferred — "explicit is honest and testable" (§10.4).
@@ -65,6 +71,32 @@ class ChatRequest(BaseModel):
     # be one GET /api/models just offered — never a base_url or key from the
     # client, which would make the browser choose what hub-api talks to.
     model: str = Field(default="", max_length=256)
+    # Every question belongs to a thread — the chat page creates one
+    # (POST /api/threads) before the first message, never implicitly here.
+    thread_id: int
+    # Set for an edited message or a regenerate: the turn to discard, and
+    # every turn after it, before this question is asked. Both are "resubmit
+    # from here" to a flat turn log — an edit changes what `question` is
+    # first; the response's own thumbs-up/down and edit history do not
+    # survive past that point, the same way editing a message in most chat
+    # UIs abandons the branch it replaces.
+    truncate_from_turn_id: int | None = None
+    # Data URLs from the composer's image attachments (`data:image/...;base64,...`)
+    # — never a file path or a URL hub-api would have to fetch itself.
+    images: list[str] = Field(default_factory=list, max_length=MAX_IMAGES_PER_QUESTION)
+
+
+class ThreadCreate(BaseModel):
+    title: str = Field(default="", max_length=TITLE_MAX_LENGTH)
+
+
+class ThreadRename(BaseModel):
+    title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
+
+
+class FeedbackRequest(BaseModel):
+    turn_id: int
+    rating: Literal["positive", "negative"]
 
 
 def get_engine(request: Request) -> Engine:
@@ -83,10 +115,15 @@ def get_agents(request: Request) -> AgentRegistry:
 
 @router.get("/models")
 def models(agents: Annotated[AgentRegistry, Depends(get_agents)]) -> list[dict[str, object]]:
-    """Every model this deployment can currently answer with, for the picker."""
+    """The models explicitly listed in config/models.yaml, for the picker —
+    not the full registry, which also holds every auto-discovered model an
+    OpenAI-spec backend key can see and the built-in Claude model. Those stay
+    usable by id (an existing thread, or a direct API call) but would swamp
+    the picker if listed here too."""
     return [
         {"id": model_id, "label": agents[model_id].label, "default": model_id == MODEL}
         for model_id in sorted(agents)
+        if agents[model_id].configured
     ]
 
 
@@ -121,6 +158,117 @@ def me(
         "questions_used": used,
         "questions_allowed": _allowance(),
     }
+
+
+def _get_owned_thread(engine: Engine, *, thread_id: int, user_email: str) -> dict[str, object]:
+    """A thread that is not this user's 404s exactly like one that does not
+    exist — the alternative (403) confirms the id is real, which is its own
+    small leak of another user's data."""
+    thread = db.get_thread(engine, thread_id=thread_id, user_email=user_email)
+    if thread is None:
+        raise HTTPException(404, "No such thread.")
+    return thread
+
+
+@router.get("/threads")
+def list_threads(
+    user_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> list[dict[str, object]]:
+    return db.list_threads(engine, user_email=user_email)
+
+
+@router.post("/threads")
+def create_thread(
+    body: ThreadCreate,
+    user_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> dict[str, object]:
+    thread_id = db.create_thread(engine, user_email=user_email, title=body.title)
+    return _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+
+
+@router.get("/threads/{thread_id}")
+def get_thread(
+    thread_id: int,
+    user_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> dict[str, object]:
+    """Thread metadata plus every turn in it — the chat page's history load
+    when switching to (or reopening) a conversation."""
+    thread = _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+    turns = db.thread_turns(engine, thread_id=thread_id, user_email=user_email)
+    return {**thread, "turns": turns}
+
+
+@router.patch("/threads/{thread_id}")
+def rename_thread(
+    thread_id: int,
+    body: ThreadRename,
+    user_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> dict[str, object]:
+    _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+    db.rename_thread(engine, thread_id=thread_id, user_email=user_email, title=body.title)
+    return _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+
+
+@router.post("/threads/{thread_id}/archive")
+def archive_thread(
+    thread_id: int,
+    user_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> dict[str, object]:
+    _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+    db.set_thread_status(engine, thread_id=thread_id, user_email=user_email, status="archived")
+    return _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+
+
+@router.post("/threads/{thread_id}/unarchive")
+def unarchive_thread(
+    thread_id: int,
+    user_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> dict[str, object]:
+    _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+    db.set_thread_status(engine, thread_id=thread_id, user_email=user_email, status="regular")
+    return _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+
+
+@router.delete("/threads/{thread_id}")
+def delete_thread(
+    thread_id: int,
+    user_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> dict[str, bool]:
+    _get_owned_thread(engine, thread_id=thread_id, user_email=user_email)
+    db.delete_thread(engine, thread_id=thread_id, user_email=user_email)
+    return {"ok": True}
+
+
+@router.post("/feedback")
+def submit_feedback(
+    body: FeedbackRequest,
+    user_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> dict[str, bool]:
+    db.set_feedback(engine, turn_id=body.turn_id, user_email=user_email, feedback=body.rating)
+    return {"ok": True}
+
+
+def _decode_image(data_url: str) -> tuple[bytes, str]:
+    """`data:<media_type>;base64,<payload>` -> the pair `loop.run`'s `images`
+    wants. Raises `HTTPException` rather than a bare parse error — this comes
+    straight from the client, `Depends`-free, so nothing upstream has vetted it.
+    """
+    if not data_url.startswith("data:") or ";base64," not in data_url:
+        raise HTTPException(400, "Attachments must be base64 data URLs.")
+    header, _, payload = data_url.partition(";base64,")
+    media_type = header.removeprefix("data:") or "application/octet-stream"
+    try:
+        return base64.b64decode(payload, validate=True), media_type
+    except binascii.Error as exc:
+        raise HTTPException(400, "An attachment's image data is not valid base64.") from exc
 
 
 @router.post("/chat")
@@ -158,8 +306,28 @@ async def chat(
         )
         raise HTTPException(503 if model == MODEL else 400, detail)
 
+    thread = _get_owned_thread(engine, thread_id=body.thread_id, user_email=user_email)
+    if body.truncate_from_turn_id is not None:
+        # An edited message or a regenerate: discard the old branch before
+        # this question becomes the thread's new last turn.
+        db.delete_turns_from(
+            engine,
+            thread_id=body.thread_id,
+            user_email=user_email,
+            turn_id=body.truncate_from_turn_id,
+        )
+    if not thread["title"]:
+        title = (
+            body.question
+            if len(body.question) <= TITLE_MAX_LENGTH
+            else (body.question[: TITLE_MAX_LENGTH - 1] + "…")
+        )
+        db.rename_thread(engine, thread_id=body.thread_id, user_email=user_email, title=title)
+
+    images = [_decode_image(url) for url in body.images]
+
     return StreamingResponse(
-        _stream(engine, body, user_email, config),
+        _stream(engine, body, user_email, config, images),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -176,6 +344,7 @@ async def _stream(
     body: ChatRequest,
     user_email: str,
     config: ModelConfig,
+    images: list[tuple[bytes, str]],
 ) -> AsyncIterator[str]:
     """Drive the agent, forward its events, and log the turn when it ends."""
     turn = Turn(question=body.question, persona=body.persona)
@@ -203,6 +372,7 @@ async def _stream(
                 literature=literature,
                 catalog=catalog,
                 system_prompt=config.system_prompt,
+                images=images,
             )
         except Exception as exc:  # noqa: BLE001 — the stream must always close cleanly
             log.exception("chat_failed", user=user_email)
@@ -232,6 +402,7 @@ async def _stream(
             user_email=user_email,
             tier=TIER,
             persona=turn.persona,
+            thread_id=body.thread_id,
             question=turn.question,
             plan=turn.plan,
             answer=turn.answer,
