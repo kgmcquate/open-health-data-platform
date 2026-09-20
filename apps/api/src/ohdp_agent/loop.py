@@ -2,8 +2,12 @@
 
 An OpenAI-spec chat-completions backend (OpenRouter, self-hosted vLLM/Ollama,
 Azure OpenAI, etc.) configured via `OHDP_OPENAI_API_BASE_URLS`/`OHDP_OPENAI_API_KEYS`,
-streamed over three tool groups: catalog context (OpenMetadata MCP), execution
-(Cube), and literature (Europe PMC). No raw SQL tool exists anywhere in the
+streamed over up to three tool groups: catalog context (OpenMetadata), execution
+(Cube), and literature (Europe PMC) — each either this module's in-process
+implementation (`CUBE_TOOLSET`, `LITERATURE_TOOLSET`, `_catalog_toolset`) or an
+MCP connection from `apps/api/config/tools.yaml`, per model, entirely per
+`apps/api/config/models.yaml`'s `tools:` list (`hub_api.models.build_agents`)
+— nothing here is attached by default. No raw SQL tool exists anywhere in the
 surface — §2.2, ADR-0003.
 
 **Why pydantic-ai instead of the raw OpenAI SDK.** hub-api used to drive the
@@ -183,9 +187,9 @@ class Deps:
 
     Nothing here is closed over by a tool function — every function takes
     `ctx: RunContext[Deps]` and reads through it — which is what lets
-    `BUILTIN_TOOLSET` be one module-level object built once and reused by
-    every model and every request, rather than rebuilt per question the way
-    the pre-pydantic-ai loop had to.
+    `CUBE_TOOLSET`/`LITERATURE_TOOLSET` be module-level objects built once and
+    reused by every model and every request that is given one, rather than
+    rebuilt per question the way the pre-pydantic-ai loop had to.
     """
 
     cube: CubeClient
@@ -406,19 +410,38 @@ def _catalog_tool(spec: ToolSpec) -> Tool[Deps]:
     )
 
 
-# Cube + literature tools, described once and shared by every model and every
-# request — the functions above all read `ctx.deps` at call time rather than
-# closing over any particular request's clients.
-BUILTIN_TOOLSET: FunctionToolset[Deps] = FunctionToolset(
-    [_tool_from_spec(spec) for spec in cube_tool_specs() + literature_tool_specs()]
+# Cube and literature tools, described once and shared by every model and
+# every request that is actually given them — the functions above all read
+# `ctx.deps` at call time rather than closing over any particular request's
+# clients, which is what lets one module-level object be reused this way.
+#
+# This module has no opinion on which model gets which — that resolution is
+# entirely `hub_api.models.build_agents`'s, driven by a model's `tools:` list
+# in `apps/api/config/models.yaml` (its own comment is the operator side of
+# this). Nothing here is attached to a model by default. A model that lists
+# both "cube" and `mcp-cube` gets the same four tools registered twice under
+# the same names, which pydantic-ai refuses to build an agent with; that is an
+# operator error to avoid, not something resolved automatically, since only
+# the operator can say which implementation a given model should actually call.
+CUBE_TOOLSET: FunctionToolset[Deps] = FunctionToolset(
+    [_tool_from_spec(spec) for spec in cube_tool_specs()]
+)
+LITERATURE_TOOLSET: FunctionToolset[Deps] = FunctionToolset(
+    [_tool_from_spec(spec) for spec in literature_tool_specs()]
 )
 
 
 async def _catalog_toolset(catalog: CatalogClient | None) -> FunctionToolset[Deps] | None:
     """Catalog tools, discovered fresh per request (OM's advertised set can
-    change between deploys) and added on top of `BUILTIN_TOOLSET` for that
-    run only — this is the one part of the tool surface that cannot be built
-    once at startup.
+    change between deploys) — this is the one part of the tool surface that
+    cannot be built once at startup the way `CUBE_TOOLSET`/`LITERATURE_TOOLSET`
+    above are.
+
+    Only called when `run`'s `include_catalog_tools` is True — a model's
+    `tools:` list has to name "catalog" to get this in-process path, the same
+    as it has to name "cube"/"literature" to get those, or `mcp-openmetadata`
+    to get OpenMetadata's tools over MCP instead. Nothing is attached by
+    default (`apps/api/config/models.yaml`).
     """
     if catalog is None:
         return None
@@ -480,7 +503,7 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
     The `tool_call`/`tool_result` events and `turn.tool_calls` are reported
     from `FunctionToolCallEvent`/`FunctionToolResultEvent` here, not
     self-reported by `_run_tool`, because this is the only place that sees a
-    tool call regardless of which toolset it came from — `BUILTIN_TOOLSET`,
+    tool call regardless of which toolset it came from — `CUBE_TOOLSET`/`LITERATURE_TOOLSET`,
     the catalog's per-request tools, *and* an operator-configured MCP/OpenAPI
     connection from tools.yaml, which pydantic-ai's own `MCPToolset`
     dispatches without ever going through `_run_tool` at all. Self-reporting
@@ -559,9 +582,11 @@ def build_agent(
     Only OpenAI-spec chat-completions backends are supported. `base_url` must
     point to one (OpenRouter, self-hosted vLLM/Ollama, Azure OpenAI, etc.).
 
-    `extra_toolsets` is this model's operator-configured tool connections
-    (`apps/api/config/tools.yaml`/`models.yaml`, via `hub_api.models`) — added
-    on top of `BUILTIN_TOOLSET`, never in place of it (docs/chatbot.md §4a).
+    `extra_toolsets` is this model's entire configured tool surface — this
+    module's own `CUBE_TOOLSET`/`LITERATURE_TOOLSET` and `apps/api/config/tools.yaml`
+    connections alike, resolved from that model's `tools:` list in models.yaml
+    by `hub_api.models.build_agents` (docs/chatbot.md §4a). Nothing is added on
+    top by default: an id not listed there is a tool this model does not get.
     """
     # The openai SDK refuses to construct a client with an empty api_key at all
     # (`OpenAIError: Missing credentials`) — even for a local server that ignores
@@ -573,7 +598,7 @@ def build_agent(
     return Agent(
         model,
         deps_type=Deps,
-        toolsets=[BUILTIN_TOOLSET, *extra_toolsets],
+        toolsets=list(extra_toolsets),
         model_settings=model_settings,
         retries=MAX_TURNS,
     )
@@ -591,6 +616,7 @@ async def run(
     catalog: CatalogClient | None,
     system_prompt: str = SYSTEM_PROMPT,
     images: Sequence[tuple[bytes, str]] = (),
+    include_catalog_tools: bool = False,
 ) -> None:
     """Answer `question`, pushing events onto `queue` as they happen and
     filling `turn`. Always ends by pushing a `done` or `error` event — the
@@ -609,6 +635,16 @@ async def run(
     model as real image content, not described in text. A model without
     vision support answers however it answers an image it cannot see; that is
     between the operator and their model choice, not something validated here.
+
+    `include_catalog_tools` is True only for a model whose `tools:` list names
+    "catalog" (`hub_api.models.build_agents`) — the in-process path, discovered
+    fresh per request below since OM's advertised tools can change between
+    deploys. A model that instead names `mcp-openmetadata` gets OpenMetadata's
+    tools already baked into `agent`'s own toolsets at build time, and passes
+    False here — building `_catalog_toolset` too would register the same tool
+    names twice. A model that names neither gets no catalog tools at all.
+    `catalog` is still used for the persona preamble regardless (below) — that
+    is context assembly, not a tool, and never collides.
     """
     deps = Deps(cube=cube, literature=literature, catalog=catalog, turn=turn, queue=queue)
     await queue.put(Event("status", {"message": "Reading the catalog"}))
@@ -627,9 +663,10 @@ async def run(
     instructions += FOLLOW_UPS_INSTRUCTIONS
 
     extra_toolsets: list[AbstractToolset[Deps]] = []
-    catalog_toolset = await _catalog_toolset(catalog)
-    if catalog_toolset is not None:
-        extra_toolsets.append(catalog_toolset)
+    if include_catalog_tools:
+        catalog_toolset = await _catalog_toolset(catalog)
+        if catalog_toolset is not None:
+            extra_toolsets.append(catalog_toolset)
 
     user_prompt: str | list[str | BinaryContent] = question
     if images:

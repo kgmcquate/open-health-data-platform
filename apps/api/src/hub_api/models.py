@@ -31,8 +31,22 @@ from pydantic_ai import Agent
 from pydantic_ai.toolsets import AbstractToolset
 
 from hub_api import config_dir
-from ohdp_agent.loop import SYSTEM_PROMPT, Deps, build_agent
+from ohdp_agent.loop import CUBE_TOOLSET, LITERATURE_TOOLSET, SYSTEM_PROMPT, Deps, build_agent
 from ohdp_shared import env_file_values, get_logger, settings
+
+# The in-process tool groups a model can name in its `tools:` list, alongside
+# any id `tools.yaml` declares — resolution is entirely this module's, driven
+# by models.yaml; ohdp_agent.loop has no registry of its own and nothing here
+# is attached to a model that does not name it.
+_IN_PROCESS_TOOLSETS: dict[str, AbstractToolset[Deps]] = {
+    "cube": CUBE_TOOLSET,
+    "literature": LITERATURE_TOOLSET,
+}
+# The one entry in a model's `tools:` list that is not in `_IN_PROCESS_TOOLSETS`:
+# OpenMetadata's advertised tools can change between deploys, so this one is
+# discovered fresh per request (`ohdp_agent.loop._catalog_toolset`) rather than
+# resolved once here like the dict above and `tools.yaml`'s connections.
+_CATALOG_TOOLS_ID = "catalog"
 
 log = get_logger(__name__)
 
@@ -50,6 +64,13 @@ class ModelConfig:
     # name them) but stop cluttering the picker with every model a configured
     # OpenAI-spec key happens to see.
     configured: bool = False
+    # True only when this model's `tools:` list names "catalog" — the one tool
+    # group that cannot be resolved to a static toolset at agent-construction
+    # time (see `_CATALOG_TOOLS_ID` above), so `hub_api.chat` reads this and
+    # passes it to `ohdp_agent.loop.run`'s `include_catalog_tools` instead.
+    # Every other tool group ("cube", "literature", tools.yaml's connections)
+    # is resolved once below and baked into `agent`'s own toolsets directly.
+    include_catalog_tools: bool = False
 
 
 # model id -> its reusable Agent plus how it should be presented and prompted.
@@ -70,8 +91,10 @@ class ModelOverride(BaseModel):
     # Empty means the built-in SYSTEM_PROMPT — see models.yaml's own comment
     # for why a non-empty value replaces it outright rather than extending it.
     system_prompt: str = ""
-    # ids from tools.yaml's connections. Always additive to BUILTIN_TOOLSET,
-    # never a replacement for it — see ohdp_agent.loop.build_agent.
+    # This model's entire tool surface — nothing is attached by default. Each
+    # entry is either a `BUILTIN_TOOLSETS` key ("cube", "literature"), the
+    # special "catalog" id (`_CATALOG_TOOLS_ID`), or a connection id from
+    # tools.yaml. See models.yaml's own comment for the operator side of this.
     tools: list[str] = Field(default_factory=list)
 
 
@@ -157,8 +180,19 @@ def build_agents(
             log.warning("model_override_unresolvable", id=override.id)
             continue
 
-        extra_toolsets = [tool_connections[t] for t in override.tools if t in tool_connections]
-        missing = set(override.tools) - set(tool_connections)
+        # "catalog" cannot be resolved to a static toolset here (see
+        # `_CATALOG_TOOLS_ID`'s comment) — pulled out before resolving the rest
+        # against `_IN_PROCESS_TOOLSETS` + tools.yaml so it does not show up as
+        # an unknown tool below.
+        include_catalog_tools = _CATALOG_TOOLS_ID in override.tools
+        static_toolsets: dict[str, AbstractToolset[Deps]] = {
+            **_IN_PROCESS_TOOLSETS,
+            **tool_connections,
+        }
+        requested = [t for t in override.tools if t != _CATALOG_TOOLS_ID]
+        resolved_ids = [t for t in requested if t in static_toolsets]
+        extra_toolsets = [static_toolsets[t] for t in resolved_ids]
+        missing = set(requested) - set(resolved_ids)
         if missing:
             log.warning("model_override_unknown_tools", id=override.id, missing=sorted(missing))
 
@@ -172,6 +206,7 @@ def build_agents(
             label=override.label or override.id,
             system_prompt=override.system_prompt or SYSTEM_PROMPT,
             configured=True,
+            include_catalog_tools=include_catalog_tools,
         )
 
     return agents

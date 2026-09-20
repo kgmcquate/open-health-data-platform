@@ -23,7 +23,8 @@ from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
 from ohdp_agent.cube import CubeInfo
 from ohdp_agent.literature import LiteratureClient
 from ohdp_agent.loop import (
-    BUILTIN_TOOLSET,
+    CUBE_TOOLSET,
+    LITERATURE_TOOLSET,
     Deps,
     Turn,
     _extract_followups,
@@ -39,7 +40,7 @@ class FakeCube:
 
 def _agent(stream_function: Any) -> Agent[Deps, str]:
     model = FunctionModel(stream_function=stream_function)
-    return Agent(model, deps_type=Deps, toolsets=[BUILTIN_TOOLSET])
+    return Agent(model, deps_type=Deps, toolsets=[CUBE_TOOLSET, LITERATURE_TOOLSET])
 
 
 async def _run(agent: Agent[Deps, str]) -> tuple[Turn, list[Any]]:

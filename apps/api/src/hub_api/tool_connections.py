@@ -1,7 +1,10 @@
 """Config-driven MCP and OpenAPI tool connections (`apps/api/config/tools.yaml`,
-docs/chatbot.md §4a) — for anything beyond the platform's own built-in
-cube/literature/catalog tools (`ohdp_agent.loop.BUILTIN_TOOLSET`), which every
-model keeps regardless of what is configured here.
+docs/chatbot.md §4a) — for anything beyond the platform's own in-process
+cube/literature/catalog tools (`ohdp_agent.loop.CUBE_TOOLSET`/`LITERATURE_TOOLSET`,
+plus `_catalog_toolset`), which a model gets by naming "cube"/"literature"/"catalog"
+in models.yaml's `tools:` the same way it names a connection from this file
+(`hub_api.models` resolves both). Nothing is attached to a model by default;
+see models.yaml's own comment.
 
 An MCP connection is a URL pydantic-ai's own `MCPToolset` already knows how to
 speak to. An OpenAPI connection has no such client built in, but FastMCP does

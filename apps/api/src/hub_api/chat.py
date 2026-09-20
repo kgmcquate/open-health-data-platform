@@ -357,6 +357,7 @@ async def _stream(
                 catalog=catalog,
                 system_prompt=config.system_prompt,
                 images=images,
+                include_catalog_tools=config.include_catalog_tools,
             )
         except Exception as exc:  # noqa: BLE001 — the stream must always close cleanly
             log.exception("chat_failed", user=user_email)

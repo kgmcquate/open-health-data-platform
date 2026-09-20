@@ -1,7 +1,11 @@
-# Additional tool connections the chat agent's models can be given
-# (docs/chatbot.md §4a), on top of the built-in cube/literature/catalog tools
-# every model already gets (ohdp_agent.loop.BUILTIN_TOOLSET) — this file adds
-# to that surface, it never replaces it.
+# Tool connections a model can be given (docs/chatbot.md §4a). Nothing here is
+# attached to any model by default — see models.yaml's own comment for the
+# full picture, including the in-process "cube"/"literature"/"catalog" ids
+# that resolve to code (ohdp_agent.loop.CUBE_TOOLSET/LITERATURE_TOOLSET, and
+# `_catalog_toolset` for "catalog"; resolved by hub_api.models, not this file)
+# rather than a connection, since they need no URL or headers. `mcp-cube` and
+# `mcp-openmetadata` below are the MCP-connection alternatives to "cube" and
+# "catalog" specifically — list at most one of each pair for a given model.
 #
 # A connection here does nothing by itself: assign its `id` to a model's
 # `tools:` list in models.yaml for a model to actually get it.

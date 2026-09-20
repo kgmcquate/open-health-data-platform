@@ -2,18 +2,27 @@
 # (docs/chatbot.md §4a), layered on top of whatever
 # OHDP_OPENAI_API_BASE_URLS/_KEYS auto-discovers in bulk
 # (hub_api.models.discover_openai_models) — every model a configured
-# OpenAI-spec key can see, with the default tools and system prompt.
+# OpenAI-spec key can see, with the default system prompt and no tools.
 #
 # An entry here whose `id` matches one of those gets its label/system_prompt/
 # tools overridden; give `base_url` + `api_key_env` too and it instead
 # registers as its own model, independent of auto-discovery — for a specific
 # self-hosted or narrowly-scoped backend you would not want to bulk-discover.
 #
-# Every model — auto-discovered or listed here — always gets the built-in
-# cube/literature/catalog tools (ohdp_agent.loop.BUILTIN_TOOLSET); that is
-# this platform's actual tool-use safety boundary (ADR-0003: no raw SQL tool
-# anywhere in the surface) and is not something a model config can opt out
-# of. `tools:` below only ever *adds* connections from tools.yaml on top.
+# Nothing is attached by default — an auto-discovered model with no entry here
+# gets no tools at all. `tools:` is a model's entire tool surface, and each
+# entry is one of:
+#   "cube"           the four Cube tools, in-process (ohdp_agent.loop.CUBE_TOOLSET)
+#   "literature"     Europe PMC search, in-process (ohdp_agent.loop.LITERATURE_TOOLSET)
+#   "catalog"        OpenMetadata's tools, in-process, discovered fresh per
+#                    request since OM's advertised set can change between
+#                    deploys (ohdp_agent.catalog.CatalogClient)
+#   a tools.yaml id  e.g. ohdp-tools, mcp-cube, mcp-openmetadata — see that
+#                    file's own comment
+# "cube"/"mcp-cube" and "catalog"/"mcp-openmetadata" are the same tools two
+# ways (in-process vs. MCP) — list at most one of each pair. Listing both
+# registers the same tool name (`list_metrics`, ...) twice, which pydantic-ai
+# refuses to build an agent with (hub_api.models.build_agents).
 #
 # `system_prompt`, if given, *replaces* ohdp_agent.loop.SYSTEM_PROMPT
 # entirely for that model — including its safety rules (declining is a
@@ -37,7 +46,10 @@ models:
   label: "GPT 4"
 - id: z-ai/glm-5.3-flash
   label: "Health Data Analyst"
-  tools: [ohdp-tools, mcp-cube, mcp-openmetadata]
+  # Cube and OpenMetadata over their MCP connections rather than the built-in
+  # in-process tools (see the file-level comment above) — literature has no
+  # MCP form, so it is listed as "literature" to get it at all.
+  tools: [literature, ohdp-tools, mcp-cube, mcp-openmetadata]
   system_prompt: |
     You are the analyst for the Open Health Data Platform, a warehouse of
     open/free public health data. You reach the data through built-in tools:

@@ -226,8 +226,7 @@ per backend. The model list an operator gets is exactly what their key can see,
 discovered at startup, never hand-maintained.
 
 `ohdp_agent.loop.build_agent` always builds an `OpenAIChatModel` against the supplied
-`base_url` and `model_id`, so every backend gets the identical tool loop — same
-cube/catalog/literature tools (`BUILTIN_TOOLSET`, built once and shared by every model), same
+`base_url` and `model_id`, so every backend gets the identical tool loop and the same
 `Event` stream the UI already renders. The chat-completions spec has no extended-thinking
 equivalent, so the "plan" event §6 asks for becomes the model's first text before its first
 tool call rather than a distinct reasoning phase.
@@ -241,9 +240,16 @@ connection types end up as the same `pydantic_ai.mcp.MCPToolset`. `models.yaml` 
 connections to specific models by id, and can give a model its own label, its own backend (for one
 not worth bulk-discovering), or its own system prompt.
 
-Every model still always keeps `BUILTIN_TOOLSET` — `tools:` in `models.yaml` only ever adds to it,
-never replaces it, which is this platform's actual tool-use safety boundary (ADR-0003: no raw SQL
-tool anywhere in the surface), not a per-model preference. A `tools.yaml`/`models.yaml`-configured
+**No tool group is attached by default.** A model's `tools:` list in `models.yaml` is its entire
+tool surface: `"cube"`/`"literature"`/`"catalog"` resolve to the in-process implementations
+(`ohdp_agent.loop.CUBE_TOOLSET`/`LITERATURE_TOOLSET`, plus `_catalog_toolset` for catalog,
+discovered fresh per request — `hub_api.models` owns this resolution, `ohdp_agent.loop` has no
+registry of its own), and any other id resolves to a `tools.yaml` connection — `mcp-cube`/`mcp-openmetadata`
+being the MCP alternatives to `"cube"`/`"catalog"` specifically. A model that lists neither the
+built-in id nor its MCP alternative simply does not get that tool group; a model that lists both
+gets the same tool name registered twice, which pydantic-ai refuses to build an agent with. This
+platform's actual tool-use safety boundary is that no raw SQL tool exists in *either* form
+(ADR-0003) — not that some tool group is unconditionally present. A `tools.yaml`/`models.yaml`-configured
 tool call is logged and shown to the user exactly like a built-in one — `ohdp_agent.loop._handle_stream`
 reports every `tool_call` from pydantic-ai's own `FunctionToolCallEvent` rather than having each
 tool self-report, specifically so a connection that never runs through `_run_tool` still shows up in
