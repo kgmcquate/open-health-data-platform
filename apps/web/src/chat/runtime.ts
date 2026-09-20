@@ -193,6 +193,13 @@ export interface HubChatRuntime {
   threadId: number | null;
   newThread: () => void;
   switchThread: (id: number) => Promise<void>;
+  /** Follow-up chips for the latest assistant answer, from the `done`
+   * event's `suggestions` (the model's `<<<FOLLOW-UPS>>>` block, split off
+   * server-side). Ephemeral — not persisted with the thread — so it is
+   * cleared whenever a turn starts or a thread is switched, and only the
+   * live stream's latest answer ever has any. */
+  suggestions: readonly string[];
+  isRunning: boolean;
 }
 
 /** `model` is a GET /api/models id, or "" for the built-in Claude default.
@@ -206,6 +213,7 @@ export function useHubChatRuntime(
   const [threadId, setThreadId] = useState<number | null>(null);
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [suggestions, setSuggestions] = useState<readonly string[]>([]);
   // A ref, not state: aborting a stream is an imperative action, not
   // something the UI renders off of, and — as with the module-level adapters
   // above — anything reached through the store object passed to
@@ -216,12 +224,14 @@ export function useHubChatRuntime(
   const newThread = () => {
     setThreadId(null);
     setMessages([]);
+    setSuggestions([]);
   };
 
   const switchThread = async (id: number) => {
     const detail = await fetchThread(id);
     setMessages(detail.turns.flatMap(turnToMessages));
     setThreadId(id);
+    setSuggestions([]);
   };
 
   const runTurn = async (
@@ -230,6 +240,9 @@ export function useHubChatRuntime(
     truncateFromTurnId: number | undefined,
   ) => {
     if (!question.trim()) return;
+    // The previous answer's follow-ups stop being relevant the moment a new
+    // question is on its way — chips mid-generation would be for the old turn.
+    setSuggestions([]);
 
     let activeThreadId = threadId;
     let base = messages;
@@ -304,6 +317,10 @@ export function useHubChatRuntime(
             parts = appendText(parts, `\n\n---\n*${disclaimer}*`);
           }
           update(parts);
+          const nextSuggestions = Array.isArray(event.suggestions)
+            ? event.suggestions.filter((s): s is string => typeof s === "string")
+            : [];
+          setSuggestions(nextSuggestions);
         } else {
           parts = applyEvent(parts, event);
           update(parts);
@@ -381,5 +398,5 @@ export function useHubChatRuntime(
 
   const runtime = useExternalStoreRuntime<ThreadMessageLike>(store);
 
-  return { runtime, threadId, newThread, switchThread };
+  return { runtime, threadId, newThread, switchThread, suggestions, isRunning };
 }

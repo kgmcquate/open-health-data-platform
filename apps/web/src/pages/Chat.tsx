@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FC } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { useHubChatRuntime } from "../chat/runtime";
+import { useHubChatRuntime, type HubChatRuntime } from "../chat/runtime";
 import {
   archiveThread,
   deleteThread,
@@ -578,7 +578,13 @@ function Composer({ models, model, onModelChange }: ModelPickerProps) {
 // Thread
 // ---------------------------------------------------------------------------
 
-function ChatThread({ models, model, onModelChange }: ModelPickerProps) {
+function ChatThread({
+  models,
+  model,
+  onModelChange,
+  suggestions,
+  isRunning,
+}: ModelPickerProps & Pick<HubChatRuntime, "suggestions" | "isRunning">) {
   return (
     <ThreadPrimitive.Root className="flex h-full flex-col">
       <AuiIf condition={(s) => s.thread.isEmpty}>
@@ -626,6 +632,25 @@ function ChatThread({ models, model, onModelChange }: ModelPickerProps) {
           </div>
         </ThreadPrimitive.Viewport>
         <div className="sticky bottom-0 mx-auto w-full max-w-3xl bg-gradient-to-b from-transparent via-base-100/90 to-base-100 px-4 pt-4 pb-3">
+          {/* Follow-ups for the answer that just landed — same chips as the
+              welcome screen, but proposed by the model about its own answer
+              (the `done` event's `suggestions`). Hidden while a turn runs so
+              they never dangle under a streaming draft. */}
+          {!isRunning && suggestions.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-2 pb-2">
+              {suggestions.map((s) => (
+                <ThreadPrimitive.Suggestion
+                  key={s}
+                  prompt={s}
+                  method="replace"
+                  autoSend
+                  className="btn btn-outline btn-sm normal-case"
+                >
+                  {s}
+                </ThreadPrimitive.Suggestion>
+              ))}
+            </div>
+          )}
           <Composer models={models} model={model} onModelChange={onModelChange} />
           <p className="pt-2 text-center text-[11px] opacity-50">
             Locked-down agent: curated tools only, server-side token limits,
@@ -656,7 +681,10 @@ export default function Chat() {
       return [...next].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     });
 
-  const { runtime, threadId, newThread, switchThread } = useHubChatRuntime(model, upsertThread);
+  const { runtime, threadId, newThread, switchThread, suggestions, isRunning } = useHubChatRuntime(
+    model,
+    upsertThread,
+  );
 
   useEffect(() => {
     fetchModels()
@@ -716,7 +744,13 @@ export default function Chat() {
       />
       <div className="min-w-0 flex-1">
         <AssistantRuntimeProvider runtime={runtime}>
-          <ChatThread models={models} model={model} onModelChange={setModel} />
+          <ChatThread
+            models={models}
+            model={model}
+            onModelChange={setModel}
+            suggestions={suggestions}
+            isRunning={isRunning}
+          />
         </AssistantRuntimeProvider>
       </div>
     </div>

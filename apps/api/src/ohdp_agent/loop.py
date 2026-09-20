@@ -98,6 +98,30 @@ DISCLAIMER = (
     "It is not clinical decision support and not medical advice."
 )
 
+# Follow-up suggestions — the "what next?" chips under the latest answer.
+# The model is told to end its final reply with a sentinel-delimited JSON array
+# of three follow-up questions, and `_extract_followups` splits that block back
+# off before the answer is shown, citation-checked, or logged. This costs zero
+# extra model calls (the run that answers also proposes what to ask next, with
+# the full question/tool context already in hand — a separate suggestion call
+# would double the per-turn cost on a quota-metered surface), and a model that
+# ignores the instruction simply yields no suggestions rather than a broken
+# answer. The split happens on the sentinel whether or not what follows parses:
+# a malformed block must never leak into the answer the reader sees.
+FOLLOW_UPS_SENTINEL = "<<<FOLLOW-UPS>>>"
+
+FOLLOW_UPS_INSTRUCTIONS = f"""
+
+After the answer — this is separate from the plan, and nothing may follow it — \
+propose exactly three follow-up questions that a reader of your answer would \
+plausibly ask next. Each one must be answerable from this platform's semantic \
+layer or literature tools, and each must be under 120 characters. End your \
+reply with this exact block, and nothing after it:
+
+{FOLLOW_UPS_SENTINEL}
+["first follow-up question", "second follow-up question", "third follow-up question"]\
+"""
+
 SYSTEM_PROMPT = """\
 You are the analyst for the Open Health Data Platform, a warehouse of \
 population-level public health data. You answer questions from that warehouse \
@@ -623,6 +647,10 @@ async def run(
                 "\n\nContext for the person you are answering, curated in the "
                 f"data catalog:\n\n{preamble}"
             )
+    # Appended here rather than baked into SYSTEM_PROMPT so a models.yaml
+    # override that replaces the prompt outright still gets follow-ups — and
+    # still gets its block split back off — the same as every other model.
+    instructions += FOLLOW_UPS_INSTRUCTIONS
 
     extra_toolsets: list[AbstractToolset[Deps]] = []
     catalog_toolset = await _catalog_toolset(catalog)
@@ -657,6 +685,10 @@ async def run(
     turn.output_tokens += usage.output_tokens
 
     answer = "\n\n".join(deps.answer_parts).strip()
+    # Split the follow-ups block off before the citation check runs: the
+    # questions are prompts to send next, not facts asserted in this answer,
+    # and the reader never sees the block either way.
+    answer, suggestions = _extract_followups(answer)
     answer, stripped = _check_citations(answer, literature)
     turn.answer = answer
     turn.stripped_citations = stripped
@@ -675,7 +707,15 @@ async def run(
                 },
             )
         )
-    await queue.put(Event("done", {"answer": answer, "disclaimer": DISCLAIMER}))
+    # Follow-ups are ephemeral — carried on the `done` event for the live UI,
+    # not persisted with the turn — so a reloaded thread shows its answers but
+    # no stale chips for whatever happened to be the last live question.
+    await queue.put(
+        Event(
+            "done",
+            {"answer": answer, "disclaimer": DISCLAIMER, "suggestions": suggestions},
+        )
+    )
 
 
 def _article_json(article: Any) -> dict[str, str]:
@@ -689,6 +729,34 @@ def _article_json(article: Any) -> dict[str, str]:
         "year": article.year,
         "abstract": article.abstract[:2000],
     }
+
+
+def _extract_followups(text: str) -> tuple[str, list[str]]:
+    """Split the `<<<FOLLOW-UPS>>>` block off the end of a model reply.
+
+    Returns `(answer, suggestions)` — up to three questions, empty when the
+    model did not comply or the block did not parse. Tolerates a fenced
+    ```json block around the array, since models like to add one.
+    """
+    index = text.rfind(FOLLOW_UPS_SENTINEL)
+    if index == -1:
+        return text, []
+    answer = text[:index].rstrip()
+    remainder = text[index + len(FOLLOW_UPS_SENTINEL) :].strip()
+    if remainder.startswith("```"):
+        # Drop the opening fence line (``` or ```json) and any closing fence.
+        remainder = remainder.split("\n", 1)[-1] if "\n" in remainder else remainder[3:]
+        remainder = remainder.removesuffix("```").strip()
+    try:
+        parsed = json.loads(remainder)
+    except ValueError:
+        return answer, []
+    if not isinstance(parsed, list):
+        return answer, []
+    questions = [
+        q.strip() for q in parsed if isinstance(q, str) and 4 <= len(q.strip()) <= 200
+    ]
+    return answer, questions[:3]
 
 
 def _check_citations(answer: str, literature: LiteratureClient) -> tuple[str, list[str]]:

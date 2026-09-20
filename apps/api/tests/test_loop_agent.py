@@ -21,7 +21,15 @@ from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
 
 from ohdp_agent.cube import CubeInfo
 from ohdp_agent.literature import LiteratureClient
-from ohdp_agent.loop import BUILTIN_TOOLSET, MODEL, Deps, Turn, build_agent, run
+from ohdp_agent.loop import (
+    BUILTIN_TOOLSET,
+    MODEL,
+    Deps,
+    Turn,
+    _extract_followups,
+    build_agent,
+    run,
+)
 
 
 class FakeCube:
@@ -51,6 +59,58 @@ async def _run(agent: Agent[Deps, str]) -> tuple[Turn, list[Any]]:
     while not queue.empty():
         events.append(queue.get_nowait())
     return turn, events
+
+
+async def test_follow_ups_block_is_split_off_the_answer_and_suggested() -> None:
+    """The `<<<FOLLOW-UPS>>>` block the model was told to append becomes the
+    `done` event's `suggestions`, and never appears in the answer itself."""
+    async def stream_function(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        yield (
+            "The worst city was Springfield.\n\n"
+            "<<<FOLLOW-UPS>>>\n"
+            '["What about ozone levels?", "Show the trend over time.", '
+            '"Which cities improved?"]'
+        )
+
+    turn, events = await _run(_agent(stream_function))
+
+    assert turn.answer == "The worst city was Springfield."
+    assert events[-1].type == "done"
+    assert events[-1].data["suggestions"] == [
+        "What about ozone levels?",
+        "Show the trend over time.",
+        "Which cities improved?",
+    ]
+
+
+async def test_a_malformed_follow_ups_block_never_leaks_into_the_answer() -> None:
+    async def stream_function(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        yield "The answer.\n\n<<<FOLLOW-UPS>>>\nnot json at all"
+
+    turn, events = await _run(_agent(stream_function))
+
+    assert turn.answer == "The answer."
+    assert events[-1].type == "done"
+    assert events[-1].data["suggestions"] == []
+    assert "FOLLOW-UPS" not in events[-1].data["answer"]
+
+
+def test_extract_followups_tolerates_a_fenced_json_block() -> None:
+    answer, suggestions = _extract_followups(
+        "A.\n\n<<<FOLLOW-UPS>>>\n```json\n[\"What about B?\", \"What about C?\"]\n```"
+    )
+    assert answer == "A."
+    assert suggestions == ["What about B?", "What about C?"]
+
+
+def test_extract_followups_without_a_block_changes_nothing() -> None:
+    answer, suggestions = _extract_followups("Just an answer.")
+    assert answer == "Just an answer."
+    assert suggestions == []
 
 
 async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
