@@ -140,6 +140,15 @@ class Turn:
     answer: str = ""
     error: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    # The chronological order text and tool calls actually happened in — a
+    # `{"type": "text", "text": ...}` or `{"type": "tool_call", "tool_call_id":
+    # ...}` per entry, the latter pointing back into `tool_calls` above rather
+    # than duplicating it. `answer`/`tool_calls` stay the flat shape §7's eval
+    # set has always used; this exists only so a reloaded thread can rebuild
+    # the tool-call chips in the position they actually streamed in, instead
+    # of grouping every call before the answer text
+    # (`apps/web/src/chat/runtime.ts`'s `turnToMessages`).
+    timeline: list[dict[str, Any]] = field(default_factory=list)
     queries: list[dict[str, Any]] = field(default_factory=list)
     citations: list[str] = field(default_factory=list)
     stripped_citations: list[str] = field(default_factory=list)
@@ -527,6 +536,7 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
                     "input": arguments,
                 }
             )
+            ctx.deps.turn.timeline.append({"type": "tool_call", "tool_call_id": event.tool_call_id})
             await ctx.deps.queue.put(
                 Event(
                     "tool_call",
@@ -563,6 +573,7 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
         return
     ctx.deps.answer_parts.append(streamed)
     ctx.deps.current_text = ""
+    ctx.deps.turn.timeline.append({"type": "text", "text": streamed})
     # The first prose the model writes is its plan (rule 2, §4).
     if not ctx.deps.turn.plan:
         ctx.deps.turn.plan = streamed
@@ -702,6 +713,8 @@ async def run(
         # manage to accumulate — including deltas for a part that never got its
         # PartEndEvent — so the UI can show the latest state instead of having
         # the message disappear on reload.
+        if deps.current_text:
+            turn.timeline.append({"type": "text", "text": deps.current_text})
         turn.answer = "\n\n".join([*deps.answer_parts, deps.current_text]).strip()
 
     usage = result.usage
@@ -709,11 +722,14 @@ async def run(
     turn.output_tokens += usage.output_tokens
 
     answer = "\n\n".join(deps.answer_parts).strip()
+    raw_len = len(answer)
     # Split the follow-ups block off before the citation check runs: the
     # questions are prompts to send next, not facts asserted in this answer,
     # and the reader never sees the block either way.
     answer, suggestions = _extract_followups(answer)
+    _trim_timeline_tail(turn.timeline, raw_len - len(answer))
     answer, stripped = _check_citations(answer, literature)
+    _strip_timeline_citations(turn.timeline, stripped)
     turn.answer = answer
     turn.stripped_citations = stripped
     turn.citations = sorted(literature.registry.seen)
@@ -779,6 +795,43 @@ def _extract_followups(text: str) -> tuple[str, list[str]]:
         return answer, []
     questions = [q.strip() for q in parsed if isinstance(q, str) and 4 <= len(q.strip()) <= 200]
     return answer, questions[:3]
+
+
+def _trim_timeline_tail(timeline: list[dict[str, Any]], trim: int) -> None:
+    """Cut `trim` characters off the end of `timeline`'s text entries — the
+    same number `_extract_followups` just cut off the tail of
+    `"\\n\\n".join(answer_parts)` — so `turn.timeline` stays in lockstep with
+    `turn.answer` (both trace back to the same raw segments, joined the same
+    way). Walks entries back to front, crossing the same `"\\n\\n"` join
+    separators the original string had between them, and drops any text entry
+    the trim empties out entirely (the whole follow-ups block was its own
+    trailing segment).
+    """
+    if trim <= 0:
+        return
+    text_indices = [i for i, e in enumerate(timeline) if e["type"] == "text"]
+    for rank, i in enumerate(reversed(text_indices)):
+        if trim <= 0:
+            break
+        if rank > 0:
+            trim -= min(trim, 2)  # the "\n\n" separator before this entry
+            if trim <= 0:
+                break
+        text = timeline[i]["text"]
+        take = min(trim, len(text))
+        timeline[i]["text"] = text[: len(text) - take]
+        trim -= take
+    timeline[:] = [e for e in timeline if e["type"] != "text" or e["text"]]
+
+
+def _strip_timeline_citations(timeline: list[dict[str, Any]], stripped: list[str]) -> None:
+    """Mirror `_check_citations`'s redaction onto each timeline text entry —
+    a plain substring replace, safe to apply per-entry since an identifier
+    never spans two of them."""
+    for identifier in stripped:
+        for entry in timeline:
+            if entry["type"] == "text":
+                entry["text"] = entry["text"].replace(identifier, "[unverified citation removed]")
 
 
 def _check_citations(answer: str, literature: LiteratureClient) -> tuple[str, list[str]]:

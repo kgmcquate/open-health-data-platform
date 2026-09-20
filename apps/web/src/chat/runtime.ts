@@ -91,16 +91,34 @@ function toolCallPart(call: ThreadTurnToolCall): Part {
   } as Part;
 }
 
+/** Rebuilds an assistant turn's content in the order text and tool calls
+ * actually streamed in, from `turn.timeline` — falling back to the old
+ * tool-calls-then-answer grouping for a turn logged before that column
+ * existed (or one where it came back empty). */
+function timelineContent(turn: ThreadTurn): Part[] {
+  if (turn.timeline && turn.timeline.length > 0) {
+    const callsById = new Map(turn.tool_calls.map((c) => [c.tool_call_id, c]));
+    const content = turn.timeline.flatMap((entry): Part[] => {
+      if (entry.type === "text") {
+        return entry.text ? [{ type: "text", text: entry.text }] : [];
+      }
+      const call = callsById.get(entry.tool_call_id);
+      return call ? [toolCallPart(call)] : [];
+    });
+    if (content.length > 0) return content;
+  }
+  const content: Part[] = turn.tool_calls.map(toolCallPart);
+  if (turn.answer) content.push({ type: "text", text: turn.answer });
+  return content;
+}
+
 function turnToMessages(turn: ThreadTurn): ThreadMessageLike[] {
   const messages: ThreadMessageLike[] = [
     { id: `u${turn.id}`, role: "user", content: [{ type: "text", text: turn.question }] },
   ];
-  const toolParts = turn.tool_calls.map(toolCallPart);
-  if (toolParts.length > 0 || turn.answer || turn.error) {
-    let text = turn.answer;
-    if (turn.error) text += `\n\n> ❌ ${turn.error}`;
-    const content: Part[] = [...toolParts];
-    if (text) content.push({ type: "text", text });
+  if (turn.tool_calls.length > 0 || turn.answer || turn.error) {
+    const content = timelineContent(turn);
+    if (turn.error) content.push({ type: "text", text: `\n\n> ❌ ${turn.error}` });
     messages.push({
       id: `a${turn.id}`,
       role: "assistant",

@@ -410,6 +410,7 @@ async def _stream(
             plan=turn.plan,
             answer=turn.answer,
             tool_calls=turn.tool_calls,
+            timeline=turn.timeline,
             queries=turn.queries,
             citations=turn.citations,
             stripped_citations=turn.stripped_citations,

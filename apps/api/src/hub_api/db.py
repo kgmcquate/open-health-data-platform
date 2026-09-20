@@ -94,6 +94,12 @@ chat_turns = Table(
     # Structured columns, not a blob: §7 grades metric selection and refusal,
     # which means querying what the agent actually ran.
     Column("tool_calls", JSON, nullable=False),
+    # The order text and tool calls actually happened in (`ohdp_agent.loop.Turn
+    # .timeline`) — nullable because it postdates `chat_turns`, same as
+    # `thread_id`/`feedback` below; a turn logged before this column existed
+    # just falls back to rendering tool calls before the answer
+    # (`apps/web/src/chat/runtime.ts`'s `turnToMessages`).
+    Column("timeline", JSON, nullable=True),
     Column("queries", JSON, nullable=False),
     Column("citations", JSON, nullable=False),
     Column("stripped_citations", JSON, nullable=False),
@@ -131,6 +137,8 @@ def _add_missing_columns(engine: Engine) -> None:
             connection.execute(text("ALTER TABLE chat_turns ADD COLUMN thread_id INTEGER"))
         if "feedback" not in existing:
             connection.execute(text("ALTER TABLE chat_turns ADD COLUMN feedback VARCHAR(16)"))
+        if "timeline" not in existing:
+            connection.execute(text("ALTER TABLE chat_turns ADD COLUMN timeline JSON"))
 
 
 def ensure_schema(engine: Engine) -> None:
@@ -174,6 +182,7 @@ def record_turn(
     output_tokens: int,
     error: str | None = None,
     thread_id: int | None = None,
+    timeline: list[dict[str, Any]] | None = None,
 ) -> int | None:
     """Write one turn and return its id — `None` on failure, never a raise:
     losing the eval record must not lose the answer. The id is what the
@@ -194,6 +203,7 @@ def record_turn(
                     plan=plan,
                     answer=answer,
                     tool_calls=tool_calls,
+                    timeline=timeline or [],
                     queries=queries,
                     citations=citations,
                     stripped_citations=stripped_citations,

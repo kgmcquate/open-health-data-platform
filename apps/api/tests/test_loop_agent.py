@@ -85,6 +85,12 @@ async def test_follow_ups_block_is_split_off_the_answer_and_suggested() -> None:
         "Show the trend over time.",
         "Which cities improved?",
     ]
+    # The block is cut from turn.timeline's raw text too, not just turn.answer
+    # — a reloaded thread renders straight from the timeline
+    # (apps/web/src/chat/runtime.ts's turnToMessages), so a leftover sentinel
+    # there would leak into the chat the same way a leftover in turn.answer
+    # would have.
+    assert turn.timeline == [{"type": "text", "text": "The worst city was Springfield."}]
 
 
 async def test_a_malformed_follow_ups_block_never_leaks_into_the_answer() -> None:
@@ -171,6 +177,46 @@ async def test_plan_tool_call_and_final_answer_stream_in_order() -> None:
             "result": tool_result_event.data["result"],
             "is_error": False,
         }
+    ]
+    # turn.timeline is what lets a reloaded thread put the tool-call chip
+    # between the plan and the final answer, instead of grouping every call
+    # before the answer text (apps/web/src/chat/runtime.ts's turnToMessages).
+    assert turn.timeline == [
+        {"type": "text", "text": "Here is my plan."},
+        {"type": "tool_call", "tool_call_id": "call_1"},
+        {"type": "text", "text": "Here is the answer."},
+    ]
+
+
+async def test_follow_ups_are_trimmed_off_the_timeline_after_a_tool_call() -> None:
+    """The follow-ups block lands in the *last* of several text segments this
+    turn produced (plan, then tool call, then final answer) — `_trim_timeline_tail`
+    has to walk back across that segment boundary correctly, not just trim
+    whatever the single most-recent segment happens to be."""
+    calls = 0
+
+    async def stream_function(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield "Here is my plan."
+            yield {0: DeltaToolCall(name="list_metrics", json_args="{}", tool_call_id="call_1")}
+        else:
+            yield (
+                "Here is the answer.\n\n"
+                "<<<FOLLOW-UPS>>>\n"
+                '["What about ozone levels?", "Show the trend.", "Which improved?"]'
+            )
+
+    turn, _events = await _run(_agent(stream_function))
+
+    assert turn.answer == "Here is my plan.\n\nHere is the answer."
+    assert turn.timeline == [
+        {"type": "text", "text": "Here is my plan."},
+        {"type": "tool_call", "tool_call_id": "call_1"},
+        {"type": "text", "text": "Here is the answer."},
     ]
 
 

@@ -99,6 +99,15 @@ export interface ThreadTurnToolCall {
   format?: "html";
 }
 
+/** One entry in a turn's chronological order — a text segment or a pointer
+ * (by `tool_call_id`) into that turn's own `tool_calls` — recorded live by
+ * `ohdp_agent.loop.Turn.timeline`. `null`/absent on a turn logged before this
+ * column existed; `runtime.ts`'s `turnToMessages` falls back to grouping
+ * tool calls before the answer text for those. */
+export type ThreadTurnTimelineEntry =
+  | { type: "text"; text: string }
+  | { type: "tool_call"; tool_call_id: string };
+
 export interface ThreadTurn {
   id: number;
   question: string;
@@ -107,6 +116,7 @@ export interface ThreadTurn {
   error: string | null;
   feedback: "positive" | "negative" | null;
   tool_calls: ThreadTurnToolCall[];
+  timeline: ThreadTurnTimelineEntry[] | null;
 }
 
 export interface ThreadDetail extends ThreadSummary {
