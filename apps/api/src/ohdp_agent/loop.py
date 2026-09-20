@@ -188,6 +188,7 @@ class Turn:
     persona: str
     plan: str = ""
     answer: str = ""
+    error: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     queries: list[dict[str, Any]] = field(default_factory=list)
     citations: list[str] = field(default_factory=list)
@@ -218,6 +219,10 @@ class Deps:
     # together (rule 2 and rule 4 of the system prompt above are both "the
     # answer"), so this is accumulated by `_handle_stream` across the whole run.
     answer_parts: list[str] = field(default_factory=list)
+    # Deltas for the text part currently being streamed. If the run is cancelled
+    # before the corresponding PartEndEvent, this buffer is flushed to the turn
+    # so the UI does not lose the latest streamed state.
+    current_text: str = ""
 
 
 def _query_schema() -> dict[str, Any]:
@@ -523,6 +528,7 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
             delta = event.delta
             if isinstance(delta, TextPartDelta):
                 await ctx.deps.queue.put(Event("text", {"text": delta.content_delta}))
+                ctx.deps.current_text += delta.content_delta
             elif isinstance(delta, ThinkingPartDelta) and delta.content_delta:
                 await ctx.deps.queue.put(Event("thinking", {"text": delta.content_delta}))
         elif isinstance(event, PartEndEvent) and isinstance(event.part, TextPart):
@@ -544,13 +550,18 @@ async def _handle_stream(ctx: RunContext[Deps], events: AsyncIterable[AgentStrea
             await ctx.deps.queue.put(Event("tool_result", _tool_result_payload(event)))
 
     text = "".join(text_parts)
-    if not text:
+    # Some backends emit the full part in one shot (no deltas) while others
+    # stream deltas. If the run is cancelled before PartEndEvent, fall back to
+    # the buffered deltas so the persisted turn still reflects the latest UI.
+    streamed = text or ctx.deps.current_text
+    if not streamed:
         return
-    ctx.deps.answer_parts.append(text)
+    ctx.deps.answer_parts.append(streamed)
+    ctx.deps.current_text = ""
     # The first prose the model writes is its plan (rule 2, §4).
     if not ctx.deps.turn.plan:
-        ctx.deps.turn.plan = text
-        await ctx.deps.queue.put(Event("plan", {"text": text}))
+        ctx.deps.turn.plan = streamed
+        await ctx.deps.queue.put(Event("plan", {"text": streamed}))
 
 
 def build_agent(
@@ -672,13 +683,24 @@ async def run(
         )
     except UsageLimitExceeded:
         log.warning("agent_turn_limit", limit=MAX_TURNS)
-        message = "Gave up after too many steps without an answer."
-        await queue.put(Event("error", {"message": message}))
+        turn.error = "Gave up after too many steps without an answer."
+        await queue.put(Event("error", {"message": turn.error}))
         return
     except AgentRunError as exc:
         log.error("model_error", error=str(exc))
-        await queue.put(Event("error", {"message": "Something went wrong answering that."}))
+        turn.error = "Something went wrong answering that."
+        await queue.put(Event("error", {"message": turn.error}))
         return
+    except asyncio.CancelledError:
+        turn.error = "Generation was cancelled."
+        raise
+    finally:
+        # A failed tool call, a model error, or the user pressing stop can all
+        # leave the run without a final answer. Persist whatever text we did
+        # manage to accumulate — including deltas for a part that never got its
+        # PartEndEvent — so the UI can show the latest state instead of having
+        # the message disappear on reload.
+        turn.answer = "\n\n".join([*deps.answer_parts, deps.current_text]).strip()
 
     usage = result.usage
     turn.input_tokens += usage.input_tokens
@@ -753,9 +775,7 @@ def _extract_followups(text: str) -> tuple[str, list[str]]:
         return answer, []
     if not isinstance(parsed, list):
         return answer, []
-    questions = [
-        q.strip() for q in parsed if isinstance(q, str) and 4 <= len(q.strip()) <= 200
-    ]
+    questions = [q.strip() for q in parsed if isinstance(q, str) and 4 <= len(q.strip()) <= 200]
     return answer, questions[:3]
 
 

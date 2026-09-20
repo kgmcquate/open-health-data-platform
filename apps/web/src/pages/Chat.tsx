@@ -499,7 +499,7 @@ interface ModelPickerProps {
 }
 
 function ModelPicker({ models, model, onModelChange }: ModelPickerProps) {
-  if (models.length <= 1) return null;
+  if (models.length === 0) return null;
   const current = models.find((m) => m.id === model) ?? models[0];
   return (
     <div className="dropdown">

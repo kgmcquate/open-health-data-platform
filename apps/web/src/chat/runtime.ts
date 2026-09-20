@@ -341,10 +341,37 @@ export function useHubChatRuntime(
 
     // The server is the source of truth for ids, the final answer, and the
     // thread's title/updated_at — reload rather than trust the optimistic
-    // draft, the same way a page refresh would show it.
+    // draft, the same way a page refresh would show it. If the server hasn't
+    // persisted the assistant message yet (cancellation race, DB lag), keep
+    // the local draft so the bubble does not vanish.
     try {
       const detail = await fetchThread(activeThreadId);
-      setMessages(detail.turns.flatMap(turnToMessages));
+      const serverMessages = detail.turns.flatMap(turnToMessages);
+      const reversedIndex = [...serverMessages]
+        .reverse()
+        .findIndex((m: ThreadMessageLike) => m.role === "user");
+      const lastUserIndex =
+        reversedIndex === -1 ? -1 : serverMessages.length - 1 - reversedIndex;
+      const lastUserContent = serverMessages[lastUserIndex]?.content;
+      const lastUserText =
+        typeof lastUserContent === "string"
+          ? lastUserContent
+          : textOf(lastUserContent as { type: string; text?: string }[]);
+      const hasServerAnswer =
+        lastUserIndex !== -1 &&
+        lastUserText === question &&
+        serverMessages[lastUserIndex + 1]?.role === "assistant";
+
+      if (!hasServerAnswer) {
+        const localAssistant = messages.find((m) => m.id === assistantId);
+        if (localAssistant) {
+          setMessages([...serverMessages, localAssistant]);
+          onThreadChanged(detail);
+          return;
+        }
+      }
+
+      setMessages(serverMessages);
       onThreadChanged(detail);
     } catch {
       // The turn already rendered from the stream; a failed refresh just

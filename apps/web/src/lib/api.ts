@@ -71,8 +71,9 @@ export interface ChatModel {
   default: boolean;
 }
 
-/** The built-in Claude model plus whatever OHDP_OPENAI_API_BASE_URLS/_KEYS
- * discovered at startup (hub_api.models). Always has at least one entry. */
+/** The models explicitly configured in config/models.yaml, for the picker.
+ * Auto-discovered and built-in Claude models are usable by id but omitted
+ * from the picker. */
 export const fetchModels = () => getJson<ChatModel[]>("/api/models");
 
 export async function logout(): Promise<void> {

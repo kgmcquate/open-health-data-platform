@@ -111,8 +111,8 @@ def models(agents: Annotated[AgentRegistry, Depends(get_agents)]) -> list[dict[s
     """The models explicitly listed in config/models.yaml, for the picker —
     not the full registry, which also holds every auto-discovered model an
     OpenAI-spec backend key can see and the built-in Claude model. Those stay
-    usable by id (an existing thread, or a direct API call) but would swamp
-    the picker if listed here too."""
+    usable by id (an existing thread, or a direct API call) but are not listed
+    in the picker."""
     return [
         {"id": model_id, "label": agents[model_id].label, "default": model_id == MODEL}
         for model_id in sorted(agents)
@@ -378,8 +378,26 @@ async def _stream(
     finally:
         # A browser that navigates away cancels this generator mid-flight; the
         # turn still gets logged, because a question that cost tokens counts
-        # against quota whether or not anyone read the answer.
-        task.cancel()
+        # against quota whether or not anyone read the answer. Wait for the
+        # producer to finish so loop.run() has flushed any partial answer into
+        # the turn before we record it.
+        if not task.done():
+            task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:  # noqa: BLE001 — log and continue to record_turn
+            log.exception("chat_produce_failed", user=user_email)
+            failure = failure or str(exc)
+
+        # Ensure the persisted turn always carries either text the user saw or
+        # an explanation of why there is none, so the message never disappears
+        # on a later reload.
+        failure = failure or turn.error or None
+        if not turn.answer and not failure:
+            failure = "Generation was cancelled or produced no answer."
+
         db.record_turn(
             engine,
             user_email=user_email,

@@ -12,6 +12,7 @@ is not re-tested here.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -64,6 +65,7 @@ async def _run(agent: Agent[Deps, str]) -> tuple[Turn, list[Any]]:
 async def test_follow_ups_block_is_split_off_the_answer_and_suggested() -> None:
     """The `<<<FOLLOW-UPS>>>` block the model was told to append becomes the
     `done` event's `suggestions`, and never appears in the answer itself."""
+
     async def stream_function(
         messages: list[ModelMessage], info: AgentInfo
     ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
@@ -101,7 +103,7 @@ async def test_a_malformed_follow_ups_block_never_leaks_into_the_answer() -> Non
 
 def test_extract_followups_tolerates_a_fenced_json_block() -> None:
     answer, suggestions = _extract_followups(
-        "A.\n\n<<<FOLLOW-UPS>>>\n```json\n[\"What about B?\", \"What about C?\"]\n```"
+        'A.\n\n<<<FOLLOW-UPS>>>\n```json\n["What about B?", "What about C?"]\n```'
     )
     assert answer == "A."
     assert suggestions == ["What about B?", "What about C?"]
@@ -202,6 +204,45 @@ async def test_gives_up_after_too_many_steps() -> None:
     assert events[-1].type == "error"
     assert "too many steps" in events[-1].data["message"]
     assert turn.answer == ""
+    assert "too many steps" in turn.error
+
+
+async def test_cancellation_persists_partial_answer() -> None:
+    """If the user (or client) cancels mid-stream, the accumulated text is
+    flushed to the turn so the UI can render the latest state instead of an
+    empty message."""
+
+    async def empty_stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        if False:
+            yield ""
+
+    agent = _agent(empty_stream)
+    turn = Turn(question="what metrics exist?", persona="")
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+
+    async def fake_run(*args: Any, **kwargs: Any) -> Any:
+        # Simulate the stream having produced text before cancellation.
+        kwargs["deps"].answer_parts.append("Partial answer so far")
+        raise asyncio.CancelledError()
+
+    agent.run = fake_run  # type: ignore[method-assign]
+
+    with contextlib.suppress(asyncio.CancelledError):
+        await run(
+            agent,
+            question=turn.question,
+            persona="",
+            turn=turn,
+            queue=queue,
+            cube=FakeCube(),  # type: ignore[arg-type]
+            literature=LiteratureClient(),
+            catalog=None,
+        )
+
+    assert turn.answer == "Partial answer so far"
+    assert turn.error == "Generation was cancelled."
 
 
 def test_build_agent_picks_the_backend_from_base_url() -> None:
