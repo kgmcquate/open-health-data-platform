@@ -37,7 +37,7 @@ from hub_api.content import seed_if_empty
 from hub_api.dashboards import dashboards_router
 from hub_api.issues import tools_app
 from hub_api.models import build_agents, discover_openai_models
-from hub_api.tool_connections import load_tool_connections
+from hub_api.tool_connections import build_local_openapi_toolset, load_tool_connections
 from ohdp_shared import configure_logging, get_logger, settings
 
 configure_logging(json=settings.log_json, level=settings.log_level)
@@ -66,6 +66,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     openai_models = await discover_openai_models() if settings.openai_backends else {}
     tool_connections = await load_tool_connections()
+    # `tools_app` (render_dashboard, report_issue) is this same process's own
+    # `/tools` app, already fully assembled by the module-level code below —
+    # wired in-process rather than as a `tools.yaml` connection so building it
+    # never depends on hub-api being up enough to answer its own request (see
+    # `build_local_openapi_toolset`'s docstring).
+    tool_connections["ohdp-tools"] = build_local_openapi_toolset(
+        app,
+        tools_app,
+        id="ohdp-tools",
+        mount_path="/tools",
+        headers={"Authorization": f"Bearer {settings.tools_auth_token}"},
+    )
     app.state.agents = build_agents(openai_models, tool_connections)
     yield
 
@@ -94,15 +106,15 @@ app.include_router(chat_router)
 app.include_router(content_router)
 
 # Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
-# its own routes. That narrow spec is what the hub chat's configured tool
-# connection (`ohdp-tools` in apps/api/config/tools.yaml) is pointed at, and it
-# is the reason the chat model cannot see `/api/chat` as a callable tool
-# (hub_api.issues). The hub's own page calls the same route, reading the same
-# session cookie (mounted apps share the parent's SessionMiddleware scope), so
-# there is one implementation behind both callers.
+# its own routes. That narrow spec is what the chat model's "ohdp-tools"
+# toolset is built from below (`build_local_openapi_toolset`, in `lifespan`),
+# and it is the reason the chat model cannot see `/api/chat` as a callable
+# tool (hub_api.issues). The hub's own page calls the same route, reading the
+# same session cookie (mounted apps share the parent's SessionMiddleware
+# scope), so there is one implementation behind both callers.
 # The dashboard tools join the same sub-app rather than getting one of their
-# own, because the tool connection reads one spec per registered server and every
-# operation in it becomes a tool. Keeping them together means one URL, one
+# own, because the tool connection reads one spec per registered app and every
+# operation in it becomes a tool. Keeping them together means one app, one
 # bearer token and one place to check what the chat model can actually call.
 tools_app.include_router(dashboards_router)
 

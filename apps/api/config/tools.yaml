@@ -35,17 +35,15 @@
 #         X-Api-Key: "${PETSTORE_API_KEY}"
 
 connections:
-  - id: ohdp-tools
-    type: openapi
-    spec_url: "http://hub-api.app.svc.cluster.local:8000/tools/openapi.json"
-    base_url: "http://hub-api.app.svc.cluster.local:8000"
-    # Proves to hub_api.issues.get_reporter that the caller is the chat
-    # surface itself (source="chatbot") — not tied to any one human, since
-    # there's no per-user identity on this cluster-internal path. Kept out of
-    # the model's reach entirely: see the include_in_schema=False note next
-    # to that dependency for why it can't just be an OpenAPI parameter here.
-    headers:
-      Authorization: "Bearer ${OHDP_TOOLS_AUTH_TOKEN}"
+  # `ohdp-tools` (render_dashboard, report_issue) used to be a connection
+  # here, pointed at hub-api's own cluster address. That was a self-call —
+  # hub-api fetching its own OpenAPI spec from itself over the network during
+  # its own startup, before it was serving any requests, under a single-pod
+  # `Recreate` deploy with no other pod ever up to answer it. It always
+  # failed, silently. It is now wired in-process instead, straight off the
+  # `tools_app` object, in `hub_api.main`'s `lifespan`
+  # (`hub_api.tool_connections.build_local_openapi_toolset`) — there was never
+  # a reason to go over the wire for hub-api's own routes.
 
   - id: mcp-cube
     type: mcp

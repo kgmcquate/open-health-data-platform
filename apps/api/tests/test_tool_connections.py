@@ -9,7 +9,9 @@ from pathlib import Path
 
 import httpx2
 import pytest
+from fastapi import FastAPI, Request
 from pydantic_ai.mcp import MCPToolset
+from starlette.middleware.sessions import SessionMiddleware
 
 from hub_api import tool_connections as tc
 
@@ -97,6 +99,58 @@ async def test_build_openapi_toolset_from_a_fetched_spec(monkeypatch: pytest.Mon
     toolset = await tc._build_openapi_toolset(conn)
 
     assert isinstance(toolset, MCPToolset)
+
+
+async def test_build_local_openapi_toolset_dispatches_in_process() -> None:
+    """No network, no self-fetch: the sub-app's route runs straight off the
+    ASGI transport. This is the path that replaced the `ohdp-tools`
+    `tools.yaml` connection, which fetched hub-api's own spec from hub-api's
+    own cluster address during hub-api's own startup — before hub-api was
+    serving anything, including that request to itself."""
+    spec_app = FastAPI()
+
+    @spec_app.post("/ping", operation_id="ping")
+    def ping() -> dict[str, bool]:
+        return {"ok": True}
+
+    dispatch_app = FastAPI()
+    dispatch_app.mount("/tools", spec_app)
+
+    toolset = tc.build_local_openapi_toolset(
+        dispatch_app, spec_app, id="ohdp-tools", mount_path="/tools", headers={}
+    )
+    assert isinstance(toolset, MCPToolset)
+
+    async with toolset.client as server:
+        tools = await server.list_tools()
+        assert [t.name for t in tools] == ["ping"]
+        result = await server.call_tool("ping", {})
+        assert result.data == {"ok": True}
+
+
+async def test_build_local_openapi_toolset_calls_pass_through_dispatch_apps_middleware() -> None:
+    """The sub-app carries no middleware of its own; a route that reads
+    `request.session` must still work, because it is reached through
+    `dispatch_app` — the same property `hub_api.main` relies on for
+    `hub_api.issues.get_reporter` (`request.session` on a route mounted under
+    `hub_api.issues.tools_app`)."""
+    spec_app = FastAPI()
+
+    @spec_app.get("/whoami", operation_id="whoami")
+    def whoami(request: Request) -> dict[str, str | None]:
+        return {"user": request.session.get("user")}
+
+    dispatch_app = FastAPI()
+    dispatch_app.add_middleware(SessionMiddleware, secret_key="test")
+    dispatch_app.mount("/tools", spec_app)
+
+    toolset = tc.build_local_openapi_toolset(
+        dispatch_app, spec_app, id="ohdp-tools", mount_path="/tools", headers={}
+    )
+
+    async with toolset.client as server:
+        result = await server.call_tool("whoami", {})
+        assert result.data == {"user": None}
 
 
 async def test_load_tool_connections_skips_a_connection_that_fails_to_build(

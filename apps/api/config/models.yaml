@@ -17,8 +17,14 @@
 #   "catalog"        OpenMetadata's tools, in-process, discovered fresh per
 #                    request since OM's advertised set can change between
 #                    deploys (ohdp_agent.catalog.CatalogClient)
-#   a tools.yaml id  e.g. ohdp-tools, mcp-cube, mcp-openmetadata — see that
-#                    file's own comment
+#   "ohdp-tools"     render_dashboard + report_issue, hub-api's own /tools app,
+#                    wired in-process over an ASGI transport rather than a real
+#                    connection (hub_api.tool_connections.build_local_openapi_toolset,
+#                    called from hub_api.main's lifespan) — a real HTTP call
+#                    here would be hub-api fetching its own OpenAPI spec from
+#                    itself before it is up enough to answer that call
+#   a tools.yaml id  e.g. mcp-cube, mcp-openmetadata — see that file's own
+#                    comment
 # "cube"/"mcp-cube" and "catalog"/"mcp-openmetadata" are the same tools two
 # ways (in-process vs. MCP) — list at most one of each pair. Listing both
 # registers the same tool name (`list_metrics`, ...) twice, which pydantic-ai
@@ -42,8 +48,6 @@
 #       You are the analyst for the Open Health Data Platform...
 
 models:
-- id: openai/gpt-4o-mini
-  label: "GPT 4"
 - id: z-ai/glm-5.3-flash
   label: "Health Data Analyst"
   # Cube and OpenMetadata over their MCP connections rather than the built-in

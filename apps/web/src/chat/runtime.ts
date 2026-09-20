@@ -113,13 +113,25 @@ function appendText(parts: Part[], text: string): Part[] {
   return [...parts, { type: "text", text }];
 }
 
+/** Mirrors `appendText`: successive `thinking` events are streamed
+ * token-by-token by the backend, so they must fold into the same reasoning
+ * part rather than each becoming its own — otherwise the UI renders one
+ * "Thinking..." dropdown per token. */
+function appendReasoning(parts: Part[], text: string): Part[] {
+  const last = parts[parts.length - 1];
+  if (last && last.type === "reasoning") {
+    return [...parts.slice(0, -1), { ...last, text: last.text + text }];
+  }
+  return [...parts, { type: "reasoning", text }];
+}
+
 /** Fold one SSE event into the streaming message's content parts. */
 function applyEvent(parts: Part[], event: ServerEvent): Part[] {
   switch (event.type) {
     case "text":
       return appendText(parts, String(event.text ?? ""));
     case "thinking":
-      return [...parts, { type: "reasoning", text: String(event.text ?? "") } as Part];
+      return appendReasoning(parts, String(event.text ?? ""));
     case "tool_call":
       return [
         ...parts,

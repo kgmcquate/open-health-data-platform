@@ -460,7 +460,8 @@ def _looks_like_html_document(text: str) -> bool:
     Narrow on purpose: every other tool result in this loop is `json.dumps`
     output, SQL text, or plain prose, none of which starts this way. The one
     thing that does is `render_dashboard` (`hub_api.dashboards.render_html`),
-    reached through the `ohdp-tools` connection (`config/tools.yaml`) — its
+    reached through the `ohdp-tools` toolset (`hub_api.main`'s `lifespan`,
+    built by `hub_api.tool_connections.build_local_openapi_toolset`) — its
     HTTP `Content-Disposition: inline` embed header is stripped by the MCP
     wrapper (`hub_api.tool_connections`), so this is the only signal left on
     this side of that boundary that the result is a page to render, not text
