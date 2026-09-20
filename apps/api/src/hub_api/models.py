@@ -30,12 +30,13 @@ from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.toolsets import AbstractToolset
 
+from hub_api import config_dir
 from ohdp_agent.loop import SYSTEM_PROMPT, Deps, build_agent
 from ohdp_shared import env_file_values, get_logger, settings
 
 log = get_logger(__name__)
 
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "models.yaml"
+CONFIG_PATH = config_dir() / "models.yaml"
 
 
 @dataclass

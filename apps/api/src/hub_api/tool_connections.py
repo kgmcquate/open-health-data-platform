@@ -23,12 +23,13 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.toolsets import AbstractToolset
 
+from hub_api import config_dir
 from ohdp_agent.loop import Deps
 from ohdp_shared import env_file_values, get_logger
 
 log = get_logger(__name__)
 
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "tools.yaml"
+CONFIG_PATH = config_dir() / "tools.yaml"
 
 _ENV_REF = re.compile(r"\$\{(\w+)\}")
 

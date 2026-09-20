@@ -50,10 +50,17 @@ RUN groupadd --gid 10001 app \
 WORKDIR /app
 COPY --from=builder --chown=10001:10001 /app/.venv /app/.venv
 COPY --from=web-builder --chown=10001:10001 /web/dist /app/web/dist
+# hub_api.models / hub_api.tool_connections read apps/api/config/*.yaml
+# relative to their own installed location by default — true for an editable
+# install (uv run) but not here, where --no-editable copies the package into
+# .venv/site-packages without it. Bundle the config directory separately and
+# point OHDP_HUB_API_CONFIG_DIR (hub_api.config_dir) at it.
+COPY --from=builder --chown=10001:10001 /app/apps/api/config /app/config
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    OHDP_HUB_API_CONFIG_DIR=/app/config
 
 USER 10001
 EXPOSE 8000
