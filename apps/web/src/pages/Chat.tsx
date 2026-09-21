@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FC } from "react";
 import { useAuth } from "../auth/AuthContext";
+import LogoMark from "../components/icons/LogoMark";
 import { useHubChatRuntime, type HubChatRuntime } from "../chat/runtime";
 import {
   archiveThread,
@@ -602,9 +603,7 @@ function ChatThread({
         <div className="flex grow flex-col items-center justify-center px-4">
           <div className="mx-auto flex w-full max-w-5xl flex-col items-stretch gap-5">
             <p className="flex items-center justify-center gap-3 text-2xl font-bold sm:text-3xl">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-box bg-primary text-primary-content">
-                ✚
-              </span>
+              <LogoMark className="h-14 w-14" />
               <span>Ask the platform anything</span>
             </p>
             <p className="text-center text-sm opacity-70">

@@ -127,8 +127,23 @@ class CustomDagsterDltResource(DagsterDltResource):
         # Same local-state reset the base resource does before a run — see its
         # docstring: restore_from_destination means it's always safe to drop
         # local state since it's rebuilt from the destination.
+        #
+        # "rebuilt from the destination" needs an explicit nudge, though: dlt
+        # only ever *reads* the destination's state and schemas inside
+        # `Pipeline._sync_destination`, and the only caller of that is
+        # `Pipeline.run()`. This method deliberately doesn't use `run()` (it has
+        # to split the steps to decide whether to load at all), so after the
+        # `drop()` above the pipeline would otherwise be stateless: every run
+        # would restart its incremental cursors at `initial_value` — re-fetching
+        # and re-appending whole datasets, which for CDC's is hundreds of
+        # thousands of rows — and, because the schema is stored in that same
+        # state, re-infer every column's type from scratch. That second part is
+        # what makes a Socrata `number` column flip between `bigint` and
+        # `double` from run to run and terminally fail the Iceberg load (see
+        # `_cast_to_table_types` in `ohdp_ingestion.iceberg_destination`).
         if dlt_pipeline.config.restore_from_destination:
             dlt_pipeline.drop()
+            dlt_pipeline.sync_destination()
         else:
             dlt_pipeline.drop_pending_packages()
 

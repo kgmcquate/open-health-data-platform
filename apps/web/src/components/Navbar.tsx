@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import { THEMES, applyTheme, storedTheme } from "../theme";
 import { useState } from "react";
 import GearIcon from "./icons/GearIcon";
+import LogoMark from "./icons/LogoMark";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
@@ -21,9 +22,7 @@ export default function Navbar() {
     <div className="navbar bg-base-100/90 backdrop-blur border-b border-base-300 sticky top-0 z-40 px-4">
       <div className="flex-1 gap-2">
         <Link to="/" className="flex items-center gap-2 font-bold text-lg">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-box bg-primary text-primary-content">
-            ✚
-          </span>
+          <LogoMark className="h-12 w-12" />
           <span>
             Open Health <span className="text-primary">Data Platform</span>
           </span>
