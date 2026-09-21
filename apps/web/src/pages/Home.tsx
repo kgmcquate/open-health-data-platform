@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { fetchNews, fetchPlots } from "../lib/api";
 import { useFetch } from "../lib/useFetch";
+import GraphBackground from "../components/GraphBackground";
 
 const HIGHLIGHTS = [
   {
@@ -41,18 +42,19 @@ export default function Home() {
 
   return (
     <div>
-      <section className="hero bg-gradient-to-br from-primary/15 via-base-100 to-accent/10 py-20">
-        <div className="hero-content text-center max-w-3xl">
-          <div>
-            <div className="badge badge-primary badge-outline mb-4">
+      <section className="hero relative overflow-hidden bg-gradient-to-br from-primary/15 via-base-100 to-accent/10 min-h-[32rem]">
+        <GraphBackground className="opacity-70" />
+        <div className="hero-content relative z-10 text-center max-w-3xl py-16">
+          <div className="card bg-base-100/50 backdrop-blur-sm shadow-xl px-6 py-10 ">
+            {/* <div className="badge badge-primary badge-outline mb-4">
               Built in the open · Visible from the source, through the plumbing, and into the dashboard
-            </div>
+            </div> */}
             <h1 className="text-5xl font-extrabold leading-tight">
               Massive health insights
               <span className="text-primary"> - minus the effort.</span>
             </h1>
             <p className="py-6 text-lg opacity-80">
-              A self-hosted analytics platform over public health data. Ask
+              An open analytics platform over public health data. Ask
               questions in plain English, get answers backed by a governed
               semantic layer — with the pipelines, catalog and tests on full
               display.
