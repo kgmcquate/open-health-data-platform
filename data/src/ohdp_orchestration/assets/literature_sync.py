@@ -33,7 +33,7 @@ docstrings for why this talks to OM directly rather than through
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -97,6 +97,19 @@ def _page_markdown(selected: SelectedWork) -> str:
     return "\n\n".join(lines)
 
 
+def _publication_date(publication_date: date | None) -> DateTime | None:
+    """Serialize an OpenAlex date-only publication date as UTC midnight.
+
+    OpenMetadata's Java ``Date`` deserializer expects a full ISO-8601 date-time.
+    A plain ``datetime.combine(...)`` is naive and serializes as
+    ``2024-05-07T00:00:00``, which the API rejects; attaching ``UTC`` makes
+    Pydantic emit the safe ``...Z`` form.
+    """
+    if publication_date is None:
+        return None
+    return DateTime(datetime.combine(publication_date, datetime.min.time(), tzinfo=UTC))
+
+
 def _create_page_request(selected: SelectedWork) -> CreatePage:
     work = selected.work
     return CreatePage(
@@ -104,13 +117,7 @@ def _create_page_request(selected: SelectedWork) -> CreatePage:
         displayName=work.title or work.openalex_id,
         description=Markdown(_page_markdown(selected)),
         pageType=PageType.Article,
-        page=Article(
-            publicationDate=(
-                DateTime(datetime.combine(work.publication_date, datetime.min.time()))
-                if work.publication_date
-                else None
-            )
-        ),
+        page=Article(publicationDate=_publication_date(work.publication_date)),
         domains=[FullyQualifiedEntityName(d) for d in sorted(selected.domains)],
     )
 

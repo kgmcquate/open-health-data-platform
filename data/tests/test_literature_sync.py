@@ -4,6 +4,7 @@ shape. Nothing here hits the network or OpenMetadata."""
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 from metadata.generated.schema.entity.data.article import Article
@@ -77,6 +78,13 @@ def test_create_page_request_shape() -> None:
     assert "https://doi.org/10.1000/xyz" in body
     assert "pubmed.ncbi.nlm.nih.gov/12345678" in body
     assert "This is an abstract." in body
+
+
+def test_create_page_request_serializes_publication_date_as_utc_iso8601() -> None:
+    request = _create_page_request(_selected_work())
+    payload = json.loads(request.model_dump_json(exclude_none=True))
+
+    assert payload["page"]["publicationDate"] == "2023-05-01T00:00:00Z"
 
 
 def test_create_page_request_handles_missing_publication_date() -> None:
