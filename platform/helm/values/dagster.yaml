@@ -110,6 +110,11 @@ runLauncher:
         # Cube itself reads CUBEJS_API_SECRET from) — needed by
         # openmetadata_cube_metrics_sync to sign its Cube API JWT.
         - name: cube-secret
+        # platform-base's generated hub-api<->pipeline shared secret (same
+        # Secret hub-api itself reads OHDP_INTERNAL_INGEST_TOKEN from, via
+        # hub-api-db) — needed by literature_trending_sync to authenticate its
+        # write to hub-api's internal ingest route.
+        - name: literature-ingest-secret
       envConfigMaps:
         - name: ohdp-pipeline-config
       resources:
@@ -173,6 +178,7 @@ dagster-user-deployments:
         - name: ohdp-pipeline-secrets
         # See runLauncher.config.k8sRunLauncher.envSecrets above — same reason.
         - name: cube-secret
+        - name: literature-ingest-secret
       envConfigMaps:
         - name: ohdp-pipeline-config
       resources:

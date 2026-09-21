@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Open Health Data Platform">
+  <title>Isometric stacked squares logo</title>
+  <g transform="rotate(0 0 0)" stroke-linejoin="round" stroke-width="2">
+    <polygon points="200,174 338.6,254 200,334 61.4,254"
+             fill="#0f766e" fill-opacity="0.7" stroke="#ffffff" stroke-opacity="0.35"/>
+    <polygon points="200,138 338.6,218 200,298 61.4,218"
+             fill="#0891b2" fill-opacity="0.7" stroke="#ffffff" stroke-opacity="0.35"/>
+    <polygon points="200,102 338.6,182 200,262 61.4,182"
+             fill="#2563eb" fill-opacity="0.7" stroke="#ffffff" stroke-opacity="0.35"/>
+    <polygon points="200,66 338.6,146 200,226 61.4,146"
+             fill="#4f46e5" fill-opacity="0.7" stroke="#ffffff" stroke-opacity="0.35"/>
+  </g>
+</svg>

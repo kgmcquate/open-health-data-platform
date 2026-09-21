@@ -32,8 +32,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from hub_api import db
 from hub_api.auth import router as auth_router
 from hub_api.chat import router as chat_router
+from hub_api.content import ensure_indexes, seed_if_empty
 from hub_api.content import router as content_router
-from hub_api.content import seed_if_empty
 from hub_api.dashboards import dashboards_router
 from hub_api.issues import tools_app
 from hub_api.models import build_agents, discover_openai_models
@@ -57,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         try:
             engine = db.make_engine(settings.app_database_url)
             db.ensure_schema(engine)
+            ensure_indexes(engine)
             seed_if_empty(engine)
             app.state.engine = engine
         except Exception as exc:  # noqa: BLE001 — see docstring

@@ -76,6 +76,21 @@ class SupportsTopCitedWorks(Protocol):
     ) -> tuple[OpenAlexWork, ...]: ...
 
 
+class SupportsSearchRelevantWorks(Protocol):
+    """What ``ohdp_orchestration.assets.literature_dataset_sync`` needs — a
+    free-text relevance search rather than ``top_cited_works``' subfield +
+    citation-count ranking. Its own narrow Protocol, same reasoning as
+    ``SupportsTopCitedWorks``."""
+
+    def search_relevant_works(
+        self,
+        *,
+        query: str,
+        limit: int,
+        min_citations: int = 0,
+    ) -> tuple[OpenAlexWork, ...]: ...
+
+
 class OpenAlexClient:
     """Works search, ranked by citation count."""
 
@@ -140,6 +155,48 @@ class OpenAlexClient:
             from_publication_year=from_publication_year,
             hits=len(works),
         )
+        return works
+
+    def search_relevant_works(
+        self,
+        *,
+        query: str,
+        limit: int,
+        min_citations: int = 0,
+    ) -> tuple[OpenAlexWork, ...]:
+        """The ``limit`` works OpenAlex's own relevance ranking scores highest
+        against free-text ``query`` — full-text search over title, abstract and
+        (where indexed) body, per
+        https://docs.openalex.org/api-entities/works/search-works. This is
+        deliberately a different ranking from :meth:`top_cited_works`: a
+        dataset's literature match is "about the same subject," not "heavily
+        cited in a broad subfield" — a paper can be exactly on-topic with only
+        a handful of citations, and ``top_cited_works``' subfield+citation
+        ranking would never surface it. ``min_citations`` defaults to 0 for the
+        same reason: a citation floor trades away relevance for popularity,
+        which is the one thing this method exists to avoid.
+        """
+        params: dict[str, Any] = {
+            "search": query,
+            "sort": "relevance_score:desc",
+            "per_page": min(limit, MAX_PER_PAGE),
+        }
+        if min_citations:
+            params["filter"] = f"cited_by_count:>{min_citations - 1}"
+        if self._contact_email:
+            params["mailto"] = self._contact_email
+        response = self._client.get("/works", params=params)
+        if response.status_code >= 400:
+            raise OpenAlexError(
+                f"OpenAlex returned {response.status_code} for query {query!r}: "
+                f"{response.text[:300]}"
+            )
+        try:
+            payload: dict[str, Any] = response.json()
+        except ValueError as exc:
+            raise OpenAlexError("OpenAlex returned a non-JSON body") from exc
+        works = tuple(_parse_work(r) for r in payload.get("results", []) if isinstance(r, dict))
+        log.info("openalex_relevance_search", query=query, hits=len(works))
         return works
 
 

@@ -1,11 +1,16 @@
-# Domain -> OpenAlex subfield + MeSH mapping for curated literature ingestion,
-# applied by ohdp_orchestration.assets.literature_sync (monthly job).
+# Domain -> OpenAlex subfield + MeSH mapping for the trending-literature feed,
+# applied by ohdp_orchestration.assets.literature_trending_sync (monthly job)
+# to fill the public Literature page's "trending" rows
+# (apps/api/src/hub_api/content.py's curated_literature.trending).
 #
 # `openalex_subfields` are OpenAlex Topics-taxonomy subfield IDs (verified live
 # against https://api.openalex.org/subfields — not derivable from the SDK, so
-# don't guess new ones without checking that endpoint first). Selection queries
-# each subfield twice: all-time top-cited and top-cited-in-the-last-N-years, per
-# `recent_years` below, so a domain isn't only foundational decades-old papers.
+# don't guess new ones without checking that endpoint first). Selection ranks
+# each subfield's works published in the last `recent_years` by citation count
+# — recent + already-cited is the trending proxy; an all-time top-cited ranking
+# was deliberately dropped (see ohdp_ingestion.literature.selection's
+# docstring) because it skews toward decades-old methods papers, not anything
+# a "trending" reader means.
 #
 # `mesh_terms`, when non-empty, cross-checks OpenAlex's subfield-based candidates
 # against Europe PMC's MeSH descriptor names for that work's PMID (PubMed's own,
@@ -13,17 +18,22 @@
 # no PMID, or a domain with no mesh_terms configured, skips the cross-check and
 # keeps the subfield match as-is. Domains without a clean MeSH heading (Education,
 # Financial) are intentionally left without one — expect a thinner, noisier
-# candidate set for those, which `min_citations` and the per-bucket limits below
-# keep in check.
+# candidate set for those, which `min_citations` and `limit` below keep in check.
+#
+# `min_citations` is deliberately much lower than the old dual-bucket design's
+# 50: that number was tuned against an all-time-top-cited bucket that did the
+# heavy lifting on quality, leaving the recent bucket free to be generous. On
+# its own, a 2-year citation floor of 50 returns near-empty results for most
+# subfields; 10 is a starting point, not a derived value — raise it per-domain
+# if a domain's trending feed reads noisy.
 #
 # This mapping is a reviewed judgment call, not derived — revisit it if a
 # domain's corpus looks off-topic rather than tuning the code around it.
 
 defaults:
-  top_cited_limit: 15
-  recent_limit: 10
+  limit: 10
   recent_years: 2
-  min_citations: 50
+  min_citations: 10
 
 domains:
   - domain: Infectious Disease
@@ -61,8 +71,7 @@ domains:
   - domain: Education
     openalex_subfields: [3304] # Education
     mesh_terms: [] # weakest fit of the 10 consumer-aligned domains — small N by design
-    top_cited_limit: 8
-    recent_limit: 5
+    limit: 5
 
   - domain: Financial
     openalex_subfields: [2002, 2003] # Economics and Econometrics, Finance

@@ -7,6 +7,7 @@ Generated secrets (created once, preserved on upgrade):
   meta/openmetadata-db-auth        mirror of the openmetadata password
   meta/openmetadata-fernet-secret  OpenMetadata fernet key
   data/cube-secret                 hub-api <-> Cube shared secret
+  data/literature-ingest-secret    hub-api <-> pipeline literature-ingest bearer
   app/hub-api-db                   assembled OHDP_APP_DATABASE_URL
 
 Postgres: StatefulSet postgres in namespace infra, {{ .Values.postgres.storageSize }} on {{ .Values.postgres.storageClass }}.

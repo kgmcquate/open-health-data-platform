@@ -1,16 +1,27 @@
-"""Curated scientific literature ingestion — ranks papers by citation popularity
-(OpenAlex), cross-checks domain relevance against PubMed MeSH headings (Europe
-PMC), and hands the survivors to ``ohdp_orchestration.assets.literature_sync``
-for upsert into OpenMetadata's Context Center.
+"""Scientific literature ingestion, split by purpose across two orchestration
+assets:
+
+* ``ohdp_orchestration.assets.literature_dataset_sync`` — per-dataset OpenAlex
+  *relevance* search, one dataset at a time, upserted into OpenMetadata's
+  Context Center and linked by lineage to the dataset's raw-layer Table. Uses
+  ``OpenAlexClient.search_relevant_works`` directly; does not use this
+  package's ``selection`` module.
+* ``ohdp_orchestration.assets.literature_trending_sync`` — per-Domain OpenAlex
+  *recent-citation* ranking (this package's ``select_trending_literature``,
+  driven by ``literature_domains.yml``), cross-checked against Europe PMC's
+  MeSH headings, feeding the public Literature page's trending feed.
 
 Distinct from ``apps/api/src/ohdp_agent/literature.py``, which does live,
-citation-verified Europe PMC search at chat time (docs/chatbot.md §2.3) — this
-package builds a standing, pre-ranked corpus instead. See docs/decisions and the
-``literature_domains.yml`` seed for the selection rules.
+citation-verified Europe PMC search at chat time (docs/chatbot.md §2.3) — both
+assets here build standing, pre-computed corpora instead.
 """
 
 from ohdp_ingestion.literature.openalex import OpenAlexClient, OpenAlexError, OpenAlexWork
-from ohdp_ingestion.literature.selection import DomainSelection, SelectedWork, select_literature
+from ohdp_ingestion.literature.selection import (
+    DomainSelection,
+    SelectedWork,
+    select_trending_literature,
+)
 
 __all__ = [
     "DomainSelection",
@@ -18,5 +29,5 @@ __all__ = [
     "OpenAlexError",
     "OpenAlexWork",
     "SelectedWork",
-    "select_literature",
+    "select_trending_literature",
 ]

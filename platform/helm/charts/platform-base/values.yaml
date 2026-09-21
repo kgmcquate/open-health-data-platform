@@ -67,6 +67,13 @@ pipelineConfig:
   # OHDP_CUBE_API_URL points at). The JWT half (OHDP_CUBE_API_SECRET) comes
   # from the cube-secret Secret, not this ConfigMap.
   OHDP_CUBE_API_URL: "http://cube.data.svc.cluster.local:4000"
+  # hub-api's in-cluster Service DNS (release name "hub-api" — see
+  # .github/workflows/deploy-platform.yml). Read by the trending-literature
+  # sync (ohdp_orchestration.assets.literature_trending_sync) to write into
+  # hub-api's internal ingest route; the bearer half
+  # (OHDP_INTERNAL_INGEST_TOKEN) comes from the literature-ingest-secret
+  # Secret, not this ConfigMap.
+  OHDP_HUB_API_URL: "http://hub-api.app.svc.cluster.local:8000"
 
 postgres:
   image: postgres:16.4-bookworm

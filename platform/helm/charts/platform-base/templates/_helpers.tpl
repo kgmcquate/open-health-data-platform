@@ -42,4 +42,10 @@ mcpAuthToken: {{ (index $mcpCube "OHDP_MCP_AUTH_TOKEN") | default (randAlphaNum 
      hub-api refuses to start rather than sign cookies with a hardcoded
      dev secret — so this must exist before the very first deploy. */}}
 sessionSecretKey: {{ (index $hubApiDb "OHDP_SESSION_SECRET_KEY") | default (randAlphaNum $len | b64enc) }}
+{{/* Bearer token the Dagster trending-literature sync presents to hub-api's
+     internal ingest route (ohdp_orchestration.assets.literature_trending_sync
+     -> hub_api.content.replace_trending_literature). Same shared-secret shape
+     as `cube`/`mcpAuthToken` above — read from `hub-api-db` (app ns), the
+     Secret that already carries hub-api's own generated env. */}}
+literatureIngest: {{ (index $hubApiDb "OHDP_INTERNAL_INGEST_TOKEN") | default (randAlphaNum $len | b64enc) }}
 {{- end -}}

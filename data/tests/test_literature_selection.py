@@ -12,7 +12,7 @@ from ohdp_ingestion.literature.openalex import OpenAlexWork
 from ohdp_ingestion.literature.selection import (
     DomainSelection,
     _mesh_confirm,
-    select_literature,
+    select_trending_literature,
 )
 
 
@@ -34,8 +34,9 @@ def _work(openalex_id: str, *, pmid: str = "", cited_by_count: int = 100) -> Ope
 
 class _FakeOpenAlexClient:
     """Scripted `top_cited_works` — one fixed set of results regardless of
-    which subfield/window is asked for, which is all `select_literature`'s
-    dedup-by-work-id logic needs to be exercised."""
+    which subfield/window is asked for, which is all
+    `select_trending_literature`'s dedup-by-work-id logic needs to be
+    exercised."""
 
     def __init__(self, works: tuple[OpenAlexWork, ...]) -> None:
         self._works = works
@@ -52,7 +53,7 @@ def test_mesh_confirm_keeps_everything_when_no_mesh_terms_configured() -> None:
 def test_mesh_confirm_keeps_works_with_no_pmid(monkeypatch: pytest.MonkeyPatch) -> None:
     candidates = {"W1": _work("W1", pmid="")}
     monkeypatch.setattr(
-        "ohdp_ingestion.literature.selection.mesh_headings_for_pmids", lambda pmids: {}
+        "ohdp_ingestion.literature.selection.mesh_headings_for_pmids", lambda pmids, **_kwargs: {}
     )
     kept = _mesh_confirm(candidates, frozenset({"Child Welfare"}))
     assert kept == [candidates["W1"]]
@@ -67,7 +68,7 @@ def test_mesh_confirm_drops_works_whose_mesh_headings_dont_match(
     }
     monkeypatch.setattr(
         "ohdp_ingestion.literature.selection.mesh_headings_for_pmids",
-        lambda pmids: {
+        lambda pmids, **_kwargs: {
             "111": frozenset({"Child Welfare", "Pediatrics"}),
             "222": frozenset({"Oncology"}),
         },
@@ -76,7 +77,7 @@ def test_mesh_confirm_drops_works_whose_mesh_headings_dont_match(
     assert kept == [candidates["W1"]]
 
 
-def test_select_literature_dedupes_and_unions_domains() -> None:
+def test_select_trending_literature_dedupes_and_unions_domains() -> None:
     shared_work = _work("W_SHARED")
     only_a = _work("W_A_ONLY")
 
@@ -84,15 +85,15 @@ def test_select_literature_dedupes_and_unions_domains() -> None:
     client_b = _FakeOpenAlexClient((shared_work,))
 
     class _RoutingClient:
-        """Returns domain A's fixture for the first two calls (all-time +
-        recent buckets) and domain B's fixture after that."""
+        """Returns domain A's fixture for the first call and domain B's
+        fixture after that."""
 
         def __init__(self) -> None:
             self._calls = 0
 
         def top_cited_works(self, **kwargs: object) -> tuple[OpenAlexWork, ...]:
             self._calls += 1
-            source = client_a if self._calls <= 2 else client_b
+            source = client_a if self._calls == 1 else client_b
             return source.top_cited_works(**kwargs)
 
     selections = (
@@ -100,8 +101,7 @@ def test_select_literature_dedupes_and_unions_domains() -> None:
             domain="Domain A",
             openalex_subfields=(1,),
             mesh_terms=frozenset(),
-            top_cited_limit=5,
-            recent_limit=5,
+            limit=5,
             recent_years=2,
             min_citations=0,
         ),
@@ -109,14 +109,13 @@ def test_select_literature_dedupes_and_unions_domains() -> None:
             domain="Domain B",
             openalex_subfields=(2,),
             mesh_terms=frozenset(),
-            top_cited_limit=5,
-            recent_limit=5,
+            limit=5,
             recent_years=2,
             min_citations=0,
         ),
     )
 
-    selected = select_literature(selections, openalex=_RoutingClient(), current_year=2026)
+    selected = select_trending_literature(selections, openalex=_RoutingClient(), current_year=2026)
 
     assert set(selected) == {"W_SHARED", "W_A_ONLY"}
     assert selected["W_SHARED"].domains == {"Domain A", "Domain B"}

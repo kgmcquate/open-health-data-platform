@@ -1,10 +1,24 @@
-"""Combines OpenAlex citation ranking with a Europe PMC/MeSH cross-check into
-the final, deduped literature corpus, driven entirely by
+"""Combines OpenAlex's recent-citation ranking with a Europe PMC/MeSH
+cross-check into the "trending per Domain" feed, driven entirely by
 ``data/src/ohdp_orchestration/seed/literature_domains.yml``.
 
 Kept as a pure function of (config, OpenAlex client) -> selected works so it can
-be exercised standalone (see the plan's verification step 1) without a Dagster
-context or an OpenMetadata connection.
+be exercised standalone without a Dagster context or an OpenMetadata
+connection.
+
+**Recent-only, deliberately.** This used to also rank an all-time top-cited
+bucket per subfield and merge it into the same corpus (feeding a since-removed
+domain-wide Context Center sync — see
+``ohdp_orchestration.assets.literature_dataset_sync`` for what replaced it).
+That bucket is dropped here: an OpenAlex subfield's all-time most-cited works
+skew hard toward decades-old methods/reagent/software papers (a stats package,
+an assay protocol) rather than anything a "trending" reader means by the word,
+and this selection's only consumer now
+(``ohdp_orchestration.assets.literature_trending_sync``) is explicitly a
+trending feed, not a canonical one. Recency + citation count together is a
+reasonable trending proxy; recency alone is not (a fresh paper has had no time
+to accumulate citations) and citation count alone is the discredited bucket
+this replaced.
 """
 
 from __future__ import annotations
@@ -24,22 +38,22 @@ log = get_logger(__name__)
 
 @dataclass(frozen=True)
 class DomainSelection:
-    """One Domain's ranking config, one entry of ``literature_domains.yml``."""
+    """One Domain's trending-ranking config, one entry of
+    ``literature_domains.yml``."""
 
     domain: str
     openalex_subfields: tuple[int, ...]
     mesh_terms: frozenset[str]
-    top_cited_limit: int
-    recent_limit: int
+    limit: int
     recent_years: int
     min_citations: int
 
 
 @dataclass
 class SelectedWork:
-    """One paper selected for at least one Domain — carries every Domain it
-    matched, so a work relevant to more than one Domain becomes one Context
-    Center page tagged with all of them, not a duplicate per Domain."""
+    """One paper selected as trending for at least one Domain — carries every
+    Domain it matched, so a work trending in more than one Domain becomes one
+    row, tagged with all of them, not a duplicate per Domain."""
 
     work: OpenAlexWork
     domains: set[str] = field(default_factory=set)
@@ -53,8 +67,7 @@ def load_domain_selections(seed_path: Path) -> tuple[DomainSelection, ...]:
             domain=entry["domain"],
             openalex_subfields=tuple(entry["openalex_subfields"]),
             mesh_terms=frozenset(entry.get("mesh_terms", [])),
-            top_cited_limit=entry.get("top_cited_limit", defaults["top_cited_limit"]),
-            recent_limit=entry.get("recent_limit", defaults["recent_limit"]),
+            limit=entry.get("limit", defaults["limit"]),
             recent_years=entry.get("recent_years", defaults["recent_years"]),
             min_citations=entry.get("min_citations", defaults["min_citations"]),
         )
@@ -62,29 +75,23 @@ def load_domain_selections(seed_path: Path) -> tuple[DomainSelection, ...]:
     )
 
 
-def select_literature(
+def select_trending_literature(
     selections: tuple[DomainSelection, ...],
     *,
     openalex: SupportsTopCitedWorks,
     current_year: int,
     contact_email: str = "",
 ) -> dict[str, SelectedWork]:
-    """Runs the two-bucket OpenAlex ranking (all-time top-cited + recent
-    top-cited) per Domain/subfield, cross-checks against MeSH where the Domain
-    configures it, and returns the deduped corpus keyed by OpenAlex work ID."""
+    """Runs the recent-top-cited OpenAlex ranking per Domain/subfield,
+    cross-checks against MeSH where the Domain configures it, and returns the
+    deduped trending corpus keyed by OpenAlex work ID."""
     selected: dict[str, SelectedWork] = {}
     for cfg in selections:
         candidates: dict[str, OpenAlexWork] = {}
         for subfield_id in cfg.openalex_subfields:
             for work in openalex.top_cited_works(
                 subfield_id=subfield_id,
-                limit=cfg.top_cited_limit,
-                min_citations=cfg.min_citations,
-            ):
-                candidates[work.openalex_id] = work
-            for work in openalex.top_cited_works(
-                subfield_id=subfield_id,
-                limit=cfg.recent_limit,
+                limit=cfg.limit,
                 from_publication_year=current_year - cfg.recent_years,
                 min_citations=cfg.min_citations,
             ):
@@ -92,7 +99,7 @@ def select_literature(
 
         confirmed = _mesh_confirm(candidates, cfg.mesh_terms, contact_email=contact_email)
         log.info(
-            "literature_domain_selected",
+            "literature_domain_trending_selected",
             domain=cfg.domain,
             candidates=len(candidates),
             confirmed=len(confirmed),
