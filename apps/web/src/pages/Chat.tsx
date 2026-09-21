@@ -189,19 +189,19 @@ const Sidebar: FC<SidebarProps> = ({
           <MessageSquarePlusIcon className="size-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-x-hidden overflow-y-auto px-2 pb-3">
+      <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-3">
         {regular.length === 0 && (
           <p className="px-2 py-4 text-xs opacity-50">No conversations yet.</p>
         )}
-        <ul className="menu menu-sm w-full gap-0.5 p-0">
+        <ul className="menu menu-sm w-full flex-nowrap p-0">
           {regular.map((thread) => (
-            <li key={thread.id}>
+            <li key={thread.id} className="min-w-0">
               <a
-                className={`group flex items-center gap-1 ${thread.id === activeThreadId ? "menu-active" : ""}`}
+                className={`group flex w-full min-w-0 items-center gap-1 ${thread.id === activeThreadId ? "menu-active" : ""}`}
                 onClick={() => onSwitchThread(thread.id)}
               >
                 <span className="min-w-0 flex-1 truncate">{thread.title || "New conversation"}</span>
-                <span className="opacity-0 group-hover:opacity-100">
+                <span className="shrink-0">
                   <ThreadMenu
                     thread={thread}
                     threads={threads}
@@ -220,15 +220,15 @@ const Sidebar: FC<SidebarProps> = ({
             <summary className="cursor-pointer px-2 text-xs opacity-60">
               Archived ({archived.length})
             </summary>
-            <ul className="menu menu-sm w-full gap-0.5 p-0">
+            <ul className="menu menu-sm w-full flex-nowrap gap-0.5 p-0">
               {archived.map((thread) => (
-                <li key={thread.id}>
+                <li key={thread.id} className="min-w-0">
                   <a
-                    className={`group flex items-center gap-1 opacity-70 ${thread.id === activeThreadId ? "menu-active" : ""}`}
+                    className={`group flex w-full min-w-0 items-center gap-1 opacity-70 ${thread.id === activeThreadId ? "menu-active" : ""}`}
                     onClick={() => onSwitchThread(thread.id)}
                   >
                     <span className="min-w-0 flex-1 truncate">{thread.title || "New conversation"}</span>
-                    <span className="opacity-0 group-hover:opacity-100">
+                    <span className="shrink-0">
                       <ThreadMenu
                         thread={thread}
                         threads={threads}
