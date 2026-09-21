@@ -188,7 +188,7 @@ const Sidebar: FC<SidebarProps> = ({
           <MessageSquarePlusIcon className="size-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-3">
+      <div className="flex-1 overflow-x-hidden overflow-y-auto px-2 pb-3">
         {regular.length === 0 && (
           <p className="px-2 py-4 text-xs opacity-50">No conversations yet.</p>
         )}
@@ -199,7 +199,7 @@ const Sidebar: FC<SidebarProps> = ({
                 className={`group flex items-center gap-1 ${thread.id === activeThreadId ? "menu-active" : ""}`}
                 onClick={() => onSwitchThread(thread.id)}
               >
-                <span className="flex-1 truncate">{thread.title || "New conversation"}</span>
+                <span className="min-w-0 flex-1 truncate">{thread.title || "New conversation"}</span>
                 <span className="opacity-0 group-hover:opacity-100">
                   <ThreadMenu
                     thread={thread}
@@ -226,7 +226,7 @@ const Sidebar: FC<SidebarProps> = ({
                     className={`group flex items-center gap-1 opacity-70 ${thread.id === activeThreadId ? "menu-active" : ""}`}
                     onClick={() => onSwitchThread(thread.id)}
                   >
-                    <span className="flex-1 truncate">{thread.title || "New conversation"}</span>
+                    <span className="min-w-0 flex-1 truncate">{thread.title || "New conversation"}</span>
                     <span className="opacity-0 group-hover:opacity-100">
                       <ThreadMenu
                         thread={thread}
@@ -434,6 +434,16 @@ function FeedbackButtons() {
   );
 }
 
+function ThinkingDots() {
+  return (
+    <span className="thinking-dots ml-0.5 inline-flex" aria-hidden="true">
+      <span>.</span>
+      <span>.</span>
+      <span>.</span>
+    </span>
+  );
+}
+
 function AssistantMessage() {
   return (
     <MessagePrimitive.Root className="group/message flex flex-col px-4 py-2">
@@ -442,9 +452,10 @@ function AssistantMessage() {
           {({ part }) => {
             if (part.type === "text") return <MarkdownText />;
             if (part.type === "reasoning") {
+              const isRunning = part.status?.type === "running";
               return (
                 <details className="my-1 text-xs italic opacity-60">
-                  <summary>Thinking…</summary>
+                  <summary>Thinking{isRunning ? <ThinkingDots /> : "…"}</summary>
                   <p className="whitespace-pre-wrap">{part.text}</p>
                 </details>
               );

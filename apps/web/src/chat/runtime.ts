@@ -272,6 +272,12 @@ export function useHubChatRuntime(
   // useExternalStoreRuntime forces a runtime resync when its identity
   // changes, so this must not be part of what triggers a re-render.
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Bumped at the start of every runTurn call. A cancelled turn's tail (the
+  // post-stream refetch below) keeps running in the background after
+  // `isRunning` already flipped back to false, so if the user fires off
+  // another message in that window, the stale tail must not clobber it with
+  // an unconditional setMessages — this is what it checks before doing so.
+  const runSeqRef = useRef(0);
 
   const newThread = () => {
     setThreadId(null);
@@ -292,6 +298,7 @@ export function useHubChatRuntime(
     truncateFromTurnId: number | undefined,
   ) => {
     if (!question.trim()) return;
+    const mySeq = ++runSeqRef.current;
     // The previous answer's follow-ups stop being relevant the moment a new
     // question is on its way — chips mid-generation would be for the old turn.
     setSuggestions([]);
@@ -413,6 +420,12 @@ export function useHubChatRuntime(
         lastUserIndex !== -1 &&
         lastUserText === question &&
         serverMessages[lastUserIndex + 1]?.role === "assistant";
+
+      // A newer runTurn has since started (e.g. the user sent a follow-up
+      // right after cancelling this one) and owns `messages` now — this
+      // stale tail must not stomp on it with a snapshot of the thread from
+      // before that follow-up existed.
+      if (runSeqRef.current !== mySeq) return;
 
       if (!hasServerAnswer) {
         const localAssistant = messages.find((m) => m.id === assistantId);
