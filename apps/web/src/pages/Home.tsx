@@ -54,10 +54,7 @@ export default function Home() {
               <span className="text-primary"> - minus the effort.</span>
             </h1>
             <p className="py-6 text-lg opacity-80">
-              An open analytics platform over public health data. Ask
-              questions in plain English, get answers backed by a governed
-              semantic layer — with the pipelines, catalog and tests on full
-              display.
+              An open analytics platform for public health data.
             </p>
             <div className="flex gap-3 justify-center">
               <Link to="/chat" className="btn btn-primary">

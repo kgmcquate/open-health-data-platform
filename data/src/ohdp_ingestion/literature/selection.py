@@ -67,6 +67,7 @@ def select_literature(
     *,
     openalex: SupportsTopCitedWorks,
     current_year: int,
+    contact_email: str = "",
 ) -> dict[str, SelectedWork]:
     """Runs the two-bucket OpenAlex ranking (all-time top-cited + recent
     top-cited) per Domain/subfield, cross-checks against MeSH where the Domain
@@ -89,7 +90,7 @@ def select_literature(
             ):
                 candidates[work.openalex_id] = work
 
-        confirmed = _mesh_confirm(candidates, cfg.mesh_terms)
+        confirmed = _mesh_confirm(candidates, cfg.mesh_terms, contact_email=contact_email)
         log.info(
             "literature_domain_selected",
             domain=cfg.domain,
@@ -103,7 +104,7 @@ def select_literature(
 
 
 def _mesh_confirm(
-    candidates: dict[str, OpenAlexWork], mesh_terms: frozenset[str]
+    candidates: dict[str, OpenAlexWork], mesh_terms: frozenset[str], *, contact_email: str = ""
 ) -> list[OpenAlexWork]:
     """No MeSH terms configured for the Domain, or a candidate with no PMID:
     keep it, nothing to cross-check against. Otherwise drop anything whose
@@ -112,7 +113,7 @@ def _mesh_confirm(
         return list(candidates.values())
 
     pmids = [w.pmid for w in candidates.values() if w.pmid]
-    headings = mesh_headings_for_pmids(pmids)
+    headings = mesh_headings_for_pmids(pmids, contact_email=contact_email)
 
     kept: list[OpenAlexWork] = []
     for work in candidates.values():

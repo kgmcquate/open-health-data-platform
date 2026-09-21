@@ -107,13 +107,16 @@ class Settings(BaseSettings):
     cube_api_secret: str = ""
     openmetadata_url: str = "http://localhost:8585"
     openmetadata_jwt: str = ""
-    # Curated literature ingestion (ohdp_ingestion.literature). Not a secret —
-    # OpenAlex's "polite pool" just wants a contact address on every request for
-    # a materially higher rate limit. Empty falls back to the shared anonymous
-    # pool rather than failing. Deliberately not hard-coded here even though
-    # it's non-sensitive: every other environment-specific value in this file
-    # is env-sourced too, and this repo is public (ARCHITECTURE.md's own
-    # framing) — set OHDP_OPENALEX_CONTACT_EMAIL in the deploy's own .env.
+    # Curated literature ingestion (ohdp_ingestion.literature) — both OpenAlex
+    # (its "mailto" param) and Europe PMC (its User-Agent) use this same
+    # address to self-identify the client, which is what gets a request into
+    # OpenAlex's "polite pool"/a materially higher rate limit and is Europe
+    # PMC's expected practice for bulk automated queries. Empty falls back to
+    # each service's anonymous-client treatment rather than failing.
+    # Deliberately not hard-coded here even though it's non-sensitive: every
+    # other environment-specific value in this file is env-sourced too, and
+    # this repo is public (ARCHITECTURE.md's own framing) — set
+    # OHDP_OPENALEX_CONTACT_EMAIL in the deploy's own .env.
     openalex_contact_email: str = ""
     # GraphQL endpoint OpenMetadata's Dagster connector reads pipeline/run
     # metadata from. In-cluster this is graphql-authz-proxy, not the raw

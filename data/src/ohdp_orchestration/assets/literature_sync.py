@@ -122,7 +122,10 @@ def literature_sync(context) -> None:
     selections = load_domain_selections(_SEED_PATH)
     with OpenAlexClient(contact_email=settings.openalex_contact_email) as openalex:
         selected = select_literature(
-            selections, openalex=openalex, current_year=datetime.now(UTC).year
+            selections,
+            openalex=openalex,
+            current_year=datetime.now(UTC).year,
+            contact_email=settings.openalex_contact_email,
         )
 
     metadata = _om_client()
