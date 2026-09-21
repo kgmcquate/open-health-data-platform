@@ -12,7 +12,7 @@ export default function Footer() {
       <nav>
         <h6 className="footer-title">Platform</h6>
         <a className="link link-hover" href="/data-sources">Data sources</a>
-        <a className="link link-hover" href="/plots">Plots</a>
+        <a className="link link-hover" href="/dashboards">Dashboards</a>
         <a className="link link-hover" href="/chat">Chat</a>
       </nav>
       <nav>

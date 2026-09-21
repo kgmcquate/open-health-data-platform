@@ -88,10 +88,14 @@ domains:
     - name: CMS
       domainType: Source-aligned
       description: >
-        Centers for Medicare & Medicaid Services data (claims, spending, quality
-        measures). Ingestion deferred past M0; placeholder domain, expected to
-        feed the Financial consumer-aligned domain once ingested.
-      website: https://www.cms.gov
+        Centers for Medicare & Medicaid Services data (drug spending, geographic
+        variation, beneficiary enrollment), from CMS's own data-api/v1 REST API
+        (not Socrata/CKAN — see ADR-0026). 5 datasets ingested; ~126 more
+        catalogued but disabled, see defs/cms/README.md.
+      website: https://data.cms.gov
+      schemas:
+        - snowflake.RAW.CMS
+        - snowflake.CLEAN.STG_CMS
 
   consumer_aligned:
     - name: Infectious Disease
@@ -168,5 +172,6 @@ domains:
     - name: Financial
       domainType: Consumer-aligned
       description: >
-        Healthcare spending/budget data now, claims/cost data once CMS
-        ingestion lands. Seeded ahead of data to reserve the mapping.
+        Medicare/Medicaid drug spending and beneficiary enrollment, from CMS
+        (see the CMS source-aligned domain). Staged in CLEAN.STG_CMS; no
+        CURATED.FINANCIAL mart yet — seeded ahead of that build-out.

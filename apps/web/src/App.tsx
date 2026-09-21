@@ -7,7 +7,7 @@ import News from "./pages/News";
 import DataSources from "./pages/DataSources";
 
 // Heavy dependencies (assistant-ui, vega-embed) stay out of the main bundle.
-const Plots = lazy(() => import("./pages/Plots"));
+const Dashboards = lazy(() => import("./pages/Dashboards"));
 const Literature = lazy(() => import("./pages/Literature"));
 const Chat = lazy(() => import("./pages/Chat"));
 
@@ -27,7 +27,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/news" element={<News />} />
             <Route path="/data-sources" element={<DataSources />} />
-            <Route path="/plots" element={<Plots />} />
+            <Route path="/dashboards" element={<Dashboards />} />
             <Route path="/literature" element={<Literature />} />
             <Route path="/chat" element={<Chat />} />
             <Route

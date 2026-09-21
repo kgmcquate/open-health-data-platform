@@ -11,16 +11,24 @@ data.cdc.gov lives in :class:`~ohdp_ingestion.socrata.domain.SocrataDomain`.
 
 from __future__ import annotations
 
-import re
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, Field, field_validator
+
+from ohdp_ingestion.cadence import CADENCES, Cadence
+from ohdp_ingestion.naming import slugify, table_name
 
 if TYPE_CHECKING:
     from ohdp_ingestion.socrata.catalog import CatalogDataset
 
-Cadence = Literal["daily", "weekly", "monthly"]
-CADENCES: tuple[Cadence, ...] = ("daily", "weekly", "monthly")
+__all__ = [
+    "CADENCES",
+    "Cadence",
+    "ColumnSpec",
+    "DatasetConfig",
+    "slugify",
+    "table_name",
+]
 
 
 def _as_text(value: Any) -> str:
@@ -49,56 +57,6 @@ def _as_text(value: Any) -> str:
     if value is None or value is Ellipsis:
         return ""
     return str(value)
-
-
-def slugify(text: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-    return re.sub(r"_+", "_", slug) or "dataset"
-
-
-# Socrata titles are a sentence, not a name, and CDC's run long — several past
-# 240 characters. dlt derives *filenames* from the table name (the extract
-# writer's `<raw_table>.<content hash>.<idx>.typed-jsonl.gz`, ~28 bytes of
-# suffix), and Linux caps one path component at 255 bytes (NAME_MAX), so an
-# uncapped title fails the whole extract step with `OSError [Errno 36] File name
-# too long` before a single row moves. Cap well short of NAME_MAX rather than at
-# it: the slack absorbs the collision suffix `scrape_socrata.py` may append and
-# any future change to dlt's filename layout. 120 is also the point where the
-# names stop being paragraphs, and it is deliberately loose enough not to rename
-# any table that has already loaded successfully.
-_MAX_TABLE_NAME = 120
-
-
-def table_name(text: str, dataset_id: str = "") -> str:
-    """``slugify``, dlt's rule for an identifier that starts with a digit, and a
-    length cap (see ``_MAX_TABLE_NAME``).
-
-    A leading digit is not a legal unquoted SQL identifier, and dlt's snake_case
-    naming convention silently prefixes one with ``_`` on the way to the
-    catalog. Plenty of CDC dataset names start with a year ("500 Cities...",
-    "1998-2024 Serotype Data...", ~30 of them), so applying the same rule here
-    is what keeps ``raw_table`` equal to the table dlt actually creates — and
-    with it the generated dbt source and the ``lakehouse/`` raw asset key that
-    the load reports its materialization against.
-
-    A capped name keeps its leading words — the distinguishing part of a Socrata
-    title is the front, not the "...during mandatory reporting period from
-    august 1 2020 to..." tail — cut at a word boundary so it stays readable, and
-    ends with the 4x4 ``dataset_id`` when one is given, since two long titles can
-    easily share their first 120 characters.
-    """
-    slug = slugify(text)
-    slug = f"_{slug}" if slug[0].isdigit() else slug
-    if len(slug) <= _MAX_TABLE_NAME:
-        return slug
-
-    suffix = f"_{dataset_id.replace('-', '_')}" if dataset_id else ""
-    cut = _MAX_TABLE_NAME - len(suffix)
-    head = slug[:cut]
-    if slug[cut] != "_":
-        # `head` ends mid-word; drop the partial token rather than emit a stub
-        head = head.rpartition("_")[0] or head
-    return f"{head.rstrip('_')}{suffix}"
 
 
 class ColumnSpec(BaseModel):

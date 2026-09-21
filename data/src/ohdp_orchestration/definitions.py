@@ -6,8 +6,8 @@ assembly point only — no asset bodies, no business logic.
 Defs come from two places, merged together:
 
 * ``ohdp_orchestration.defs`` is autoloaded: every Dagster component
-  discovered under it (the config-driven HealthData.gov and CDC ingestion)
-  is merged in automatically.
+  discovered under it (the config-driven HealthData.gov, CDC and CMS
+  ingestion) is merged in automatically.
 * ``ohdp_orchestration.assets``/``.jobs``/``.schedules``/``.sensors`` are
   plain Dagster objects (no per-instance config, so no Component/defs.yaml
   layer), listed here explicitly — this module is the one place that has to
@@ -36,6 +36,11 @@ from ohdp_orchestration.jobs.cdc import (
     cdc_monthly_ingest_job,
     cdc_weekly_ingest_job,
 )
+from ohdp_orchestration.jobs.cms import (
+    cms_daily_ingest_job,
+    cms_monthly_ingest_job,
+    cms_weekly_ingest_job,
+)
 from ohdp_orchestration.jobs.cube_metrics_sync import openmetadata_cube_metrics_sync_job
 from ohdp_orchestration.jobs.healthdata_gov import (
     healthdata_gov_daily_ingest_job,
@@ -53,6 +58,11 @@ from ohdp_orchestration.schedules.cdc import (
     cdc_daily_schedule,
     cdc_monthly_schedule,
     cdc_weekly_schedule,
+)
+from ohdp_orchestration.schedules.cms import (
+    cms_daily_schedule,
+    cms_monthly_schedule,
+    cms_weekly_schedule,
 )
 from ohdp_orchestration.schedules.cube_metrics_sync import (
     openmetadata_cube_metrics_sync_schedule,
@@ -96,6 +106,9 @@ defs = Definitions.merge(
             cdc_daily_ingest_job,
             cdc_weekly_ingest_job,
             cdc_monthly_ingest_job,
+            cms_daily_ingest_job,
+            cms_weekly_ingest_job,
+            cms_monthly_ingest_job,
             healthdata_gov_daily_ingest_job,
             healthdata_gov_weekly_ingest_job,
             healthdata_gov_monthly_ingest_job,
@@ -110,6 +123,9 @@ defs = Definitions.merge(
             cdc_daily_schedule,
             cdc_weekly_schedule,
             cdc_monthly_schedule,
+            cms_daily_schedule,
+            cms_weekly_schedule,
+            cms_monthly_schedule,
             healthdata_gov_daily_schedule,
             healthdata_gov_weekly_schedule,
             healthdata_gov_monthly_schedule,

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { fetchNews, fetchPlots } from "../lib/api";
+import { fetchNews, fetchDashboards } from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 import GraphBackground from "../components/GraphBackground";
 
@@ -13,10 +13,10 @@ const HIGHLIGHTS = [
   },
   {
     icon: "📊",
-    title: "Plots with a paper trail",
+    title: "Dashboards with a paper trail",
     body: "Every visualization carries the exact metric query that produced it. Curated, reproducible, and re-runnable — ask the chatbot to draw its own.",
-    to: "/plots",
-    cta: "See curated plots",
+    to: "/dashboards",
+    cta: "See curated dashboards",
   },
   {
     icon: "💬",
@@ -36,9 +36,9 @@ const HIGHLIGHTS = [
 
 export default function Home() {
   const news = useFetch(fetchNews);
-  const plots = useFetch(fetchPlots);
+  const dashboards = useFetch(fetchDashboards);
   const latest = news.data?.[0];
-  const featured = plots.data?.find((p) => p.featured);
+  const featured = dashboards.data?.find((d) => d.featured);
 
   return (
     <div>
@@ -108,13 +108,13 @@ export default function Home() {
             <div className="card bg-secondary text-secondary-content shadow">
               <div className="card-body">
                 <h3 className="card-title text-sm uppercase tracking-wide opacity-80">
-                  Featured plot
+                  Featured dashboard
                 </h3>
                 <p className="text-xl font-bold">{featured.title}</p>
                 <p className="opacity-90 line-clamp-3">{featured.description}</p>
                 <div className="card-actions justify-end">
-                  <Link to="/plots" className="btn btn-sm btn-accent">
-                    View plots
+                  <Link to="/dashboards" className="btn btn-sm btn-accent">
+                    View dashboards
                   </Link>
                 </div>
               </div>

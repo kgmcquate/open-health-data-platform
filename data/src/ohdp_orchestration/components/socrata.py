@@ -32,7 +32,7 @@ to the OpenMetadata Dagster ingestion; enabling one adds the two downstream
 nodes without touching it.
 
 The cadence asset jobs + schedules need no per-instance config, so they are
-plain code rather than components — see ``ohdp_orchestration.jobs.socrata``.
+plain code rather than components — see ``ohdp_orchestration.jobs.cadence``.
 """
 
 from __future__ import annotations

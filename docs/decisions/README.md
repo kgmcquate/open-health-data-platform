@@ -31,3 +31,4 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0023](0023-openrouter-glm-model-backend.md) | OpenRouter + GLM 5.3 Flash as Open WebUI's model backend | Superseded — Open WebUI removed |
 | [0024](0024-cube-store-pre-aggregations.md) | Cube Store and pre-aggregations | Accepted |
 | [0025](0025-dashboards-as-code-in-chat.md) | Dashboards as code, rendered in the chat turn | Accepted |
+| [0026](0026-cms-rest-api-ingestion.md) | CMS ingestion over its own REST API, not Socrata; Iceberg landing side shared | Accepted |

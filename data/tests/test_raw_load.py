@@ -36,16 +36,16 @@ from ohdp_orchestration.resources.dlt import CustomDagsterDltResource
 def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the lakehouse at a temp directory and a SQLite pyiceberg catalog.
 
-    Only the catalog *backend* is swapped (rest -> sql); ``_destination`` and
-    its ``iceberg_rest_sink`` — including the namespace/identifier
-    construction — stay the real production code, patched only at
-    ``get_catalog`` so it hands back the local SQL catalog regardless of the
-    (real, REST-shaped) config it's called with. Earlier this fixture
-    replaced ``_destination`` wholesale with dlt's built-in filesystem
-    destination, which meant no test here ever exercised the identifier
-    logic that decides what namespace a table lands in — a real bug in that
-    logic (see naming.namespace vs. naming.schema) shipped to prod undetected
-    as a result.
+    Only the catalog *backend* is swapped (rest -> sql);
+    ``horizon_iceberg_destination`` (``ohdp_ingestion.iceberg_destination``)
+    — including the namespace/identifier construction — stays the real
+    production code, patched only at ``get_catalog`` so it hands back the
+    local SQL catalog regardless of the (real, REST-shaped) config it's
+    called with. Earlier this fixture replaced the destination wholesale with
+    dlt's built-in filesystem destination, which meant no test here ever
+    exercised the identifier logic that decides what namespace a table lands
+    in — a real bug in that logic (see naming.namespace vs. naming.schema)
+    shipped to prod undetected as a result.
     """
     root = tmp_path / "lake"
     root.mkdir()
@@ -62,10 +62,10 @@ def lake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # dlt keeps pipeline state (the incremental cursor) here.
     monkeypatch.setenv("DLT_DATA_DIR", str(tmp_path / "dlt"))
 
-    import ohdp_ingestion.socrata.source as src
+    import ohdp_ingestion.iceberg_destination as dest
 
-    monkeypatch.setattr(src, "get_catalog", lambda **_: catalog)
-    monkeypatch.setattr(src, "configure_catalog", lambda: _local_catalog(root))
+    monkeypatch.setattr(dest, "get_catalog", lambda **_: catalog)
+    monkeypatch.setattr(dest, "configure_catalog", lambda: _local_catalog(root))
     return root
 
 

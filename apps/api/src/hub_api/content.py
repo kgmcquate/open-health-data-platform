@@ -1,10 +1,16 @@
-"""Curated hub content: news, data sources, plots, and literature.
+"""Curated hub content: news, data sources, dashboards, and literature.
 
-News, plots, and literature back three of the hub's public pages from tables
-here. They are *curated*, not crawled — rows are written by us (seeds below,
-an admin surface later), never by users and never by the chat agent, so what
-the front page shows cannot be influenced by prompt injection or an upstream
-API going strange.
+News, dashboards, and literature back three of the hub's public pages from
+tables here. They are *curated*, not crawled — rows are written by us (seeds
+below, an admin surface later), never by users and never by the chat agent, so
+what the front page shows cannot be influenced by prompt injection or an
+upstream API going strange.
+
+The dashboards here are the curated, published kind. Do not confuse them with
+the chat's `render_dashboard` tool (`hub_api.dashboards`, mounted under
+`/tools`), which draws a throwaway spec into a single chat turn: that one is
+agent-written and never stored, this one is human-written and read by a public
+page.
 
 Data sources are the exception: that page reads OpenMetadata's own
 Source-aligned domains directly (`ohdp_agent.domains`) rather than a table
@@ -44,14 +50,14 @@ news_items = Table(
     Column("published_at", DateTime(timezone=True), nullable=False, index=True),
 )
 
-curated_plots = Table(
-    "curated_plots",
+curated_dashboards = Table(
+    "curated_dashboards",
     db.metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("title", String, nullable=False),
     Column("description", String, nullable=False),
     # A Vega-Lite spec bound server-side (ohdp_agent.dashboard) — the same
-    # mechanism the chatbot draws with, so a plot on this page is one the
+    # mechanism the chatbot draws with, so a dashboard on this page is one the
     # agent could reproduce.
     Column("vega", JSON, nullable=False),
     Column("cube_query", JSON, nullable=False),
@@ -148,13 +154,13 @@ async def list_data_sources() -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/plots")
-def list_plots(request: Request) -> list[dict[str, Any]]:
+@router.get("/dashboards")
+def list_dashboards(request: Request) -> list[dict[str, Any]]:
     return _rows(
         request,
-        curated_plots,
-        curated_plots.c.featured.desc(),
-        curated_plots.c.created_at.desc(),
+        curated_dashboards,
+        curated_dashboards.c.featured.desc(),
+        curated_dashboards.c.created_at.desc(),
     )
 
 

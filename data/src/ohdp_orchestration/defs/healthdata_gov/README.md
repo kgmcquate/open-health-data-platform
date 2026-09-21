@@ -86,7 +86,7 @@ loaded after a run.
 [`jobs/healthdata_gov.py`](../../jobs/healthdata_gov.py) builds **exactly
 three** asset jobs — `healthdata_gov_{daily,weekly,monthly}_ingest` — each
 selecting table assets by their `domain` + `cadence` tags (via the shared
-[`jobs/socrata.py`](../../jobs/socrata.py)).
+[`jobs/cadence.py`](../../jobs/cadence.py)).
 [`schedules/healthdata_gov.py`](../../schedules/healthdata_gov.py) wraps each
 in a cron schedule. Neither reads the dataset files, so adding datasets never
 touches them. A cadence with no enabled datasets yet gets an empty job (its

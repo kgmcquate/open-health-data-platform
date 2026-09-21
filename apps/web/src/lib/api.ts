@@ -23,7 +23,7 @@ export interface DataSource {
   catalog_url: string;
 }
 
-export interface CuratedPlot {
+export interface CuratedDashboard {
   id: number;
   title: string;
   description: string;
@@ -62,7 +62,7 @@ export async function fetchMe(): Promise<User | null> {
 
 export const fetchNews = () => getJson<NewsItem[]>("/api/news");
 export const fetchDataSources = () => getJson<DataSource[]>("/api/data-sources");
-export const fetchPlots = () => getJson<CuratedPlot[]>("/api/plots");
+export const fetchDashboards = () => getJson<CuratedDashboard[]>("/api/dashboards");
 export const fetchLiterature = () => getJson<LiteratureItem[]>("/api/literature");
 
 export interface ChatModel {

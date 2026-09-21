@@ -1,7 +1,7 @@
 # @ohdp/web
 
-The platform hub: landing page, news, data-source explorer, curated plots and
-literature, and the AI chatbot UI.
+The platform hub: landing page, news, data-source explorer, curated dashboards
+and literature, and the AI chatbot UI.
 
 ## Stack
 
@@ -12,7 +12,7 @@ literature, and the AI chatbot UI.
 - **assistant-ui** — chat primitives (`@assistant-ui/react`,
   `@assistant-ui/react-markdown`), wired to the backend over SSE by
   `src/chat/runtime.ts`.
-- **vega-embed** — renders curated plots.
+- **vega-embed** — renders curated dashboards.
 
 ## Develop
 
@@ -38,6 +38,6 @@ npm run build        # type-checks, then emits static files to dist/
 - Pages are thin; data comes from `src/lib/api.ts` via `src/lib/useFetch.ts`.
 - The chat backend owns the agent, tools, quota and token accounting; the
   client only renders the SSE event stream (`src/chat/runtime.ts`).
-- Chat/Plots/Literature are lazy-loaded so vega and assistant-ui stay out of
-  the landing bundle.
+- Chat/Dashboards/Literature are lazy-loaded so vega and assistant-ui stay out
+  of the landing bundle.
 

@@ -1,0 +1,73 @@
+"""The per-dataset config contract for CMS ingestion.
+
+One YAML file lives at ``ohdp_orchestration/defs/cms/datasets/defs.yaml``,
+written by ``scripts/scrape_cms.py`` and read by the Dagster component
+(``ohdp_orchestration.defs.cms.component.CMSDataset``) — this module is the
+single source of truth for its shape, the same role
+``ohdp_ingestion.socrata.config.DatasetConfig`` plays for Socrata sources
+(ADR-0018, ADR-0026).
+
+No ``incremental_cursor``/``ColumnSpec`` here, unlike Socrata: CMS's
+``data-api/v1`` has no per-row ``:id``/``:updated_at`` system columns —
+every distribution is a whole-dataset republish on its own cadence, not an
+appended change log — so every CMS table is a full replace each run, and the
+catalog gives no per-column type schema to advertise (see
+``ohdp_ingestion.cms.catalog`` for what it does give).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
+
+from pydantic import BaseModel, Field
+
+from ohdp_ingestion.cadence import CADENCES, Cadence
+from ohdp_ingestion.naming import table_name
+
+if TYPE_CHECKING:
+    from ohdp_ingestion.cms.catalog import CatalogDataset
+
+__all__ = ["CADENCES", "Cadence", "DatasetConfig"]
+
+
+class DatasetConfig(BaseModel):
+    """A single CMS dataset series to ingest — its latest API distribution."""
+
+    model_config = {"extra": "forbid"}
+
+    id: str = Field(description="UUID of the dataset's latest API distribution")
+    name: str
+    publisher: str = ""
+    description: str = ""
+    source_url: str = ""
+
+    cadence: Cadence = "weekly"
+    enabled: bool = False
+
+    raw_table: str = Field(description="Table name written in RAW.CMS")
+    row_limit: int | None = Field(default=None, description="Safety cap on rows pulled per run")
+
+    row_count: int = Field(default=0, description="Informational total-row count at scrape time")
+    keywords: list[str] = Field(default_factory=list)
+
+    @classmethod
+    def from_catalog(
+        cls,
+        dataset: CatalogDataset,
+        *,
+        enabled: bool = False,
+        row_limit: int | None = None,
+    ) -> DatasetConfig:
+        return cls(
+            id=dataset.id,
+            name=dataset.name,
+            publisher=dataset.publisher,
+            description=dataset.description[:600],
+            source_url=dataset.landing_page,
+            cadence=cast(Cadence, dataset.cadence),
+            enabled=enabled,
+            raw_table=table_name(dataset.name, dataset.id),
+            row_limit=row_limit,
+            row_count=dataset.row_count,
+            keywords=dataset.keywords,
+        )

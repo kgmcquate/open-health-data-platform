@@ -1,0 +1,46 @@
+version: 2
+
+# Every model here is macros/cms_current_rows.sql over one RAW.cms table.
+# Unlike stg_cdc/stg_healthdata_gov, there is no dedupe key to test: CMS's raw
+# table is already a full replace each run (ADR-0026), not an append-only
+# history keyed by a Socrata :id. Columns stay as CMS publishes them --
+# strings almost throughout, since data-api/v1 serializes every field as JSON
+# text the same way Socrata's SODA API does. Typing and business logic belong
+# in `core`, not staged here.
+
+models:
+  - name: stg_cms__medicare_part_d_spending_by_drug
+    description: >
+      Medicare Part D per-drug spending, utilization and average cost, one row per drug per year.
+    config:
+      contract:
+        enforced: false
+
+  - name: stg_cms__medicare_part_b_spending_by_drug
+    description: >
+      Medicare Part B per-drug spending, utilization and average cost, one row per drug (HCPCS code) per year.
+    config:
+      contract:
+        enforced: false
+
+  - name: stg_cms__medicaid_spending_by_drug
+    description: >
+      Medicaid per-drug spending and utilization, one row per drug per state per year.
+    config:
+      contract:
+        enforced: false
+
+  - name: stg_cms__medicare_geographic_variation
+    description: >
+      Medicare demographic, spending, use and quality indicators by state and county (Original Medicare population).
+    config:
+      contract:
+        enforced: false
+
+  - name: stg_cms__medicare_monthly_enrollment
+    description: >
+      Monthly Medicare beneficiary enrollment counts by geography and coverage type (Original Medicare vs.
+      Medicare Advantage, Part D).
+    config:
+      contract:
+        enforced: false

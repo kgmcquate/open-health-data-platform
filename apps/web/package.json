@@ -2,7 +2,7 @@
   "name": "@ohdp/web",
   "version": "0.0.0",
   "private": true,
-  "description": "Hub UI — landing, news, data sources, plots, literature, chat",
+  "description": "Hub UI — landing, news, data sources, dashboards, literature, chat",
   "type": "module",
   "scripts": {
     "dev": "vite",
