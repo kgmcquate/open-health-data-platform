@@ -83,6 +83,29 @@ async def test_catalog_url_is_built_from_the_fqn_and_encoded() -> None:
     assert nested.catalog_url == "http://om/domain/CDC.NCHS"
 
 
+async def test_catalog_url_uses_link_base_url_when_given() -> None:
+    """The REST call still targets the internal base_url; only the returned
+    catalog_url should point at a separate public hostname."""
+    seen_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(request.url))
+        return httpx.Response(200, json=DOMAINS_PAYLOAD)
+
+    client = DomainsClient(
+        "http://internal-om:8585",
+        "jwt",
+        link_base_url="https://catalog.example.org",
+        client=_mock(handler),
+    )
+
+    domains = await client.list_source_aligned()
+    nested = next(d for d in domains if d.name == "NCHS")
+
+    assert nested.catalog_url == "https://catalog.example.org/domain/CDC.NCHS"
+    assert seen_urls[0].startswith("http://internal-om:8585/")
+
+
 async def test_bearer_token_is_sent() -> None:
     seen: dict[str, str] = {}
 

@@ -88,6 +88,9 @@ env:
   OHDP_LOG_LEVEL: INFO
   OHDP_CUBE_API_URL: http://cube.data.svc.cluster.local:4000
   OHDP_OPENMETADATA_URL: http://openmetadata.meta.svc.cluster.local:8585
+  # Public hostname used for catalog links rendered in the Hub UI (Sources
+  # page); the internal URL above isn't reachable from a user's browser.
+  OHDP_OPENMETADATA_PUBLIC_URL: https://catalog.open-health-data-platform.org
   # OpenMetadata persona whose curated context becomes the chat agent's
   # system-prompt preamble (docs/chatbot.md §3.1). Empty until personas are
   # seeded in the catalog (M3.3) and one is bound to the bot user — until then

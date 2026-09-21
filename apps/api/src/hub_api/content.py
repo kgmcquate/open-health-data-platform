@@ -137,7 +137,11 @@ async def list_data_sources() -> list[dict[str, Any]]:
     because the catalog is unreachable."""
     if not settings.openmetadata_jwt:
         return []
-    client = DomainsClient(settings.openmetadata_url, settings.openmetadata_jwt)
+    client = DomainsClient(
+        settings.openmetadata_url,
+        settings.openmetadata_jwt,
+        link_base_url=settings.openmetadata_public_url,
+    )
     try:
         domains = await client.list_source_aligned()
     except DomainsError as exc:

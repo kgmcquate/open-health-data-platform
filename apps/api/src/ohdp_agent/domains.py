@@ -48,10 +48,15 @@ class DomainsClient:
         base_url: str,
         jwt: str,
         *,
+        link_base_url: str | None = None,
         timeout: float = 15.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        # Public hostname for the catalog_url links returned to callers; the
+        # REST calls above always use _base_url, which is the internal
+        # address and isn't reachable from a user's browser.
+        self._link_base_url = (link_base_url or base_url).rstrip("/")
         self._jwt = jwt
         self._timeout = timeout
         self._client = client
@@ -76,7 +81,7 @@ class DomainsClient:
             raise DomainsError(f"OpenMetadata returned {response.status_code}")
 
         domains = [
-            _to_domain(self._base_url, raw)
+            _to_domain(self._link_base_url, raw)
             for raw in response.json().get("data", [])
             if raw.get("domainType") == "Source-aligned"
         ]

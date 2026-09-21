@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     cube_api_url: str = "http://localhost:4000"
     cube_api_secret: str = ""
     openmetadata_url: str = "http://localhost:8585"
+    # Public hostname for links users click (e.g. the Hub's Sources page);
+    # openmetadata_url above is the internal/cluster address used for REST
+    # calls and is not reachable from a browser.
+    openmetadata_public_url: str = "https://catalog.open-health-data-platform.org"
     openmetadata_jwt: str = ""
     # Curated literature ingestion (ohdp_ingestion.literature) — both OpenAlex
     # (its "mailto" param) and Europe PMC (its User-Agent) use this same
