@@ -1,15 +1,16 @@
 name: Build images
 
-# Each image builds only when its own code changed (the `changes` job below),
-# and a merge to main auto-deploys the helm release(s) for whichever images
-# actually built — dagster for ohdp-pipeline, cube for ohdp-cube, hub-api +
-# mcp-cube (same image, ADR: platform/helm/charts/mcp-cube/values.yaml) for
-# ohdp-hub-api. Charts for images that didn't change are left alone; their
-# release keeps running whatever tag it was last deployed with.
+# Every image builds on every merge to main, regardless of which paths
+# changed — images are tagged sha-<12> per commit (see
+# .github/actions/build-and-push-image), so there's no collision risk and no
+# need to diff paths. A merge to main always auto-deploys all three helm
+# releases — dagster for ohdp-pipeline, cube for ohdp-cube, hub-api + mcp-cube
+# (same image, ADR: platform/helm/charts/mcp-cube/values.yaml) for
+# ohdp-hub-api.
 #
-# workflow_dispatch always builds every image (there's no "before" commit to
-# diff against) but never auto-deploys — use deploy-platform.yml for a manual
-# rollout, e.g. to redeploy an unrelated chart at a specific image_tag.
+# workflow_dispatch builds every image too, but never auto-deploys — use
+# deploy-platform.yml for a manual rollout, e.g. to redeploy an unrelated
+# chart at a specific image_tag.
 
 on:
   push:
@@ -26,52 +27,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Detect changed images
-    runs-on: ubuntu-latest
-    outputs:
-      hub_api: ${{ steps.filter.outputs.hub_api || steps.dispatch.outputs.hub_api }}
-      pipeline: ${{ steps.filter.outputs.pipeline || steps.dispatch.outputs.pipeline }}
-      cube: ${{ steps.filter.outputs.cube || steps.dispatch.outputs.cube }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Diff against the previous commit
-        id: filter
-        if: github.event_name != 'workflow_dispatch'
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            hub_api:
-              - apps/api/**
-              - apps/web/**
-              - packages/shared/**
-              - .github/workflows/build-images.yml
-              - .github/actions/build-and-push-image/**
-            pipeline:
-              - data/**
-              - packages/shared/**
-              - .github/workflows/build-images.yml
-              - .github/actions/build-and-push-image/**
-            cube:
-              - semantic/cube/**
-              - data/dbt/**
-              - data/scripts/install_dbt_fusion.sh
-              - .github/workflows/build-images.yml
-              - .github/actions/build-and-push-image/**
-
-      - name: Manual dispatch builds everything
-        id: dispatch
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          echo "hub_api=true" >> "$GITHUB_OUTPUT"
-          echo "pipeline=true" >> "$GITHUB_OUTPUT"
-          echo "cube=true" >> "$GITHUB_OUTPUT"
-
   build-hub-api:
     name: Build ohdp-hub-api
-    needs: changes
-    if: needs.changes.outputs.hub_api == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -99,8 +56,6 @@ jobs:
 
   build-pipeline:
     name: Build ohdp-pipeline
-    needs: changes
-    if: needs.changes.outputs.pipeline == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -128,8 +83,6 @@ jobs:
 
   build-cube:
     name: Build ohdp-cube
-    needs: changes
-    if: needs.changes.outputs.cube == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
