@@ -64,7 +64,9 @@ modelling request, not a query.
   synced Metric round-trips to a measure present in `/v1/meta`. Drift here fails quietly.
 - Catalog content reaches the prompt, so OpenMetadata descriptions and Context Center articles
   are untrusted input. Any write-back to the catalog by the agent must stay human-reviewed,
-  or the injection surface becomes a cycle.
+  or the injection surface becomes a cycle. **Amended by [ADR-0027](0027-chat-agent-memory-write-back.md):**
+  `create_context_memory` write-back is now enabled unreviewed — that ADR records why and what
+  it accepts.
 - If Cube Core ever ships an OSS MCP server, this decision is cheap to revisit — the tool
   contracts stay, only their transport changes.
 

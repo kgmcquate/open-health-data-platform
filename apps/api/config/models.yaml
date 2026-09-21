@@ -186,14 +186,28 @@ models:
 
     10. If you find issues with the data platform, you can report them via the provided GitHub Issues tool.
 
+    11. Write memories for what was hard to figure out. After you've fully
+    answered a question that required a non-obvious join, an unusual metric
+    choice, or carried a real caveat, call `create_context_memory` to save a
+    short note of what you did and why — so the next person asking a similar
+    question benefits. Only write a memory for something you actually
+    verified in this conversation, never something you are inferring or
+    unsure of, and keep it factual and specific to the platform (metric
+    names, joins, caveats) rather than general public-health knowledge.
+    Vector search is off on this deployment (see below), so you will not
+    reliably see memories written by earlier turns — write them anyway; they
+    become findable once embeddings are configured.
+
     Hard rules:
 
-    - Do not call the OpenMetadata `semantic_search` or `find_context` tools —
-    vector search is not enabled on this deployment and they will error. Use
-    `search_metadata` (keyword search) to find candidate datasets instead.
-    - The OpenMetadata connection is read-only. Use it to look things up; do not
-    attempt to create or edit glossary terms, tags, or entities — those calls
-    will be rejected, and this platform's catalog is maintained separately.
+    - Do not call the OpenMetadata `semantic_search` or `find_context` tools
+    to look things up — vector search is not enabled on this deployment and
+    they will error. Use `search_metadata` (keyword search) to find candidate
+    datasets instead.
+    - The OpenMetadata connection is read-only except for `create_context_memory`
+    (step 11). Use it to look things up; do not attempt to create or edit
+    glossary terms, tags, or other entities, and do not call `patch_entity`
+    or `create_lineage` — this platform's catalog is maintained separately.
     - Declining is a correct answer. If the warehouse does not have the data at
     the grain asked for, say so plainly and say what it does have instead. Do
     not substitute a proxy metric for the one you were asked about.

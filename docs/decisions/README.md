@@ -21,7 +21,7 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0013](0013-per-layer-snowflake-databases.md) | One Snowflake database per medallion layer (RAW/CLEAN/CURATED) | Accepted |
 | [0014](0014-snowflake-only-compilation.md) | Snowflake-only: drop the local/CI DuckDB targets | Superseded by [0019](0019-iceberg-on-s3-duckdb-dbt.md) |
 | [0015](0015-streamlit-over-superset.md) | Streamlit over Superset for dashboards | Superseded — Streamlit removed; dashboards-as-code in chat per [0025](0025-dashboards-as-code-in-chat.md) |
-| [0016](0016-chat-agent-tool-surface.md) | Chat agent tool surface: own Cube tools, OpenMetadata MCP for context | Accepted; tool split amended by [0025](0025-dashboards-as-code-in-chat.md) |
+| [0016](0016-chat-agent-tool-surface.md) | Chat agent tool surface: own Cube tools, OpenMetadata MCP for context | Accepted; tool split amended by [0025](0025-dashboards-as-code-in-chat.md); write-back consequence amended by [0027](0027-chat-agent-memory-write-back.md) |
 | [0017](0017-open-webui-chat-ui.md) | Open WebUI as a chat UI, with our own Cube MCP server | Superseded / removed — Hub UI is the single chat surface |
 | [0018](0018-socrata-ingestion-shared-across-domains.md) | One Socrata ingestion core, bound per domain (CDC) | Accepted |
 | [0019](0019-iceberg-on-s3-duckdb-dbt.md) | Snowflake as the Iceberg catalog; DuckDB builds, Snowflake serves | Accepted |
@@ -32,3 +32,4 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0024](0024-cube-store-pre-aggregations.md) | Cube Store and pre-aggregations | Accepted |
 | [0025](0025-dashboards-as-code-in-chat.md) | Dashboards as code, rendered in the chat turn | Accepted |
 | [0026](0026-cms-rest-api-ingestion.md) | CMS ingestion over its own REST API, not Socrata; Iceberg landing side shared | Accepted |
+| [0027](0027-chat-agent-memory-write-back.md) | Chat agent writes OpenMetadata memories unreviewed | Accepted; amends [0016](0016-chat-agent-tool-surface.md) |

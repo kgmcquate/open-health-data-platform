@@ -193,7 +193,7 @@ const Sidebar: FC<SidebarProps> = ({
         {regular.length === 0 && (
           <p className="px-2 py-4 text-xs opacity-50">No conversations yet.</p>
         )}
-        <ul className="menu menu-sm gap-0.5 p-0">
+        <ul className="menu menu-sm w-full gap-0.5 p-0">
           {regular.map((thread) => (
             <li key={thread.id}>
               <a
@@ -220,7 +220,7 @@ const Sidebar: FC<SidebarProps> = ({
             <summary className="cursor-pointer px-2 text-xs opacity-60">
               Archived ({archived.length})
             </summary>
-            <ul className="menu menu-sm gap-0.5 p-0">
+            <ul className="menu menu-sm w-full gap-0.5 p-0">
               {archived.map((thread) => (
                 <li key={thread.id}>
                   <a

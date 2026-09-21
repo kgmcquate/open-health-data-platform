@@ -54,7 +54,7 @@ We consume it; we do not build a retrieval layer of our own.
 | `get_asset_context` | The workhorse — schema, transformation logic, business definitions, classifications, lineage, quality, ownership in **one** call |
 | `get_knowledge_content` | Quote a glossary term or metric definition verbatim |
 | `get_entity_lineage` | Provenance: "where did this number come from" |
-| `create_context_memory` | Write-back loop (§3.4) — gated, M4 |
+| `create_context_memory` | Write-back loop (§3.4) — enabled, unreviewed (ADR-0027) |
 
 **Verified against the live deployment (M3.0, done).** OM 2.0.1 advertises
 `openmetadata-mcp-stateless/1.1.0` with 24 tools, and every tool in the table above is
@@ -78,9 +78,14 @@ as tool results, and the agent routes around them — so the day somebody enable
 or seeds a persona, they start working with no deploy on our side.
 
 **11 of the 24 tools write to the catalog** (`patch_entity`, every `create_*`,
-`create_context_memory`). `ohdp_agent/catalog.py` enforces a read-only **allowlist**, not
-mere omission from the prompt: a model that names `patch_entity` gets an error from us, not
-an edit to the catalog.
+`create_context_memory`). `ohdp_agent/catalog.py` enforces an **allowlist**, not mere omission
+from the prompt: a model that names `patch_entity` gets an error from us, not an edit to the
+catalog. `create_context_memory` is the one write tool now allowed through, unreviewed
+(ADR-0027) — everything else stays refused.
+
+This allowlist only governs the in-process `"catalog"` tool source. The `mcp-openmetadata`
+connection our deployed model actually uses (`apps/api/config/tools.yaml`) is an unfiltered
+MCP connection straight to OM and does not go through `catalog.py` at all — see ADR-0027.
 
 ### 2.2 Execution — our own tools over Cube Core REST
 
@@ -153,12 +158,19 @@ One call returns what we would otherwise have built an embedding store over dbt 
 approximate. Use it per candidate asset after `semantic_search` narrows the field. Prefer its
 compact-Markdown form for the model.
 
-### 3.4 Write-back (M4, gated)
+### 3.4 Write-back (enabled, unreviewed — ADR-0027)
 
 Answers that required a non-obvious join or carried a real caveat get proposed as
-`create_context_memory` entries, so the second person asking pays less. **Human review before
+`create_context_memory` entries, so the second person asking pays less. The model is
+instructed to write these directly (`apps/api/config/models.yaml`, step 11) — there is no
+human review step in front of it. This was M4's original design (**human review before
 write** — an unreviewed write-back loop is a slow-motion corruption of the catalog, and §3.2
-makes catalog content part of the prompt, so it is also a prompt-injection cycle (§6).
+makes catalog content part of the prompt, so it is also a prompt-injection cycle, §6); ADR-0027
+records the decision to accept that risk instead of building the review queue.
+
+Because `find_context`/`semantic_search` are inert on this deployment (§2.1), a written memory
+is not reliably surfaced back to a later turn yet — write-back and read-back are decoupled
+until vector embeddings are configured.
 
 ### 3.5 The seam that matters
 
@@ -308,8 +320,8 @@ Mostly inherited from ARCHITECTURE.md §6; what is new to this design is called 
 - **Citations are checked, not trusted.** §2.3.
 - **Catalog content is untrusted input.** Descriptions, glossary terms, and Context Center
   articles are human-authored text that lands in the prompt. Treat tool output as data, never
-  as instructions — and note that §3.4's write-back makes this a cycle the agent can feed
-  itself. That is the strongest argument for keeping write-back human-reviewed.
+  as instructions. §3.4's write-back makes this a cycle the agent can feed itself, and as of
+  ADR-0027 that cycle is unreviewed — a known, accepted risk, not an oversight.
 - **Decline is a first-class outcome.** "We don't have that at that grain" must be an
   acceptable, well-rendered answer that offers a modelling request (§8), not a failure the
   model tries to paper over.
@@ -397,7 +409,7 @@ Each step should be demoable and independently reviewable.
 | **M3.3** | **Partly done.** Glossary/domain seed content (`data/src/ohdp_orchestration/seed/`) syncs via the `openmetadata_seed_sync` Dagster asset. Personas and Context Center articles are still **not done** — until those land, `get_persona_context` 404s and the agent uses its built-in system prompt. |
 | **M3.4** | **Partly done.** A chat UI exists — `apps/web`/`Chat.tsx`; hub-api serves the chat endpoint. Charts render through `render_dashboard` on hub-api's `/tools` app and are embedded in the transcript as sandboxed iframes (§5, ADR-0025). |
 | **M3.5** | **Not done.** Every turn is logged to `chat_turns` in the shape §7 wants, so the eval set is accumulating; there is no harness and no seed question set. |
-| **M4** | News retrieval. Issue reporting with dedup landed early — see §8, it is live on both surfaces, and dashboards-as-code landed with it (§5). |
+| **M4** | News retrieval — not done. Issue reporting with dedup landed early — see §8, it is live on both surfaces, and dashboards-as-code landed with it (§5). Write-back (§3.4) also landed early, ahead of the human-review queue M4 originally scoped it with — see ADR-0027. |
 
 **Deployed as:** `app.open-health-data-platform.org`, served by `charts/hub-api`'s own
 Ingress. There is no oauth2-proxy wall in front any more — the hub does its own OIDC

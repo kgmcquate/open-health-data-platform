@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 import pytest
 
-from ohdp_agent.catalog import READ_ONLY_TOOLS, CatalogClient, CatalogError
+from ohdp_agent.catalog import ALLOWED_TOOLS, READ_ONLY_TOOLS, CatalogClient, CatalogError
 
 
 def _mock(handler: Any) -> httpx.AsyncClient:
@@ -57,20 +57,22 @@ TOOLS_PAYLOAD = {
 }
 
 
-async def test_list_tools_drops_every_write_tool() -> None:
+async def test_list_tools_drops_every_write_tool_except_create_context_memory() -> None:
     client = CatalogClient("http://om", "jwt", client=_mock(lambda r: _rpc_ok(TOOLS_PAYLOAD)))
 
     names = {spec.name for spec in await client.list_tools()}
 
-    assert names == {"search_metadata", "get_asset_context"}
-    assert names <= READ_ONLY_TOOLS
+    assert names == {"search_metadata", "get_asset_context", "create_context_memory"}
+    assert names <= ALLOWED_TOOLS
 
 
-async def test_write_tools_are_not_in_the_allowlist() -> None:
-    # A regression guard on the allowlist itself, not on any one call: §3.4's
-    # write-back is M4 and gated on human review.
-    for name in ("patch_entity", "create_glossary", "create_tag", "create_context_memory"):
-        assert name not in READ_ONLY_TOOLS
+async def test_most_write_tools_are_not_in_the_allowlist() -> None:
+    # A regression guard on the allowlist itself, not on any one call: every
+    # write tool except `create_context_memory` (ADR-0027) stays refused.
+    for name in ("patch_entity", "create_glossary", "create_tag"):
+        assert name not in ALLOWED_TOOLS
+    assert "create_context_memory" not in READ_ONLY_TOOLS
+    assert "create_context_memory" in ALLOWED_TOOLS
 
 
 async def test_call_tool_refuses_a_name_outside_the_allowlist() -> None:
@@ -81,6 +83,21 @@ async def test_call_tool_refuses_a_name_outside_the_allowlist() -> None:
 
     with pytest.raises(CatalogError, match="not a tool this agent may call"):
         await client.call_tool("patch_entity", {"fqn": "x"})
+
+
+async def test_call_tool_allows_create_context_memory() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _rpc_ok(
+            {"content": [{"type": "text", "text": "ok"}], "structuredContent": None}
+        )
+
+    client = CatalogClient("http://om", "jwt", client=_mock(handler))
+
+    result = await client.call_tool(
+        "create_context_memory", {"title": "x", "content": "y"}
+    )
+
+    assert result == "ok"
 
 
 async def test_call_tool_prefers_structured_content() -> None:

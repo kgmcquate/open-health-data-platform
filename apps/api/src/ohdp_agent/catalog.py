@@ -37,11 +37,23 @@ Two consequences of "stateless" shape this client:
     connector.
 
 Eleven of those 24 tools write to the catalog (`patch_entity`,
-`create_glossary`, `create_tag`, `create_lineage`, ...). They are excluded by an
-**allowlist**, not by omission from the prompt: the agent's tool surface is the
-safety control, and a model that hallucinates `patch_entity` should get an error
-from us rather than an edit to the catalog. §3.4's reviewed write-back is M4 and
-will add exactly one name to that list, deliberately.
+`create_glossary`, `create_tag`, `create_lineage`, `create_context_memory`,
+...). Ten are excluded by an **allowlist**, not by omission from the prompt:
+the agent's tool surface is the safety control, and a model that hallucinates
+`patch_entity` should get an error from us rather than an edit to the catalog.
+
+`create_context_memory` is the one exception (ADR-0027): the agent may write
+memories unreviewed. That is a deliberate reversal of this file's original
+stance — §3.4/§6 of docs/chatbot.md argued unreviewed write-back is a
+prompt-injection cycle, since catalog content (including memories) lands back
+in the prompt as trusted context. ADR-0027 accepts that risk rather than
+building the human-review queue §3.4 sketched. Everything else stays refused.
+
+Note this allowlist only governs the in-process `"catalog"` tool source
+(`_catalog_toolset` in `ohdp_agent/loop.py`). The declarative `mcp-openmetadata`
+connection (`apps/api/config/tools.yaml`, wired in `hub_api/tool_connections.py`)
+is a raw, unfiltered `MCPToolset` against OM's MCP endpoint and does not consult
+this file at all — see ADR-0027 for why that gap is currently left open.
 """
 
 from __future__ import annotations
@@ -57,13 +69,8 @@ from ohdp_shared import get_logger
 log = get_logger(__name__)
 
 # Read-only tools the agent may call. Everything else OM advertises — every
-# `create_*`, `patch_entity`, `create_lineage`, `create_context_memory` — is
-# refused here even if the model asks for it by name.
-#
-# `create_context_memory` is the write-back loop of §3.4. It stays off until
-# there is a human review step in front of it: catalog content lands in the
-# prompt (§3.2), so an unreviewed write-back is a prompt-injection cycle the
-# agent can feed itself.
+# `create_*`, `patch_entity`, `create_lineage` — is refused here even if the
+# model asks for it by name.
 READ_ONLY_TOOLS: frozenset[str] = frozenset(
     {
         "get_persona_context",
@@ -79,6 +86,14 @@ READ_ONLY_TOOLS: frozenset[str] = frozenset(
         "get_entity_lineage",
     }
 )
+
+# The write-back loop of §3.4: the agent proposes a memory entry for an answer
+# that required a non-obvious join or carried a real caveat, so the next
+# person asking pays less. Unreviewed, per ADR-0027 — the human-review queue
+# §3.4 originally sketched was not built. See that ADR for the accepted risk.
+WRITABLE_TOOLS: frozenset[str] = frozenset({"create_context_memory"})
+
+ALLOWED_TOOLS: frozenset[str] = READ_ONLY_TOOLS | WRITABLE_TOOLS
 
 # Tool output is human-authored catalog text and must be treated as data, never
 # as instructions (docs/chatbot.md §6). Truncating also keeps one verbose
@@ -154,7 +169,7 @@ class CatalogClient:
         specs: list[ToolSpec] = []
         for raw in payload.get("tools", []):
             name = str(raw.get("name", ""))
-            if name not in READ_ONLY_TOOLS:
+            if name not in ALLOWED_TOOLS:
                 continue
             schema = raw.get("inputSchema")
             specs.append(
@@ -165,7 +180,7 @@ class CatalogClient:
                 )
             )
 
-        missing = READ_ONLY_TOOLS - {s.name for s in specs}
+        missing = ALLOWED_TOOLS - {s.name for s in specs}
         if missing:
             # Not fatal: the loop degrades to whatever context tools do exist.
             # Worth a log line, because it is the signal that an OM upgrade
@@ -183,7 +198,7 @@ class CatalogClient:
         the caller turns that into a tool_result the model can see and recover
         from, and the attempt is worth a log line either way.
         """
-        if name not in READ_ONLY_TOOLS:
+        if name not in ALLOWED_TOOLS:
             log.warning("om_mcp_tool_refused", tool=name)
             raise CatalogError(f"{name!r} is not a tool this agent may call")
 
