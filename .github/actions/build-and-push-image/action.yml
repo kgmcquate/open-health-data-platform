@@ -1,0 +1,75 @@
+name: Build and push image
+description: Build one Docker image from the repo root, push it to GHCR under sha-<12> + latest tags, and record a step summary.
+
+inputs:
+  name:
+    description: Image name (e.g. ohdp-hub-api). Pushed as ghcr.io/<owner>/<name>.
+    required: true
+  dockerfile:
+    description: Dockerfile path, relative to the repo root. Build context is always the repo root.
+    required: true
+  push:
+    description: Push to the registry (set false when running under act).
+    required: false
+    default: "true"
+
+outputs:
+  image:
+    description: Fully-qualified image reference, without tag.
+    value: ${{ steps.meta.outputs.image }}
+  tag:
+    description: Tag pushed for this build (sha-<12> of the commit).
+    value: ${{ steps.meta.outputs.tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute image reference
+      id: meta
+      shell: bash
+      env:
+        # Lowercased — GHCR rejects uppercase in a repository path, and
+        # github.repository_owner preserves the account's original casing.
+        OWNER: ${{ github.repository_owner }}
+        NAME: ${{ inputs.name }}
+      run: |
+        set -euo pipefail
+        owner=$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')
+        tag="sha-${GITHUB_SHA::12}"
+        echo "image=ghcr.io/${owner}/${NAME}" >> "$GITHUB_OUTPUT"
+        echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+        echo "Building ghcr.io/${owner}/${NAME}:${tag}"
+
+    - uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      if: inputs.push == 'true'
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ${{ inputs.dockerfile }}
+        push: ${{ inputs.push == 'true' }}
+        tags: |
+          ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          ${{ steps.meta.outputs.image }}:latest
+        cache-from: type=gha,scope=${{ inputs.name }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.name }}
+        provenance: false
+
+    - name: Summary
+      shell: bash
+      run: |
+        {
+          echo "### ${{ inputs.name }}"
+          echo ""
+          echo "    ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}"
+          echo ""
+          echo "pushed: ${{ inputs.push }}"
+        } >> "$GITHUB_STEP_SUMMARY"

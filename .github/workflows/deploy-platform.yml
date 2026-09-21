@@ -2,6 +2,15 @@ name: Deploy platform
 
 # Preflight (lint + render) runs on every dispatch and needs no cluster — it is
 # the useful target under `act`. Tick `deploy` to actually apply.
+#
+# This is the manual/full-fleet path. Ordinary rollouts happen automatically
+# from build-images.yml, which builds and deploys only the image(s) whose code
+# changed on a merge to main — so a commit doesn't necessarily leave a
+# sha-<12> tag behind for every image. `deploy_all` (or any individual chart
+# checkbox) defaulting to the current commit's tag will fail to pull an image
+# that was never built for it; pass image_tag explicitly (e.g. the tag from a
+# past build-images run, `gh run list -w build-images.yml`) when redeploying a
+# chart whose image didn't change on this commit.
 
 on:
   workflow_dispatch:
@@ -11,7 +20,7 @@ on:
         type: boolean
         default: true
       image_tag:
-        description: Override the dagster + hub-api + mcp-cube + cube image tag (blank = the sha-<12> of the deployed commit).
+        description: Override the dagster + hub-api + mcp-cube + cube image tag (blank = the sha-<12> of the deployed commit — only valid if build-images.yml actually built that image for this commit).
         type: string
         default: ""
       deploy_all:
