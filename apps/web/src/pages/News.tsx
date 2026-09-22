@@ -13,10 +13,6 @@ export default function News() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
       <h1 className="text-4xl font-bold mb-2">News</h1>
-      <p className="opacity-70 mb-8">
-        What's new across the platform — studies, visualizations, and plumbing
-        we thought was worth showing off.
-      </p>
 
       {loading && <span className="loading loading-spinner loading-lg" />}
       {error && <div className="alert alert-error">{error}</div>}

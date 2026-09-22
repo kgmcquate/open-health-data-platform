@@ -74,3 +74,7 @@ tmp/
 
 # hub-api local SQLite (OHDP_APP_DATABASE_URL, local dev only)
 apps/api/.data/
+
+# SSH keys accidentally dropped in repo root
+id_rsa
+id_rsa.pub

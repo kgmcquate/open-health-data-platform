@@ -1,0 +1,28 @@
+version: 2
+
+# macros/openaq_current_rows.sql over each RAW.openaq table. No dedupe key to
+# test: both raw tables are already a full replace each run, not an
+# append-only history. Nested fields (coordinates, provider, sensors, parameter,
+# period, summary, coverage, etc.) arrive as dlt's flattened `__`-suffixed
+# columns or child tables -- typing and business logic belong in `core`, not
+# staged here.
+
+models:
+  - name: stg_openaq__locations
+    description: >
+      Every monitoring station OpenAQ currently indexes worldwide, one row per station -- coordinates,
+      owning provider, instruments and the pollutant parameters each one reports. Station metadata only;
+      no measurement time series.
+    config:
+      contract:
+        enforced: false
+
+  - name: stg_openaq__monthly_measurements
+    description: >
+      Monthly-average readings (min/max/avg/median/percentiles) for the criteria pollutants at every
+      US government reference-grade monitor OpenAQ indexes, one row per sensor per month. Fanned out
+      per sensor from ohdp_ingestion.openaq.source.openaq_monthly_measurements_source -- see that
+      module's docstring for why scope is restricted to reference monitors.
+    config:
+      contract:
+        enforced: false

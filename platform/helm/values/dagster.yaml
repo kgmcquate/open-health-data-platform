@@ -183,14 +183,18 @@ dagster-user-deployments:
         - name: ohdp-pipeline-config
       resources:
         requests:
-          cpu: 50m
+          cpu: 200m
           # Loading ohdp_orchestration.definitions imports OpenMetadata ingestion
           # (dbt, Snowflake, Postgres source models) at module-load time; 256Mi/384Mi
           # OOMKilled the code server mid-import (grpc-health-check readiness probe
           # then times out because the server never comes up).
           memory: 512Mi
         limits:
-          cpu: 500m
+          # 500m throttled the container ~98% of the time during the same
+          # import (cgroup cpu.stat: nr_throttled ~ nr_periods), stretching
+          # startup past 4 minutes and starving the exec'd grpc-health-check
+          # readiness probe so it kept timing out even after the server was up.
+          cpu: "1"
           memory: 1Gi
 
 # Run logs are world-readable. Keep the level at INFO and make sure the

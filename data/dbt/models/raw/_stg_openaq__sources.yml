@@ -1,0 +1,16 @@
+# Hand-maintained — OpenAQ has no multi-dataset catalog to scrape (see
+# ohdp_orchestration.defs.openaq's docstring), unlike
+# _stg_cdc__sources.yml/_stg_healthdata_gov__sources.yml/_stg_cms__sources.yml.
+version: 2
+sources:
+- name: openaq
+  description: OpenAQ raw tables, RAW.OPENAQ. Hand-maintained (see ohdp_orchestration/defs/openaq).
+  database: RAW
+  schema: OPENAQ
+  tables:
+  - name: locations
+    identifier: LOCATIONS
+    description: Every monitoring station OpenAQ currently indexes worldwide (coordinates, provider, instruments, parameters). Full replace each run — see ohdp_ingestion.openaq.source.
+  - name: monthly_measurements
+    identifier: MONTHLY_MEASUREMENTS
+    description: Monthly-average readings for the criteria pollutants at US government reference-grade monitors (min/max/avg/median/percentiles per sensor per month). Full replace each run — see ohdp_ingestion.openaq.source.openaq_monthly_measurements_source.

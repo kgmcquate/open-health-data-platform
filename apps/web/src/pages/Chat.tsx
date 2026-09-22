@@ -48,9 +48,9 @@ function MarkdownText() {
 }
 
 const SUGGESTIONS = [
-  "Which cities had the worst PM2.5 levels last year?",
-  "Summarize recent literature on air pollution and asthma.",
-  "What chronic disease measures can I query?",
+  "What data is available on diabetes?",
+  "Can you chart flu vaccination rates across the US?",
+  "Which chronic diseases are most prevalent in the US?",
 ];
 
 const actionButtonClassName =

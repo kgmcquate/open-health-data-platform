@@ -50,6 +50,11 @@ from ohdp_orchestration.jobs.healthdata_gov import (
 )
 from ohdp_orchestration.jobs.literature_dataset_sync import literature_dataset_sync_job
 from ohdp_orchestration.jobs.literature_trending_sync import literature_trending_sync_job
+from ohdp_orchestration.jobs.openaq import (
+    openaq_daily_ingest_job,
+    openaq_monthly_ingest_job,
+    openaq_weekly_ingest_job,
+)
 from ohdp_orchestration.jobs.openmetadata_sync import (
     openmetadata_dagster_sync_job,
     openmetadata_dbt_sync_job,
@@ -77,6 +82,11 @@ from ohdp_orchestration.schedules.healthdata_gov import (
 from ohdp_orchestration.schedules.literature_dataset_sync import literature_dataset_sync_schedule
 from ohdp_orchestration.schedules.literature_trending_sync import (
     literature_trending_sync_schedule,
+)
+from ohdp_orchestration.schedules.openaq import (
+    openaq_daily_schedule,
+    openaq_monthly_schedule,
+    openaq_weekly_schedule,
 )
 from ohdp_orchestration.schedules.openmetadata_sync import (
     openmetadata_dagster_sync_schedule,
@@ -120,6 +130,9 @@ defs = Definitions.merge(
             healthdata_gov_monthly_ingest_job,
             literature_dataset_sync_job,
             literature_trending_sync_job,
+            openaq_daily_ingest_job,
+            openaq_weekly_ingest_job,
+            openaq_monthly_ingest_job,
             openmetadata_cube_metrics_sync_job,
             openmetadata_dagster_sync_job,
             openmetadata_dbt_sync_job,
@@ -138,6 +151,9 @@ defs = Definitions.merge(
             healthdata_gov_monthly_schedule,
             literature_dataset_sync_schedule,
             literature_trending_sync_schedule,
+            openaq_daily_schedule,
+            openaq_weekly_schedule,
+            openaq_monthly_schedule,
             openmetadata_cube_metrics_sync_schedule,
             openmetadata_dagster_sync_schedule,
             openmetadata_dbt_sync_schedule,

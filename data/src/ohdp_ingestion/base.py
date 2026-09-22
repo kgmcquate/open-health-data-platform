@@ -1,10 +1,7 @@
-"""Shared ingestion primitives: a thin HTTP client wrapper and the source contract."""
+"""Shared ingestion primitive: a thin HTTP client wrapper used by the catalog
+scrapers and hand-written literature clients."""
 
 from __future__ import annotations
-
-import abc
-from collections.abc import Iterator
-from typing import Any
 
 import httpx
 
@@ -24,16 +21,3 @@ def http_client(base_url: str, headers: dict[str, str] | None = None) -> httpx.C
         limits=_DEFAULT_LIMITS,
         follow_redirects=True,
     )
-
-
-class Source(abc.ABC):
-    """A public data source. Implementations must be pure readers — no writes,
-    no mutation of upstream state, deterministic given a time window."""
-
-    name: str
-    raw_table: str
-
-    @abc.abstractmethod
-    def fetch(self, *, since: str | None = None) -> Iterator[dict[str, Any]]:
-        """Yield raw records. Pagination and retry live here; validation does not."""
-        raise NotImplementedError
