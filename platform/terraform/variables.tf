@@ -119,7 +119,7 @@ variable "lakehouse_sources" {
     ohdp_ingestion.naming.schema() and dbt's generate_schema_name.sql.
   EOT
   type        = list(string)
-  default     = ["healthdata_gov", "cdc", "cms"]
+  default     = ["healthdata_gov", "cdc", "cms", "openfda", "openaq"]
 }
 
 variable "lakehouse_marts" {
