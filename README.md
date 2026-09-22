@@ -14,7 +14,7 @@ as a product.
 
 | Path | What lives here |
 |---|---|
-| `apps/web` | Next.js hub — landing, chat UI, links out to every tool |
+| `apps/web` | Vite/React hub — landing, topics, chat UI, links out to every tool |
 | `apps/api` | FastAPI — chat orchestration, entitlements, Stripe webhooks |
 | `data/src/ohdp_ingestion` | One typed client per public source |
 | `data/src/ohdp_orchestration` | Dagster: ingestion, dbt build, catalog sync, alerts |

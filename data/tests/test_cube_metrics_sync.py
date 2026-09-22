@@ -91,7 +91,7 @@ def test_metric_request_from_cube_measure() -> None:
 
     cube = _air_quality_cube()
     dimensions = [_metric_dimension(d) for d in cube["dimensions"]]
-    request = _metric_request(cube["measures"][0], dimensions, None, None)
+    request = _metric_request(cube["measures"][0], dimensions, None, None, domains=None)
 
     assert str(request.name.root) == "air_quality__avg_value"
     assert request.displayName == "Air Quality Avg Value"
@@ -107,7 +107,7 @@ def test_metric_request_from_cube_measure() -> None:
 def test_metric_request_maps_sum_agg_type() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
-    request = _metric_request(_air_quality_cube()["measures"][1], [], None, None)
+    request = _metric_request(_air_quality_cube()["measures"][1], [], None, None, domains=None)
 
     assert str(request.name.root) == "air_quality__measurement_count"
     assert request.metricType is not None
@@ -119,7 +119,11 @@ def test_metric_request_falls_back_to_other_for_unknown_agg_type() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
     request = _metric_request(
-        {"name": "air_quality.some_custom_measure", "aggType": "runningTotal"}, [], None, None
+        {"name": "air_quality.some_custom_measure", "aggType": "runningTotal"},
+        [],
+        None,
+        None,
+        domains=None,
     )
 
     assert request.metricType is not None
@@ -132,7 +136,7 @@ def test_metric_request_carries_through_assets() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
     assets = EntityReferenceList([])
-    request = _metric_request(_air_quality_cube()["measures"][0], [], assets, None)
+    request = _metric_request(_air_quality_cube()["measures"][0], [], assets, None, domains=None)
 
     assert request.assets is assets
 
@@ -143,7 +147,7 @@ def test_metric_request_carries_through_related_metrics() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
     related = [FullyQualifiedEntityName("air_quality__measurement_count")]
-    request = _metric_request(_air_quality_cube()["measures"][0], [], None, related)
+    request = _metric_request(_air_quality_cube()["measures"][0], [], None, related, domains=None)
 
     assert request.relatedMetrics == related
 
@@ -151,9 +155,42 @@ def test_metric_request_carries_through_related_metrics() -> None:
 def test_metric_request_leaves_related_metrics_unset_when_empty() -> None:
     from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
 
-    request = _metric_request(_air_quality_cube()["measures"][0], [], None, [])
+    request = _metric_request(_air_quality_cube()["measures"][0], [], None, [], domains=None)
 
     assert request.relatedMetrics is None
+
+
+def test_metric_request_carries_through_domains() -> None:
+    from ohdp_orchestration.assets.cube_metrics_sync import _metric_request
+
+    request = _metric_request(
+        _air_quality_cube()["measures"][0], [], None, None, domains=["Infectious Disease"]
+    )
+
+    assert request.domains == ["Infectious Disease"]
+
+
+def test_table_domains_returns_none_when_no_table_resolved() -> None:
+    from ohdp_orchestration.assets.cube_metrics_sync import _table_domains
+
+    assert _table_domains(None) is None
+
+
+def test_table_domains_returns_none_when_table_has_no_domain() -> None:
+    from ohdp_orchestration.assets.cube_metrics_sync import _table_domains
+
+    table = SimpleNamespace(domains=None)
+
+    assert _table_domains(cast(Any, table)) is None
+
+
+def test_table_domains_reads_fqns_off_the_resolved_table() -> None:
+    from ohdp_orchestration.assets.cube_metrics_sync import _table_domains
+
+    domain_ref = SimpleNamespace(fullyQualifiedName="Infectious Disease")
+    table = SimpleNamespace(domains=SimpleNamespace(root=[domain_ref]))
+
+    assert _table_domains(cast(Any, table)) == ["Infectious Disease"]
 
 
 def test_metric_entity_name_swaps_dot_for_double_underscore() -> None:

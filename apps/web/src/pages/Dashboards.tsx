@@ -3,7 +3,9 @@ import vegaEmbed from "vega-embed";
 import { fetchDashboards, type CuratedDashboard } from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 
-function DashboardCard({ dashboard }: { dashboard: CuratedDashboard }) {
+// Exported so TopicDetail can render a topic's own dashboards with the same
+// card (including the live vega-embed render) instead of a copy of it.
+export function DashboardCard({ dashboard }: { dashboard: CuratedDashboard }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

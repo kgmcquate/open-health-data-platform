@@ -7,10 +7,8 @@ import LogoMark from "./icons/LogoMark";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
-  { to: "/news", label: "News" },
-  { to: "/data-sources", label: "Data Sources" },
+  { to: "/topics", label: "Topics" },
   { to: "/dashboards", label: "Dashboards" },
-  { to: "/literature", label: "Literature" },
   { to: "/chat", label: "Chat" },
 ];
 

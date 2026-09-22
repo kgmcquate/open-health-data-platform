@@ -60,6 +60,17 @@ of "these two measures are related" than "they're on the same cube," so
 same-cube is the only grouping this sync can read off honestly. No
 cross-cube relations are drawn.
 
+Each Metric's ``domains`` is set to its resolved table's own ``domains`` —
+which, for every dbt-templated cube, is the Consumer-aligned domain
+``openmetadata_seed_sync._attach_schemas`` attached to the table's
+``CURATED.<AREA>`` schema and OM inherits down onto every table in it (see
+that function's docstring). This is what makes a measure findable from the
+hub's Topics page (``hub_api.content``'s ``/api/topics/{name}``, reading
+``ohdp_agent.domains.assets_in_domain``) with no separate mapping to
+maintain: a cube whose table isn't domain-tagged yet, or that has no
+resolved table at all, just gets no ``domains`` set, the same graceful-skip
+already used for a missing table.
+
 The job/schedule for this asset live in ``ohdp_orchestration.jobs``/
 ``.schedules``, not here — this module is asset bodies only
 (``ohdp_orchestration.assets``'s own convention, see its ``__init__.py``).
@@ -208,7 +219,20 @@ def _resolve_table(
     )
     if not table_fqn:
         return None
-    return metadata.get_by_name(entity=Table, fqn=table_fqn)
+    # `domains` is requested explicitly: OM's default entity read omits it,
+    # and `_table_domains` below needs it to carry through to the Metric.
+    return metadata.get_by_name(entity=Table, fqn=table_fqn, fields=["domains"])
+
+
+def _table_domains(table: Table | None) -> list[str] | None:
+    """The resolved table's own domain FQNs — inherited from its
+    `CURATED.<AREA>` schema (see this module's docstring) — as
+    `CreateMetricRequest.domains` wants them: a plain list of FQN strings,
+    or `None` when the table has none (never ingested a domain, or no table
+    was resolved at all)."""
+    if table is None or table.domains is None:
+        return None
+    return [str(ref.fullyQualifiedName) for ref in table.domains.root] or None
 
 
 def _metric_dimension(dimension: dict[str, Any]) -> MetricDimension:
@@ -235,12 +259,14 @@ def _metric_request(
     dimensions: list[MetricDimension],
     assets: EntityReferenceList | None,
     related_metrics: list[FullyQualifiedEntityName] | None,
+    domains: list[str] | None,
 ) -> CreateMetricRequest:
     """Builds the CreateMetricRequest for one Cube measure. `assets` is the
     cube's underlying Snowflake Table, if one was resolved (`_resolve_table`)
-    — every measure in the same cube shares it. `related_metrics` is every
-    *other* measure in the same cube (Cube has no cross-cube measure
-    relationships to read, so this sync never links across cubes)."""
+    — every measure in the same cube shares it, and so does `domains` (see
+    `_table_domains`). `related_metrics` is every *other* measure in the same
+    cube (Cube has no cross-cube measure relationships to read, so this sync
+    never links across cubes)."""
     return CreateMetricRequest(
         name=EntityName(_metric_entity_name(measure)),
         displayName=measure.get("title"),
@@ -249,6 +275,7 @@ def _metric_request(
         dimensions=dimensions or None,
         assets=assets,
         relatedMetrics=related_metrics or None,
+        domains=domains,
     )
 
 
@@ -280,7 +307,13 @@ def openmetadata_cube_metrics_sync(context) -> None:
     # relatedMetrics left unset; pass 2 re-upserts each one now that every
     # measure in every cube exists, so every FQN it references resolves.
     pending: list[
-        tuple[dict[str, Any], list[MetricDimension], EntityReferenceList | None, list[str]]
+        tuple[
+            dict[str, Any],
+            list[MetricDimension],
+            EntityReferenceList | None,
+            list[str] | None,
+            list[str],
+        ]
     ] = []
     for cube in cubes:
         dimensions = [_metric_dimension(d) for d in cube.get("dimensions", [])]
@@ -288,6 +321,7 @@ def openmetadata_cube_metrics_sync(context) -> None:
         assets = (
             EntityReferenceList([build_entity_reference(table_entity)]) if table_entity else None
         )
+        domains = _table_domains(table_entity)
         linked += bool(table_entity)
         measures = cube.get("measures", [])
         measure_names = [_metric_entity_name(m) for m in measures]
@@ -295,7 +329,7 @@ def openmetadata_cube_metrics_sync(context) -> None:
             entity_name = _metric_entity_name(measure)
             related_names = [name for name in measure_names if name != entity_name]
             metric_entity = metadata.create_or_update(
-                _metric_request(measure, dimensions, assets, related_metrics=None)
+                _metric_request(measure, dimensions, assets, related_metrics=None, domains=domains)
             )
             synced += 1
             if table_entity:
@@ -308,11 +342,13 @@ def openmetadata_cube_metrics_sync(context) -> None:
                     )
                 )
             if related_names:
-                pending.append((measure, dimensions, assets, related_names))
+                pending.append((measure, dimensions, assets, domains, related_names))
 
-    for measure, dimensions, assets, related_names in pending:
+    for measure, dimensions, assets, domains, related_names in pending:
         related_metrics = [FullyQualifiedEntityName(name) for name in related_names]
-        metadata.create_or_update(_metric_request(measure, dimensions, assets, related_metrics))
+        metadata.create_or_update(
+            _metric_request(measure, dimensions, assets, related_metrics, domains=domains)
+        )
 
     context.log.info(
         f"Synced {synced} Cube measures into OpenMetadata Metric entities "

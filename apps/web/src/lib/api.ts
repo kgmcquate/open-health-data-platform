@@ -7,20 +7,31 @@ export interface User {
   tier: string;
 }
 
-export interface NewsItem {
-  id: number;
-  title: string;
-  summary: string;
-  url: string;
-  kind: "study" | "visualization" | "platform" | string;
-  published_at: string;
-}
-
-export interface DataSource {
+/** A Consumer-aligned OpenMetadata domain — the subject a Topics page groups
+ * everything else (metrics, data assets, sources, dashboards, literature) by. */
+export interface Topic {
   id: string;
   name: string;
   description: string;
   catalog_url: string;
+}
+
+/** One table or metric attached to a topic, or one Source-aligned domain a
+ * topic's tables trace back to — same shape either way, see `hub_api.content`. */
+export interface CatalogAsset {
+  id: string;
+  name: string;
+  description: string;
+  entity_type: string;
+  catalog_url: string;
+}
+
+/** The full bundle `GET /api/topics/{name}` returns. */
+export interface TopicDetail {
+  topic: Topic;
+  metrics: CatalogAsset[];
+  assets: CatalogAsset[];
+  sources: Topic[];
 }
 
 export interface CuratedDashboard {
@@ -60,10 +71,14 @@ export async function fetchMe(): Promise<User | null> {
   return (await response.json()) as User;
 }
 
-export const fetchNews = () => getJson<NewsItem[]>("/api/news");
-export const fetchDataSources = () => getJson<DataSource[]>("/api/data-sources");
-export const fetchDashboards = () => getJson<CuratedDashboard[]>("/api/dashboards");
-export const fetchLiterature = () => getJson<LiteratureItem[]>("/api/literature");
+export const fetchTopics = () => getJson<Topic[]>("/api/topics");
+export const fetchTopic = (name: string) =>
+  getJson<TopicDetail>(`/api/topics/${encodeURIComponent(name)}`);
+
+export const fetchDashboards = (topic?: string) =>
+  getJson<CuratedDashboard[]>(topic ? `/api/dashboards?topic=${encodeURIComponent(topic)}` : "/api/dashboards");
+export const fetchLiterature = (topic?: string) =>
+  getJson<LiteratureItem[]>(topic ? `/api/literature?topic=${encodeURIComponent(topic)}` : "/api/literature");
 
 export interface ChatModel {
   id: string;

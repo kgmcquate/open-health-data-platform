@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from hub_api import db
-from hub_api.content import curated_literature, ensure_indexes
+from hub_api.content import curated_literature, ensure_columns_and_indexes
 from hub_api.main import app
 from ohdp_shared import settings
 
@@ -108,13 +108,32 @@ def test_clears_trending_flag_on_papers_that_drop_out_of_the_run(client: TestCli
     assert listing["Paper B"]["trending"] is True
 
 
+def test_topic_query_param_filters_by_tag(client: TestClient) -> None:
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    client.post(
+        "/api/internal/literature/trending",
+        json=[_item(url="https://doi.org/10.1/a", title="Chronic Paper", tags=["Chronic Disease"])],
+        headers=headers,
+    )
+    client.post(
+        "/api/internal/literature/trending",
+        json=[_item(url="https://doi.org/10.1/b", title="Respiratory Paper", tags=["Respiratory"])],
+        headers=headers,
+    )
+
+    listing = client.get("/api/literature", params={"topic": "Respiratory"})
+    assert listing.status_code == 200
+    [row] = listing.json()
+    assert row["title"] == "Respiratory Paper"
+
+
 def test_url_unique_index_created_idempotently(tmp_path: Path) -> None:
-    """`ensure_indexes` must be safe to call repeatedly, including against a
+    """`ensure_columns_and_indexes` must be safe to call repeatedly, including against a
     database whose table already existed (the pre-migration case)."""
     engine = db.make_engine(f"sqlite:///{tmp_path}/idempotent.db")
     db.ensure_schema(engine)
-    ensure_indexes(engine)
-    ensure_indexes(engine)  # second call must not raise
+    ensure_columns_and_indexes(engine)
+    ensure_columns_and_indexes(engine)  # second call must not raise
 
     with engine.connect() as connection:
         assert connection.execute(select(curated_literature.c.id)).all() == []

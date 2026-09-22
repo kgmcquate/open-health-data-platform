@@ -3,12 +3,11 @@ import { Route, Routes } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import Home from "./pages/Home";
-import News from "./pages/News";
-import DataSources from "./pages/DataSources";
+import Topics from "./pages/Topics";
 
 // Heavy dependencies (assistant-ui, vega-embed) stay out of the main bundle.
+const TopicDetail = lazy(() => import("./pages/TopicDetail"));
 const Dashboards = lazy(() => import("./pages/Dashboards"));
-const Literature = lazy(() => import("./pages/Literature"));
 const Chat = lazy(() => import("./pages/Chat"));
 
 export default function App() {
@@ -25,10 +24,9 @@ export default function App() {
         >
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/news" element={<News />} />
-            <Route path="/data-sources" element={<DataSources />} />
+            <Route path="/topics" element={<Topics />} />
+            <Route path="/topics/:name" element={<TopicDetail />} />
             <Route path="/dashboards" element={<Dashboards />} />
-            <Route path="/literature" element={<Literature />} />
             <Route path="/chat" element={<Chat />} />
             <Route
               path="*"

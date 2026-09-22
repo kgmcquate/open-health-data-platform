@@ -1,15 +1,15 @@
 import { Link } from "react-router-dom";
-import { fetchNews, fetchDashboards } from "../lib/api";
+import { fetchDashboards, fetchTopics } from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 import GraphBackground from "../components/GraphBackground";
 
 const HIGHLIGHTS = [
   {
-    icon: "🌍",
-    title: "Public data, one spine",
-    body: "OpenAQ, CDC, openFDA, CMS, WHO GHO, and more - served through a single semantic layer, so that every number means the same thing everywhere.",
-    to: "/data-sources",
-    cta: "Explore the sources",
+    icon: "🏷️",
+    title: "Explore by topic",
+    body: "Infectious disease, respiratory illness, behavioral health, and more — each topic gathers its own metrics, data assets, dashboards, and literature in one place.",
+    to: "/topics",
+    cta: "Browse topics",
   },
   {
     icon: "📊",
@@ -28,17 +28,17 @@ const HIGHLIGHTS = [
   {
     icon: "📚",
     title: "Literature, trend-watched",
-    body: "Trending and curated studies sit next to the data they cite, so reading and verifying are one click apart.",
-    to: "/literature",
-    cta: "Browse literature",
+    body: "Trending and curated studies sit next to the data they cite, filed under the same topic — reading and verifying are one click apart.",
+    to: "/topics",
+    cta: "Find a topic's papers",
   },
 ];
 
 export default function Home() {
-  const news = useFetch(fetchNews);
+  const topics = useFetch(fetchTopics);
   const dashboards = useFetch(fetchDashboards);
-  const latest = news.data?.[0];
   const featured = dashboards.data?.find((d) => d.featured);
+  const sampleTopics = topics.data?.slice(0, 5) ?? [];
 
   return (
     <div>
@@ -60,7 +60,7 @@ export default function Home() {
               <Link to="/chat" className="btn btn-primary">
                 Try the chatbot
               </Link>
-              <Link to="/data-sources" className="btn btn-outline">
+              <Link to="/topics" className="btn btn-outline">
                 What's inside?
               </Link>
             </div>
@@ -86,19 +86,28 @@ export default function Home() {
         ))}
       </section>
 
-      {(latest || featured) && (
+      {(sampleTopics.length > 0 || featured) && (
         <section className="max-w-6xl mx-auto px-4 pb-12 grid gap-6 md:grid-cols-2">
-          {latest && (
+          {sampleTopics.length > 0 && (
             <div className="card bg-primary text-primary-content shadow">
               <div className="card-body">
                 <h3 className="card-title text-sm uppercase tracking-wide opacity-80">
-                  Latest news
+                  Browse a topic
                 </h3>
-                <p className="text-xl font-bold">{latest.title}</p>
-                <p className="opacity-90 line-clamp-3">{latest.summary}</p>
-                <div className="card-actions justify-end">
-                  <Link to="/news" className="btn btn-sm btn-secondary">
-                    All news
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {sampleTopics.map((topic) => (
+                    <Link
+                      key={topic.id}
+                      to={`/topics/${encodeURIComponent(topic.name)}`}
+                      className="btn btn-sm btn-secondary"
+                    >
+                      {topic.name}
+                    </Link>
+                  ))}
+                </div>
+                <div className="card-actions justify-end mt-3">
+                  <Link to="/topics" className="btn btn-sm btn-ghost">
+                    All topics
                   </Link>
                 </div>
               </div>
