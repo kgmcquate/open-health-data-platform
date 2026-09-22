@@ -135,6 +135,13 @@ _web_dist = Path("/app/web/dist")
 if _web_dist.is_dir():
     app.mount("/assets", StaticFiles(directory=_web_dist / "assets"), name="web-assets")
 
+    @app.get("/favicon.svg")
+    async def favicon() -> FileResponse:
+        """Vite copies apps/web/public/* to dist/ root, not dist/assets/, so
+        it isn't covered by the /assets mount above and would otherwise fall
+        through to the catch-all below and get index.html instead."""
+        return FileResponse(_web_dist / "favicon.svg")
+
     @app.get("/{full_path:path}")
     async def web_app(full_path: str) -> FileResponse:
         """Every GET not claimed by a router above falls through to the SPA

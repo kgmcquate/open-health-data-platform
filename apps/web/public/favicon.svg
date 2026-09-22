@@ -2,31 +2,61 @@
   <title id="title">Open Health Data Platform mark</title>
   <desc id="desc">An icon-only mark with a circular chart and three bars for Open Health Data Platform.</desc>
 
+  <style>
+    :root {
+      /* apps/web/src/index.css ohdp (light) theme tokens, plus the same
+         color-mix() blends LogoMark.tsx computes live — resolved to static
+         values because a favicon is rendered outside the page and can't see
+         its CSS custom properties or daisyUI theme. */
+      --base-100: oklch(98% 0.01 200);
+      --base-300: oklch(90% 0.02 200);
+      --primary: oklch(62% 0.12 195);
+      --secondary: oklch(55% 0.1 260);
+      --secondary-primary-mix: oklch(58.5% 0.11 227.5);
+      --secondary-white-mix: oklch(66.25% 0.075 260);
+      --primary-black-mix: oklch(55.8% 0.108 195);
+      --secondary-black-mix: oklch(41.25% 0.075 260);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        /* apps/web/src/index.css ohdp-dark theme tokens. */
+        --base-100: oklch(20% 0.03 230);
+        --base-300: oklch(26% 0.03 230);
+        --primary: oklch(72% 0.12 195);
+        --secondary: oklch(72% 0.1 260);
+        --secondary-primary-mix: oklch(72% 0.11 227.5);
+        --secondary-white-mix: oklch(79% 0.075 260);
+        --primary-black-mix: oklch(64.8% 0.108 195);
+        --secondary-black-mix: oklch(54% 0.075 260);
+      }
+    }
+  </style>
+
   <defs>
     <linearGradient id="ringGradient" x1="90" y1="80" x2="420" y2="430" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1F7AE0"/>
-      <stop offset="0.55" stop-color="#2C9BF1"/>
-      <stop offset="1" stop-color="#14B8A6"/>
+      <stop stop-color="var(--secondary)"/>
+      <stop offset="0.55" stop-color="var(--secondary-primary-mix)"/>
+      <stop offset="1" stop-color="var(--primary)"/>
     </linearGradient>
     <linearGradient id="barGradient1" x1="180" y1="250" x2="230" y2="360" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1F7AE0"/>
-      <stop offset="1" stop-color="#2C9BF1"/>
+      <stop stop-color="var(--secondary)"/>
+      <stop offset="1" stop-color="var(--secondary-white-mix)"/>
     </linearGradient>
     <linearGradient id="barGradient2" x1="230" y1="235" x2="280" y2="360" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1AA3B8"/>
-      <stop offset="1" stop-color="#14B8A6"/>
+      <stop stop-color="var(--primary-black-mix)"/>
+      <stop offset="1" stop-color="var(--primary)"/>
     </linearGradient>
     <linearGradient id="barGradient3" x1="280" y1="200" x2="330" y2="390" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0F172A"/>
-      <stop offset="1" stop-color="#1F7AE0"/>
+      <stop stop-color="var(--secondary-black-mix)"/>
+      <stop offset="1" stop-color="var(--secondary)"/>
     </linearGradient>
   </defs>
 
-  <circle cx="256" cy="256" r="196" fill="#F2F9FF"/>
+  <circle cx="256" cy="256" r="196" fill="var(--base-100)"/>
 
-  <line x1="160" y1="340" x2="352" y2="340" stroke="#B8D6F8" stroke-width="8" stroke-linecap="round" opacity="0.9"/>
+  <line x1="160" y1="340" x2="352" y2="340" stroke="var(--base-300)" stroke-width="8" stroke-linecap="round" opacity="0.9"/>
 
-  <g opacity="0.22" stroke="#7AAEDC" stroke-width="4">
+  <g opacity="0.35" stroke="var(--base-300)" stroke-width="4">
     <line x1="170" y1="120" x2="342" y2="120"/>
     <line x1="170" y1="170" x2="342" y2="170"/>
     <line x1="170" y1="220" x2="342" y2="220"/>
