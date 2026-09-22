@@ -80,8 +80,15 @@ def openaq_locations_source(
     paginator = PageNumberPaginator(
         base_page=1,
         page_param="page",
-        # OpenAQ's response envelope: {"meta": {"found": N, ...}, "results": [...]}.
-        total_path="meta.found",
+        # OpenAQ's response envelope is {"meta": {"found": N, ...}, "results":
+        # [...]}, but `found` isn't reliably an int: OpenAQ's own OpenAPI spec
+        # types it `integer | string | null` and returns the literal string
+        # ">1000" once the exact count would be expensive to compute, which
+        # crashes PageNumberPaginator's `int(total)`. So no `total_path` here
+        # — `stop_after_empty_page` (dlt's default) ends pagination on the
+        # first page with no results instead, same stopping rule the
+        # hand-rolled loops below use (`len(batch) < _MAX_PAGE_SIZE`).
+        total_path=None,
         # PageNumberPaginator counts *pages requested*, like CMS's
         # OffsetPaginator counts offsets — an upper bound on rows fetched, not
         # an exact cutoff, same trade-off ohdp_ingestion.cms.source makes.
