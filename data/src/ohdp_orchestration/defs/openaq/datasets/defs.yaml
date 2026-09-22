@@ -27,14 +27,21 @@ attributes:
   countries: [US]
   parameters: [pm25, pm10, o3, no2, so2, co]
   reference_monitors_only: true
+  # Trailing months re-fetched (and appended -- not replaced) each run; a
+  # revised current month lands as a new row, deduped to latest load in
+  # macros/openaq_current_rows.sql. Set to null for a one-off full historical
+  # backfill (landed as a full replace instead) -- see
+  # ohdp_ingestion.openaq.source.openaq_monthly_measurements_source.
+  lookback_months: 3
   source_url: https://docs.openaq.org/resources/sensors
   description: >-
     Monthly-average readings (min/max/avg/median/percentiles) for the criteria pollutants
     (PM2.5, PM10, O3, NO2, SO2, CO) at every US government reference-grade monitor OpenAQ indexes
     (`monitor=true`, excludes low-cost sensor networks). Fanned out per sensor
-    (locations -> sensors -> /days/monthly, one HTTP call per sensor, no bulk query exists and no
-    incremental cursor is possible) -- see ohdp_ingestion.openaq.source.openaq_monthly_measurements_source
-    for why scope is restricted to reference monitors -- every low-cost sensor too would turn a
-    monthly job that fits comfortably under OpenAQ's free-tier rate limit into one that reruns for
-    hours every single month forever. Widen `countries`/`parameters`/`reference_monitors_only` here
-    if that cost is acceptable for your use case.
+    (locations -> sensors -> /days/monthly, one HTTP call per sensor, no bulk query exists -- the
+    locations/sensors discovery walk runs in full every time regardless) -- see
+    ohdp_ingestion.openaq.source.openaq_monthly_measurements_source for why scope is restricted to
+    reference monitors -- every low-cost sensor too would turn a monthly job that fits comfortably
+    under OpenAQ's free-tier rate limit into one that reruns for hours every single month forever.
+    Widen `countries`/`parameters`/`reference_monitors_only` here if that cost is acceptable for
+    your use case.

@@ -17,12 +17,25 @@ math.
 
 Every ``/v3`` endpoint requires the ``X-API-Key`` header both sources send.
 
-**Always a full replace, never incremental.** Neither resource has a per-row
-``updated_at`` to page against — ``/locations`` is a snapshot of every
-currently-registered station, and a sensor's monthly rollup is recomputed
-(not appended to) as more of that month's raw data arrives — so
-``write_disposition="replace"`` unconditionally for both, same reasoning as
-CMS.
+**Locations is always a full replace, never incremental** — neither dlt nor
+OpenAQ gives ``/v3/locations`` a per-row ``updated_at`` to page against, and
+its ``order_by`` only accepts ``id`` (checked against the live spec at
+``https://api.openaq.org/openapi.json``), so ``write_disposition="replace"``
+unconditionally, same reasoning as CMS.
+
+**Monthly measurements is incremental with a bounded lookback**, not a true
+delta feed: ``/v3/sensors/{id}/days/monthly`` does take ``date_from``/
+``date_to`` (unlike ``/locations``), but that bounds *which months come
+back*, not *what changed* — a sensor's monthly rollup keeps being recomputed
+as more of that month's raw data arrives, so there's still no cursor that
+could safely mean "only fetch what's new" without silently missing a
+revision to a month already scanned past. ``openaq_monthly_measurements_source``
+instead re-fetches a trailing window (``lookback_months``) every run and
+lands it with ``write_disposition="append"`` — raw keeps every version of a
+revised month rather than overwriting it in place (ADR-0010), and the clean
+layer (``openaq_current_rows``) dedupes to the latest ``_dlt_load_id`` per
+``(sensor_id, period_label)``, the same pattern Socrata's incremental
+sources use (``socrata_current_rows``).
 """
 
 from __future__ import annotations
@@ -30,6 +43,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Iterator
+from datetime import UTC, date, datetime
 from typing import Any
 
 import dlt
@@ -134,6 +148,22 @@ def _get(
     return resp.json()
 
 
+def _months_ago(months: int) -> str:
+    """The first-of-month ISO date ``months`` back from today (UTC).
+
+    Used as ``date_from`` for ``/sensors/{id}/days/monthly`` — a trailing
+    window, not a persisted cursor, because there's no "since <date>" that
+    would be safe against a month getting revised after it's first fetched
+    (see ``openaq_monthly_measurements_source``'s docstring).
+    """
+    today = datetime.now(UTC).date()
+    year, month = today.year, today.month - months
+    while month <= 0:
+        month += 12
+        year -= 1
+    return date(year, month, 1).isoformat()
+
+
 def openaq_monthly_measurements_source(
     table_name: str,
     *,
@@ -142,6 +172,7 @@ def openaq_monthly_measurements_source(
     parameters: list[str] | None = None,
     reference_monitors_only: bool = True,
     row_limit: int | None = None,
+    lookback_months: int | None = 3,
 ) -> Any:
     """A hand-rolled ``dlt`` source: monthly-average air-quality readings for
     every sensor at every location matching ``countries``/``parameters``.
@@ -156,8 +187,12 @@ def openaq_monthly_measurements_source(
     ``/locations/{id}/sensors`` once per location, keep only sensors whose
     ``parameter.name`` is in ``parameters``, then call
     ``/sensors/{id}/days/monthly`` once per surviving sensor. There is no
-    batch/bulk variant of that last call and no way to ask "what changed
-    since <date>" — every run re-walks the whole matching set.
+    batch/bulk variant of that last call, and the *discovery* walk
+    (locations -> sensors) has no incremental angle at all — it has to run
+    in full every time to find this run's matching sensor set. ``days/monthly``
+    itself does take ``date_from``/``date_to`` (see ``lookback_months``
+    below), which bounds how much history that last call returns, not
+    whether it gets called.
 
     **Why ``reference_monitors_only`` and a small ``parameters`` list are load
     -bearing, not just scope.** Call count scales with
@@ -168,9 +203,8 @@ def openaq_monthly_measurements_source(
     thousands; restricted to ``monitor=true`` (government reference-grade
     stations, OpenAQ's own filter) it's roughly 1,000-1,500 — the difference
     between a call budget that comfortably fits a monthly scheduled run and
-    one that takes several hours *every single run forever* (there's no
-    incremental cursor to make later runs cheaper — see the module
-    docstring).
+    one that takes several hours *every single run forever* (``lookback_months``
+    shrinks payload size, not this call count — see the module docstring).
 
     ``countries`` is a list of ISO 3166-1 alpha-2 codes (``/v3/locations``'
     own ``iso`` filter only takes one at a time, so this fans out one
@@ -178,16 +212,33 @@ def openaq_monthly_measurements_source(
     parameter *names* (``"pm25"``, not a numeric ``parameters_id`` — avoids
     needing a hardcoded id lookup table that could silently drift from
     OpenAQ's own).
+
+    ``lookback_months`` bounds ``days/monthly`` to the trailing N months
+    (``date_from=_months_ago(lookback_months)``, no ``date_to``) and lands
+    rows with ``write_disposition="append"`` plus ``primary_key=("sensor_id",
+    "period_label")`` — raw accumulates every version of a recently-revised
+    month rather than overwriting it, and the clean layer dedupes to the
+    latest load (see the module docstring). Pass ``None`` for a full
+    historical backfill instead (every month, every surviving sensor,
+    landed with ``write_disposition="replace"`` as before) — the right
+    choice for a first run against an empty raw table, or to rebuild it from
+    scratch.
     """
     key = api_key or os.environ.get("OHDP_OPENAQ_API_KEY", "")
     headers = {"X-API-Key": key} if key else {}
     country_list = countries or ["US"]
     parameter_set = frozenset(parameters or [])
     base = OPENAQ_API_BASE_URL.rstrip("/")
+    date_from = _months_ago(lookback_months) if lookback_months is not None else None
 
     @dlt.source(name="openaq")
     def _source():
-        @dlt.resource(name=table_name, write_disposition="replace", table_format="iceberg")
+        @dlt.resource(
+            name=table_name,
+            write_disposition="append" if date_from else "replace",
+            primary_key=("sensor_id", "period_label") if date_from else None,
+            table_format="iceberg",
+        )
         def rows() -> Iterator[list[dict[str, Any]]]:
             limiter = _RateLimiter()
             seen = 0
@@ -209,11 +260,14 @@ def openaq_monthly_measurements_source(
                             continue
                         sensor_id = sensor["id"]
                         batch = []
-                        for row in _iter_sensor_monthly(base, sensor_id, headers, limiter):
+                        for row in _iter_sensor_monthly(
+                            base, sensor_id, headers, limiter, date_from
+                        ):
                             row["location_id"] = location_id
                             row["location_name"] = location.get("name")
                             row["country"] = country
                             row["sensor_id"] = sensor_id
+                            row["period_label"] = (row.get("period") or {}).get("label")
                             batch.append(row)
                         if row_limit is not None and batch:
                             remaining = row_limit - seen
@@ -257,13 +311,20 @@ def _iter_locations(
 
 
 def _iter_sensor_monthly(
-    base: str, sensor_id: int, headers: dict[str, str], limiter: _RateLimiter
+    base: str,
+    sensor_id: int,
+    headers: dict[str, str],
+    limiter: _RateLimiter,
+    date_from: str | None = None,
 ) -> Iterator[dict[str, Any]]:
     page = 1
     while True:
+        params: dict[str, Any] = {"limit": _MAX_PAGE_SIZE, "page": page}
+        if date_from:
+            params["date_from"] = date_from
         batch = _get(
             f"{base}/sensors/{sensor_id}/days/monthly",
-            params={"limit": _MAX_PAGE_SIZE, "page": page},
+            params=params,
             headers=headers,
             limiter=limiter,
         ).get("results", [])

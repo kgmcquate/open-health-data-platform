@@ -1,11 +1,13 @@
 version: 2
 
-# macros/openaq_current_rows.sql over each RAW.openaq table. No dedupe key to
-# test: both raw tables are already a full replace each run, not an
-# append-only history. Nested fields (coordinates, provider, sensors, parameter,
-# period, summary, coverage, etc.) arrive as dlt's flattened `__`-suffixed
-# columns or child tables -- typing and business logic belong in `core`, not
-# staged here.
+# macros/openaq_current_rows.sql over each RAW.openaq table. `locations` is a
+# full replace each run, no dedupe key needed. `monthly_measurements` is
+# appended over a trailing lookback window instead (ohdp_ingestion.openaq
+# .source's `lookback_months`), deduped to the latest load per
+# (sensor_id, period_label). Nested fields (coordinates, provider, sensors,
+# parameter, period, summary, coverage, etc.) arrive as dlt's flattened
+# `__`-suffixed columns or child tables -- typing and business logic belong
+# in `core`, not staged here.
 
 models:
   - name: stg_openaq__locations

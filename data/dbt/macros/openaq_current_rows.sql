@@ -1,12 +1,21 @@
 {#
     The clean-layer body every OpenAQ staging model shares.
 
-    Unlike macros/socrata_current_rows.sql, there is no dedupe here: OpenAQ's
-    `/v3/locations` raw table is itself a full replace every run
+    `locations` needs no dedupe: it's itself a full replace every run
     (ohdp_ingestion.openaq.source -- no per-row cursor, it's a snapshot of
     currently-registered stations, not an appended change log), so RAW
-    already holds exactly the current snapshot. Identical reasoning to
-    macros/cms_current_rows.sql, which this mirrors.
+    already holds exactly the current snapshot -- identical reasoning to
+    macros/cms_current_rows.sql.
+
+    `monthly_measurements` does need one: it's appended over a trailing
+    lookback window (ohdp_ingestion.openaq.source's `lookback_months`), so a
+    revised month lands as a *new* row rather than overwriting the old one in
+    RAW. Pass `dedupe_by` (the natural key, e.g. `['sensor_id',
+    'period_label']`) to reduce to the latest `_dlt_load_id` per key -- same
+    `qualify row_number()` shape as macros/socrata_current_rows.sql, just
+    without an API-side `updated_at` to order by first (OpenAQ's monthly
+    rollup has none -- see the source module's docstring), so recency is
+    purely "which load saw it last."
 
     Column case: dlt's naming convention (ohdp_ingestion/sql_upper.py,
     ADR-0019) upper-cases every raw column name -- fixed here the same way
@@ -17,12 +26,13 @@
     falls back to `select *`.
 
     Call the per-resource model directly -- there's exactly one OpenAQ
-    resource ingested today, so unlike `cdc_current_rows`/
+    resource per `raw_table` today, so unlike `cdc_current_rows`/
     `healthdata_gov_current_rows` there's no per-source wrapper to go through:
 
         {{ openaq_current_rows('locations') }}
+        {{ openaq_current_rows('monthly_measurements', dedupe_by=['sensor_id', 'period_label']) }}
 #}
-{% macro openaq_current_rows(raw_table) -%}
+{% macro openaq_current_rows(raw_table, dedupe_by=none) -%}
 select
     {%- if execute %}
     {%- set cols = adapter.get_columns_in_relation(source('openaq', raw_table)) %}
@@ -33,4 +43,10 @@ select
     {%- endif %}
     {{ dlt_load_id_as_ts() }} as ingest_ts
 from {{ source('openaq', raw_table) }}
+{%- if dedupe_by %}
+qualify row_number() over (
+    partition by {{ dedupe_by | join(', ') }}
+    order by _dlt_load_id desc
+) = 1
+{%- endif %}
 {%- endmacro %}

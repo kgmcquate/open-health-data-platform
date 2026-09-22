@@ -71,3 +71,11 @@ class DatasetConfig(BaseModel):
             "why this is a cost control, not just a data-quality preference."
         ),
     )
+    lookback_months: int | None = Field(
+        default=3,
+        description=(
+            "Trailing months of `days/monthly` history to (re)fetch per run, landed as "
+            "write_disposition=append (monthly_measurements only). None means a full "
+            "historical backfill landed as replace instead — see source.py's docstring."
+        ),
+    )

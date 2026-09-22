@@ -13,4 +13,4 @@ sources:
     description: Every monitoring station OpenAQ currently indexes worldwide (coordinates, provider, instruments, parameters). Full replace each run — see ohdp_ingestion.openaq.source.
   - name: monthly_measurements
     identifier: MONTHLY_MEASUREMENTS
-    description: Monthly-average readings for the criteria pollutants at US government reference-grade monitors (min/max/avg/median/percentiles per sensor per month). Full replace each run — see ohdp_ingestion.openaq.source.openaq_monthly_measurements_source.
+    description: Monthly-average readings for the criteria pollutants at US government reference-grade monitors (min/max/avg/median/percentiles per sensor per month). Appended each run over a trailing lookback window (a revised month lands as a new row, not an overwrite) — see ohdp_ingestion.openaq.source.openaq_monthly_measurements_source and macros/openaq_current_rows.sql for the dedupe.

@@ -138,6 +138,18 @@ class OpenAQDataset(Component, DatasetConfig, Resolvable):
     def lakehouse_raw_key(self) -> AssetKey:
         return self._lakehouse_raw_key(self.raw_table)
 
+    @property
+    def _write_disposition(self) -> str:
+        """Mirrors the disposition ``ohdp_ingestion.openaq.source`` actually
+        picks: ``locations`` has no per-row cursor at all, so always
+        ``replace``; ``monthly_measurements`` is ``append`` with a bounded
+        lookback once ``lookback_months`` is set, else a full-history
+        ``replace`` (see that module's docstring)."""
+        if self.resource == "monthly_measurements" and self.lookback_months is not None:
+            months = self.lookback_months
+            return f"append (trailing {months} months -- see ohdp_ingestion.openaq.source)"
+        return "replace (no per-row cursor -- see ohdp_ingestion.openaq.source)"
+
     # --- specs ---------------------------------------------------------------
     def _catalog_spec(self) -> AssetSpec:
         metadata: dict[str, object] = {
@@ -148,12 +160,13 @@ class OpenAQDataset(Component, DatasetConfig, Resolvable):
             "lands_in": (
                 f"{self._raw_namespace}.{self.raw_table}" if self.enabled else "(not ingested)"
             ),
-            "write_disposition": "replace (no per-row cursor -- see ohdp_ingestion.openaq.source)",
+            "write_disposition": self._write_disposition,
         }
         if self.resource == "monthly_measurements":
             metadata["countries"] = MetadataValue.json(self.countries)
             metadata["parameters"] = MetadataValue.json(self.parameters)
             metadata["reference_monitors_only"] = self.reference_monitors_only
+            metadata["lookback_months"] = self.lookback_months
         if self.source_url:
             metadata["dagster/uri"] = MetadataValue.url(self.source_url)
 
@@ -167,15 +180,17 @@ class OpenAQDataset(Component, DatasetConfig, Resolvable):
         )
 
     def _table_spec(self) -> AssetSpec:
+        disposition = self._write_disposition
         metadata: dict[str, object] = {
             "dagster/table_name": f"{self._raw_namespace}.{self.raw_table}",
-            "write_disposition": "replace",
+            "write_disposition": disposition,
         }
+        verb = "appends to" if disposition.startswith("append") else "replaces"
         return AssetSpec(
             key=self.table_key,
             deps=[self.catalog_key],
             group_name=f"{INGESTION_PREFIX}_{self._group}",
-            description=f"{self.name} — replaces {self._raw_namespace}.{self.raw_table} by dlt.",
+            description=f"{self.name} — {verb} {self._raw_namespace}.{self.raw_table} by dlt.",
             metadata=metadata,
             # cadence lives only on the table asset: it is what the cadence
             # schedules select on.
@@ -205,6 +220,7 @@ class OpenAQDataset(Component, DatasetConfig, Resolvable):
             parameters=self.parameters,
             reference_monitors_only=self.reference_monitors_only,
             row_limit=self.row_limit,
+            lookback_months=self.lookback_months,
         )
 
     def _table_asset(self) -> AssetsDefinition:
