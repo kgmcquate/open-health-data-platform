@@ -1,0 +1,239 @@
+# CMS financial (ADR-0026): Medicare/Medicaid drug spending, Medicare
+# geographic spending/utilization variation, and Medicare monthly enrollment.
+# Dimensions and their descriptions come straight from dbt's column docs
+# (globals.py / cube-dbt) -- edit descriptions in
+# data/dbt/models/curated/financial/_curated_financial__models.yml, not here.
+# Measures are hand-written: dbt documents columns, it does not declare
+# aggregations.
+#
+# geographic_variation and enrollment_monthly both carry National, State and
+# County rows in the same table (their mart's own grain includes
+# geography_level). Every SUM measure below is real money or a real headcount
+# and will double- (or thousands-of-counties-) count itself if geography_level
+# isn't filtered to one level first -- there is no way to enforce that inside
+# a Cube measure definition without also blocking the legitimate single-level
+# query, so it's a warning on every such measure's description instead, the
+# same tradeoff chronic_disease.yml documents rather than enforces for
+# single-year vs. pooled estimates.
+{% set drug_spending = dbt_model('financial__drug_spending_trend') %}
+{% set geo_variation = dbt_model('financial__medicare_geographic_variation') %}
+{% set enrollment = dbt_model('financial__medicare_enrollment_monthly') %}
+
+{% set drug_spending_measures = [
+    'total_spending_usd', 'total_dosage_units', 'total_claims',
+    'total_beneficiaries', 'avg_spending_per_dosage_unit_usd',
+    'avg_spending_per_claim_usd', 'avg_spending_per_beneficiary_usd',
+    'ingest_ts',
+] %}
+{% set geo_variation_measures = [
+    'total_beneficiaries', 'total_medicare_payment_usd',
+    'total_medicare_standardized_payment_usd', 'medicare_payment_per_capita_usd',
+    'medicare_standardized_payment_per_capita_usd', 'acute_readmission_pct',
+    'er_visits_per_1000_beneficiaries', 'ingest_ts',
+] %}
+{% set enrollment_measures = [
+    'total_beneficiaries', 'original_medicare_beneficiaries',
+    'medicare_advantage_beneficiaries', 'dual_eligible_beneficiaries',
+    'part_d_beneficiaries', 'part_d_full_lis_beneficiaries', 'ingest_ts',
+] %}
+
+cubes:
+  - {{ drug_spending.as_cube() }}
+
+    dimensions:
+      {{ drug_spending.as_dimensions(skip=drug_spending_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ drug_spending.sql_table }}'
+
+    # ADR-0024: full copy in Cube Store, re-aggregated there at query time —
+    # inherits refresh_key above unchanged.
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      - name: total_spending_usd
+        sql: '{CUBE}."total_spending_usd"'
+        type: sum
+        description: {{ drug_spending.column('total_spending_usd').description }}
+
+      - name: total_claims
+        sql: '{CUBE}."total_claims"'
+        type: sum
+        description: {{ drug_spending.column('total_claims').description }}
+
+      - name: total_dosage_units
+        sql: '{CUBE}."total_dosage_units"'
+        type: sum
+        description: {{ drug_spending.column('total_dosage_units').description }}
+
+      - name: total_beneficiaries
+        sql: '{CUBE}."total_beneficiaries"'
+        type: sum
+        description: >-
+          {{ drug_spending.column('total_beneficiaries').description }} SUMs to
+          zero for a medicaid-only selection since the column is null on those
+          rows, not zero.
+
+      # Computed from summed dollars and summed counts, not averaged from the
+      # per-drug avg_spending_per_* columns -- the same reasoning as
+      # child_welfare.yml's substantiation_ratio: this is the number that
+      # stays correct at every grain (one drug, one source_dataset, or the
+      # whole selection), where AVG over a column of per-drug averages would
+      # weight a tiny drug the same as one with a billion claims.
+      - name: avg_cost_per_claim_usd
+        sql: 'SUM({CUBE}."total_spending_usd") / NULLIF(SUM({CUBE}."total_claims"), 0)'
+        type: number
+        description: "Total spending / total claims across the current selection, claim-weighted rather than averaged per drug."
+
+      - name: avg_cost_per_dosage_unit_usd
+        sql: 'SUM({CUBE}."total_spending_usd") / NULLIF(SUM({CUBE}."total_dosage_units"), 0)'
+        type: number
+        description: "Total spending / total dosage units across the current selection, unit-weighted rather than averaged per drug."
+
+      - name: avg_cost_per_beneficiary_usd
+        sql: 'SUM({CUBE}."total_spending_usd") / NULLIF(SUM({CUBE}."total_beneficiaries"), 0)'
+        type: number
+        description: "Total spending / total beneficiaries across the current selection. Excludes medicaid rows, which have no beneficiary count."
+
+      - name: drug_count
+        sql: '{CUBE}."drug_key"'
+        type: count_distinct
+        description: "Distinct drugs in the current filter. Compare drug_key within one source_dataset only -- see the dimension's own description."
+
+      - name: latest_year
+        sql: '{CUBE}."year"'
+        type: max
+        description: "Most recent year present in the current selection."
+
+  - {{ geo_variation.as_cube() }}
+
+    dimensions:
+      {{ geo_variation.as_dimensions(skip=geo_variation_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ geo_variation.sql_table }}'
+
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      - name: total_medicare_spending_usd
+        sql: '{CUBE}."total_medicare_payment_usd"'
+        type: sum
+        description: >-
+          {{ geo_variation.column('total_medicare_payment_usd').description }}
+          Filter geography_level to one level (e.g. County) before using this
+          -- National, State and County rows for the same year all sum here
+          otherwise, several times over.
+
+      - name: total_beneficiaries
+        sql: '{CUBE}."total_beneficiaries"'
+        type: sum
+        description: "{{ geo_variation.column('total_beneficiaries').description }} Same geography_level caveat as total_medicare_spending_usd."
+
+      # Population-weighted, unlike a plain AVG over
+      # medicare_payment_per_capita_usd -- summed dollars over summed
+      # beneficiaries treats a large state's spending like a large state's,
+      # rather than counting Wyoming and California equally the way
+      # chronic_disease.yml's county averages deliberately do (PLACES has no
+      # consistent per-county denominator to weight by; this mart does).
+      - name: avg_medicare_payment_per_capita_usd
+        sql: 'SUM({CUBE}."total_medicare_payment_usd") / NULLIF(SUM({CUBE}."total_beneficiaries"), 0)'
+        type: number
+        description: >-
+          Total Medicare payment / total beneficiaries across the current
+          selection, population-weighted. Same geography_level caveat as
+          total_medicare_spending_usd -- pick one level or larger geographies
+          get counted again through their own children.
+
+      - name: avg_standardized_payment_per_capita_usd
+        sql: 'SUM({CUBE}."total_medicare_standardized_payment_usd") / NULLIF(SUM({CUBE}."total_beneficiaries"), 0)'
+        type: number
+        description: >-
+          Population-weighted price-standardized payment per beneficiary --
+          the figure to compare utilization (not cost of living) across
+          geographies. Same geography_level caveat.
+
+      - name: avg_acute_readmission_pct
+        sql: '{CUBE}."acute_readmission_pct"'
+        type: avg
+        description: >-
+          Unweighted mean acute readmission rate across the selected
+          geographies -- a "typical geography" figure, not a beneficiary-weighted
+          national rate.
+
+      - name: avg_er_visit_rate_per_1000
+        sql: '{CUBE}."er_visits_per_1000_beneficiaries"'
+        type: avg
+        description: "Unweighted mean ER visit rate per 1,000 beneficiaries across the selected geographies."
+
+      - name: geography_count
+        sql: '{CUBE}."geography_code"'
+        type: count_distinct
+        description: "Distinct geographies in the current filter."
+
+      - name: latest_year
+        sql: '{CUBE}."year"'
+        type: max
+        description: "Most recent year present in the current selection."
+
+  - {{ enrollment.as_cube() }}
+
+    dimensions:
+      {{ enrollment.as_dimensions(skip=enrollment_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ enrollment.sql_table }}'
+
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      - name: total_beneficiaries
+        sql: '{CUBE}."total_beneficiaries"'
+        type: sum
+        description: >-
+          {{ enrollment.column('total_beneficiaries').description }} Filter
+          geography_level to one level before summing -- County rows sum up to
+          their parent State and National rows in the same table.
+
+      - name: total_dual_eligible_beneficiaries
+        sql: '{CUBE}."dual_eligible_beneficiaries"'
+        type: sum
+        description: "{{ enrollment.column('dual_eligible_beneficiaries').description }} Same geography_level caveat as total_beneficiaries."
+
+      - name: total_part_d_beneficiaries
+        sql: '{CUBE}."part_d_beneficiaries"'
+        type: sum
+        description: "{{ enrollment.column('part_d_beneficiaries').description }} Same geography_level caveat as total_beneficiaries."
+
+      - name: total_part_d_full_lis_beneficiaries
+        sql: '{CUBE}."part_d_full_lis_beneficiaries"'
+        type: sum
+        description: "{{ enrollment.column('part_d_full_lis_beneficiaries').description }} Same geography_level caveat as total_beneficiaries."
+
+      # Computed from summed headcounts so it holds at any grain, the same
+      # move as child_welfare.yml's substantiation_ratio.
+      - name: pct_dual_eligible
+        sql: 'SUM({CUBE}."dual_eligible_beneficiaries") / NULLIF(SUM({CUBE}."total_beneficiaries"), 0)'
+        type: number
+        description: "Dual-eligible beneficiaries as a share of total beneficiaries in the current selection."
+
+      - name: pct_medicare_advantage
+        sql: 'SUM({CUBE}."medicare_advantage_beneficiaries") / NULLIF(SUM({CUBE}."total_beneficiaries"), 0)'
+        type: number
+        description: "Medicare Advantage beneficiaries as a share of total beneficiaries in the current selection."
+
+      - name: state_count
+        sql: '{CUBE}."state_abbr"'
+        type: count_distinct
+        description: "Distinct states in the current filter."
+
+      - name: latest_month
+        sql: '{CUBE}."year" * 100 + {CUBE}."month"'
+        type: max
+        description: "Most recent year-month (as YYYYMM) present in the current selection."

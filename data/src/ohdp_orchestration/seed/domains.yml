@@ -74,8 +74,9 @@ domains:
     - name: openFDA
       domainType: Source-aligned
       description: >
-        FDA regulatory data (adverse events, recalls, labeling) via the openFDA
-        API. Ingestion deferred past M0; placeholder domain.
+        FDA regulatory data via the openFDA API. Currently ingests US drug,
+        food and device recall enforcement reports; adverse events and
+        labeling endpoints not yet ingested.
       website: https://open.fda.gov
 
     - name: WHO

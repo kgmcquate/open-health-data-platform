@@ -138,6 +138,12 @@ jobs:
           AWS_PIPELINE_ACCESS_KEY_ID: ${{ secrets.AWS_PIPELINE_ACCESS_KEY_ID }}
           AWS_PIPELINE_SECRET_ACCESS_KEY: ${{ secrets.AWS_PIPELINE_SECRET_ACCESS_KEY }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+          # Optional -- openfda_source works unauthenticated too, just at a
+          # lower rate limit (ohdp_orchestration/defs/openfda/README.md).
+          # An unset repo secret resolves to "", which upsert below still
+          # writes fine; ohdp_ingestion.openfda.source treats an empty key
+          # the same as no key at all.
+          OPENFDA_API_KEY: ${{ secrets.OPENFDA_API_KEY }}
           CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
           OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
@@ -180,6 +186,7 @@ jobs:
             --from-literal=OHDP_AWS_ACCESS_KEY_ID="$AWS_PIPELINE_ACCESS_KEY_ID" \
             --from-literal=OHDP_AWS_SECRET_ACCESS_KEY="$AWS_PIPELINE_SECRET_ACCESS_KEY" \
             --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
+            --from-literal=OHDP_OPENFDA_API_KEY="$OPENFDA_API_KEY" \
             --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=OHDP_SNOWFLAKE_PAT="$SNOWFLAKE_PIPELINE_PAT" \

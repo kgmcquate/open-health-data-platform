@@ -1,0 +1,19 @@
+# Hand-maintained — openFDA has no multi-dataset catalog to scrape (see
+# ohdp_orchestration.defs.openfda's docstring), unlike
+# _stg_cdc__sources.yml/_stg_healthdata_gov__sources.yml/_stg_cms__sources.yml.
+version: 2
+sources:
+- name: openfda
+  description: openFDA raw tables, RAW.OPENFDA. Hand-maintained (see ohdp_orchestration/defs/openfda).
+  database: RAW
+  schema: OPENFDA
+  tables:
+  - name: drug_enforcement
+    identifier: DRUG_ENFORCEMENT
+    description: US drug recall enforcement reports (reason, classification, status, distribution pattern, recalling firm). Full replace each run, capped at 25,000 rows — see ohdp_ingestion.openfda.source.
+  - name: food_enforcement
+    identifier: FOOD_ENFORCEMENT
+    description: US food recall enforcement reports, same shape as drug_enforcement. Full replace each run, capped at 25,000 rows — see ohdp_ingestion.openfda.source.
+  - name: device_enforcement
+    identifier: DEVICE_ENFORCEMENT
+    description: US medical device recall enforcement reports, same shape as drug_enforcement. Full replace each run, capped at 25,000 rows — see ohdp_ingestion.openfda.source.

@@ -1,0 +1,280 @@
+version: 2
+
+# CMS financial marts (ADR-0026): Medicare/Medicaid drug spending, Medicare
+# geographic spending/utilization variation, and Medicare monthly enrollment.
+# Dimensions and their descriptions are read from the column docs below by
+# cube-dbt -- semantic/cube/model/financial.yml (once it exists) renders them,
+# so this file is the source of truth for those descriptions, not the Cube
+# model.
+
+models:
+  - name: financial__drug_spending_trend
+    description: >
+      Medicare Part D, Medicare Part B and Medicaid per-drug spending over
+      time. One row per source x drug x year, 2020-2024.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (source_dataset, drug_key,
+          year) hashed into one opaque column. It carries the grain --
+          `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary
+          key Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: source_dataset
+        description: Which of the three CMS drug-spending programs the row came from.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [medicare_part_d, medicare_part_b, medicaid]
+        config:
+          meta:
+            grain: true
+      - name: drug_key
+        description: >-
+          drug_code (Part B's HCPCS code) where the source publishes one, else
+          brand_name|generic_name (Part D, Medicaid). Comparable across years
+          within one source_dataset, not across source_dataset.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: drug_code
+        description: HCPCS code; populated for medicare_part_b only.
+        data_type: varchar
+      - name: brand_name
+        description: Drug's marketed brand name, as CMS publishes it.
+        data_type: varchar
+      - name: generic_name
+        description: Drug's generic (non-proprietary) name.
+        data_type: varchar
+      - name: manufacturer_count
+        description: Number of manufacturers CMS aggregated into this row; populated for medicare_part_d and medicaid only.
+        data_type: integer
+      - name: manufacturer_name
+        description: Manufacturer name, or a multi-manufacturer label; populated for medicare_part_d and medicaid only.
+        data_type: varchar
+      - name: year
+        description: Calendar year of the spending figures.
+        data_type: integer
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: total_spending_usd
+        description: Total program spending on the drug for the year. Sums across drugs.
+        data_type: double
+      - name: total_dosage_units
+        description: Total dosage units dispensed for the year. Sums across drugs.
+        data_type: double
+      - name: total_claims
+        description: Total claims for the year. Sums across drugs.
+        data_type: double
+      - name: total_beneficiaries
+        description: Distinct beneficiaries with a claim for the drug in the year. Null for medicaid rows -- CMS doesn't publish a beneficiary count for it.
+        data_type: double
+      - name: avg_spending_per_dosage_unit_usd
+        description: Total spending / total dosage units. Average or compare, never sum across drugs.
+        data_type: double
+      - name: avg_spending_per_claim_usd
+        description: Total spending / total claims. Average or compare, never sum across drugs.
+        data_type: double
+      - name: avg_spending_per_beneficiary_usd
+        description: Total spending / total beneficiaries. Null for medicaid, for the same reason as total_beneficiaries.
+        data_type: double
+      - name: outlier_flag
+        description: CMS's own outlier flag on average spending per dosage unit, kept as raw text.
+        data_type: varchar
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: financial__medicare_geographic_variation
+    description: >
+      Medicare spending and utilization by geography and age group. One row
+      per geography level x geography x age group x year. Covers total
+      Medicare payment and the major care settings (inpatient, ER, outpatient,
+      SNF, home health, hospice, DME) -- see the model SQL for what CMS
+      publishes that isn't carried forward here.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (geography_level,
+          geography_code, age_group, year) hashed into one opaque
+          column. It carries the grain -- `unique` on it asserts exactly
+          what unique_combination_of_columns used to -- and is the
+          primary key Cube joins and pre-aggregates on, which is what
+          keeps the natural-key columns themselves public dimensions.
+          See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: geography_level
+        description: National, State or County.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: geography_name
+        description: Geography name as CMS publishes it.
+        data_type: varchar
+      - name: geography_code
+        description: State postal code or county FIPS code; "National" sentinel for the national row.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: age_group
+        description: Beneficiary age band the row is scoped to (e.g. "All", "<65", "65+").
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: year
+        description: Calendar year of the figures.
+        data_type: integer
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: total_beneficiaries
+        description: >-
+          Beneficiary count for the row. Sums across counties up to their
+          parent state and across states up to National -- filter to one
+          geography_level before summing, or the levels double-count each
+          other.
+        data_type: double
+      - name: total_medicare_payment_usd
+        description: Total Medicare payment. Same double-counting caveat as total_beneficiaries.
+        data_type: double
+      - name: medicare_payment_per_capita_usd
+        description: Medicare payment per beneficiary. A rate -- average or map, never sum.
+        data_type: double
+      - name: medicare_standardized_payment_per_capita_usd
+        description: >-
+          Price-standardized Medicare payment per beneficiary -- removes
+          regional price differences, so this is the figure to use when
+          comparing utilization rather than cost of living across geographies.
+        data_type: double
+      - name: acute_readmission_pct
+        description: Percent of inpatient stays followed by an acute readmission.
+        data_type: double
+      - name: er_visits_per_1000_beneficiaries
+        description: ER visit rate per 1,000 beneficiaries. A rate -- average or map, never sum.
+        data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: financial__medicare_enrollment_monthly
+    description: >
+      Medicare beneficiary enrollment by geography and coverage type. One row
+      per geography level x state x county x year x month.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (geography_level,
+          state_abbr, county_fips, year, month) hashed into one opaque
+          column. It carries the grain -- `unique` on it asserts exactly
+          what unique_combination_of_columns used to -- and is the
+          primary key Cube joins and pre-aggregates on, which is what
+          keeps the natural-key columns themselves public dimensions.
+          See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: geography_level
+        description: National, State or County.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: state_abbr
+        description: Two-letter state postal code; null on the national row.
+        data_type: varchar
+        config:
+          meta:
+            grain: true
+      - name: state_name
+        description: Full state name.
+        data_type: varchar
+      - name: county_name
+        description: County name; null above county level.
+        data_type: varchar
+      - name: county_fips
+        description: County FIPS code; null above county level.
+        data_type: varchar
+        config:
+          meta:
+            grain: true
+      - name: year
+        description: Calendar year of the enrollment snapshot.
+        data_type: integer
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: month
+        description: Calendar month (1-12) of the enrollment snapshot.
+        data_type: integer
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: total_beneficiaries
+        description: >-
+          Total enrolled beneficiaries. Sums across the coverage splits below
+          (original_medicare + medicare_advantage, aged + disabled, dual +
+          non_dual, part_a + part_b) but county rows also sum up to their
+          parent state and National -- filter to one geography_level first.
+        data_type: double
+      - name: original_medicare_beneficiaries
+        description: Beneficiaries in Original (fee-for-service) Medicare.
+        data_type: double
+      - name: medicare_advantage_beneficiaries
+        description: Beneficiaries in Medicare Advantage or another Part C plan.
+        data_type: double
+      - name: dual_eligible_beneficiaries
+        description: Beneficiaries also eligible for Medicaid (full + partial dual).
+        data_type: double
+      - name: part_d_beneficiaries
+        description: Beneficiaries with Part D prescription drug coverage.
+        data_type: double
+      - name: part_d_full_lis_beneficiaries
+        description: Part D beneficiaries receiving the full low-income subsidy.
+        data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

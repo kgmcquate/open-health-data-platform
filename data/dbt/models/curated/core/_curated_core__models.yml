@@ -699,3 +699,40 @@ models:
     config:
       contract:
         enforced: false
+
+  - name: core__drug_spending
+    description: >
+      One conformed long fact for CMS's three drug-spending datasets (Medicare
+      Part D, Medicare Part B, Medicaid), unpivoted from wide (one column pair
+      per year) to long. One row per source x drug x year, 2020-2024.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: source_dataset
+        description: Which of the three CMS drug-spending datasets the row came from.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [medicare_part_d, medicare_part_b, medicaid]
+      - name: drug_key
+        description: >-
+          drug_code where the source publishes one (Part B's HCPCS code), else
+          brand_name|generic_name (Part D, Medicaid) -- the join key to group
+          the same drug across years within one source_dataset. Not comparable
+          across source_dataset: the three programs don't share one drug
+          identifier.
+        data_tests: [not_null]
+      - name: drug_code
+        description: HCPCS code; populated for medicare_part_b only, null for Part D and Medicaid.
+      - name: total_beneficiaries
+        description: Distinct beneficiaries with a claim for the drug in the year. Null for medicaid -- CMS doesn't publish a beneficiary count for it.
+      - name: avg_spending_per_beneficiary_usd
+        description: Total spending / total beneficiaries. Null for medicaid, for the same reason as total_beneficiaries.
+      - name: outlier_flag
+        description: >-
+          CMS's own flag for a drug whose average spending per dosage unit is
+          a statistical outlier against its historical trend. Kept as the raw
+          text CMS publishes -- data-api/v1 gives every column back as a
+          string with no documented enumeration to cast against.

@@ -55,6 +55,11 @@ from ohdp_orchestration.jobs.openaq import (
     openaq_monthly_ingest_job,
     openaq_weekly_ingest_job,
 )
+from ohdp_orchestration.jobs.openfda import (
+    openfda_daily_ingest_job,
+    openfda_monthly_ingest_job,
+    openfda_weekly_ingest_job,
+)
 from ohdp_orchestration.jobs.openmetadata_sync import (
     openmetadata_dagster_sync_job,
     openmetadata_dbt_sync_job,
@@ -87,6 +92,11 @@ from ohdp_orchestration.schedules.openaq import (
     openaq_daily_schedule,
     openaq_monthly_schedule,
     openaq_weekly_schedule,
+)
+from ohdp_orchestration.schedules.openfda import (
+    openfda_daily_schedule,
+    openfda_monthly_schedule,
+    openfda_weekly_schedule,
 )
 from ohdp_orchestration.schedules.openmetadata_sync import (
     openmetadata_dagster_sync_schedule,
@@ -133,6 +143,9 @@ defs = Definitions.merge(
             openaq_daily_ingest_job,
             openaq_weekly_ingest_job,
             openaq_monthly_ingest_job,
+            openfda_daily_ingest_job,
+            openfda_weekly_ingest_job,
+            openfda_monthly_ingest_job,
             openmetadata_cube_metrics_sync_job,
             openmetadata_dagster_sync_job,
             openmetadata_dbt_sync_job,
@@ -154,6 +167,9 @@ defs = Definitions.merge(
             openaq_daily_schedule,
             openaq_weekly_schedule,
             openaq_monthly_schedule,
+            openfda_daily_schedule,
+            openfda_weekly_schedule,
+            openfda_monthly_schedule,
             openmetadata_cube_metrics_sync_schedule,
             openmetadata_dagster_sync_schedule,
             openmetadata_dbt_sync_schedule,

@@ -75,6 +75,7 @@ kubectl -n data create secret generic ohdp-pipeline-secrets \
   --from-literal=OHDP_SPACES_ACCESS_KEY_ID=... \
   --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY=... \
   --from-literal=OHDP_OPENAQ_API_KEY=... \
+  --from-literal=OHDP_OPENFDA_API_KEY=... \    # optional -- unauthenticated openFDA calls work, just rate-limited harder
   --from-literal=OHDP_CDC_APP_TOKEN=... \
   --from-literal=OHDP_OPENMETADATA_JWT= \        # fill after OpenMetadata's first boot
   --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$(cd ../terraform && terraform output -raw snowflake_private_key)"

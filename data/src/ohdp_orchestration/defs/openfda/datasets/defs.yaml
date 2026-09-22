@@ -1,0 +1,54 @@
+# Hand-maintained — openFDA has no multi-dataset catalog to scrape (see
+# ohdp_orchestration.defs.openfda's docstring), unlike CDC/HealthData.gov/CMS's
+# scripts/scrape_*.py. Add a new `---` document here for another openFDA
+# endpoint (e.g. `drug/event`, `drug/label`, `device/event`) if one is ever
+# ingested — mind ohdp_ingestion.openfda.config.MAX_SKIP (25,000 rows) when
+# picking `search`/`row_limit` for a high-volume endpoint.
+type: ohdp_orchestration.defs.openfda.component.OpenFDADataset
+attributes:
+  name: openFDA Drug Enforcement Reports
+  enabled: true
+  cadence: weekly
+  raw_table: drug_enforcement
+  endpoint: drug/enforcement
+  search: 'country:"United States"'
+  row_limit: 25000
+  source_url: https://open.fda.gov/apis/drug/enforcement/
+  description: >-
+    US drug recall enforcement reports -- recall reason, classification (I/II/III severity),
+    status, distribution pattern and the recalling firm, one row per report. Full replace each
+    run (no reliable per-row `updated_at` -- a report's `status` can change after publication,
+    e.g. Ongoing -> Terminated); capped at 25,000 rows, openFDA's `skip` paging ceiling -- see
+    ohdp_ingestion.openfda.source for why that isn't just a safety cap here.
+
+---
+type: ohdp_orchestration.defs.openfda.component.OpenFDADataset
+attributes:
+  name: openFDA Food Enforcement Reports
+  enabled: true
+  cadence: weekly
+  raw_table: food_enforcement
+  endpoint: food/enforcement
+  search: 'country:"United States"'
+  row_limit: 25000
+  source_url: https://open.fda.gov/apis/food/enforcement/
+  description: >-
+    US food recall enforcement reports -- same shape as drug/device enforcement (recall reason,
+    classification, status, distribution pattern, recalling firm). Full replace each run; capped
+    at 25,000 rows -- see ohdp_ingestion.openfda.source.
+
+---
+type: ohdp_orchestration.defs.openfda.component.OpenFDADataset
+attributes:
+  name: openFDA Device Enforcement Reports
+  enabled: true
+  cadence: weekly
+  raw_table: device_enforcement
+  endpoint: device/enforcement
+  search: 'country:"United States"'
+  row_limit: 25000
+  source_url: https://open.fda.gov/apis/device/enforcement/
+  description: >-
+    US medical device recall enforcement reports -- same shape as drug/food enforcement (recall
+    reason, classification, status, distribution pattern, recalling firm). Full replace each run;
+    capped at 25,000 rows -- see ohdp_ingestion.openfda.source.
