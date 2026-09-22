@@ -13,21 +13,35 @@ which path an instance points at and, unlike CMS, the envelope needs
 ``data_selector="results"`` (like OpenAQ — :mod:`ohdp_ingestion.openaq.source`
 — pulling out of ``{"meta": ..., "results": [...]}`` too).
 
-**The 25,000-row `skip` ceiling.** openFDA's own docs: paging with ``skip``
-past 25,000 total records isn't supported at all (the API errors) — the
-documented way past it is sorting by a unique field and switching to
-``search_after`` cursoring. This source doesn't implement that, so every
-instance's ``row_limit`` is capped at :data:`ohdp_ingestion.openfda.config.MAX_SKIP`
-regardless of what's configured — a hard ceiling, not just a safety cap like
-CMS's/OpenAQ's ``row_limit``. A dataset instance whose query matches more rows
-than that only ever sees the first ``MAX_SKIP`` of them; narrow further with
-``search`` (e.g. a date range or a `country`/`classification` filter) if a
-particular slice matters more than an arbitrary prefix of the whole set.
+**Past the 25,000-row `skip` ceiling.** openFDA's own docs: paging with
+``skip`` past 25,000 total records isn't supported (the API errors). Every
+instance sorts by its cursor field and pages with dlt's
+:class:`~dlt.sources.helpers.rest_client.paginators.HeaderLinkPaginator`,
+which follows the ``Link: rel="next"`` response header openFDA returns —
+that's openFDA's documented ``search_after`` mechanism, so there's no
+row-count ceiling on a single run any more (``row_limit`` is now purely an
+optional cost/runtime safety valve via ``DltResource.add_limit``, not a
+workaround for the API's `skip` cap).
 
-**Always a full replace, never incremental.** An enforcement report's
-``status`` (e.g. "Ongoing" -> "Terminated") and other fields can change after
-publication, and openFDA gives no reliable ``updated_at`` to page against —
-same reasoning CMS/OpenAQ apply for the same conclusion.
+**Merge-on-cursor when a dataset opts in, full replace otherwise.** An
+enforcement report's ``status`` (e.g. "Ongoing" -> "Terminated") and other
+fields can change after publication, and openFDA gives no push/webhook
+notice of that — so a naive "only fetch rows newer than the last cursor"
+incremental would silently stop re-syncing older rows' field changes. When a
+``DatasetConfig`` sets ``incremental_cursor`` (a date field, e.g.
+``report_date``) and ``primary_key`` (a unique field, e.g. ``recall_number``),
+this source uses dlt's declarative incremental loading with ``write_disposition
+="merge"``: every run advances the true high-water mark forward, but the
+*query* sent to openFDA is built from a `lag`-shifted start value
+(``incremental_lag_days``, default 90) — so each run also re-fetches and
+re-upserts a trailing window of already-ingested rows, catching status
+mutations near the cursor without ever re-pulling full history. Rows older
+than that window won't have status changes re-synced; that's the same
+full-vs-partial-freshness tradeoff CMS/OpenAQ accept elsewhere in this repo,
+just narrowed to a window instead of applied to the whole table. A dataset
+instance that leaves both fields unset gets the old ``write_disposition
+="replace"`` behavior (no incremental block, no merge) — the right fallback
+for an endpoint with no reliable date/id field to page and upsert on.
 
 **The API key is optional and goes in the query string, not a header.**
 Unauthenticated calls work but are throttled harder (40 req/min, 1,000/day vs.
@@ -40,13 +54,68 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from dlt.sources.helpers.rest_client.paginators import OffsetPaginator
+from dlt.sources.helpers.rest_client.paginators import HeaderLinkPaginator
 from dlt.sources.rest_api import RESTAPIConfig, rest_api_source
-
-from ohdp_ingestion.openfda.config import MAX_SKIP
 
 OPENFDA_API_BASE_URL = "https://api.fda.gov/"
 _MAX_PAGE_SIZE = 1000  # openFDA's documented ceiling on `limit`
+
+# Deliberately far enough back that any openFDA endpoint's full history sorts
+# after it, so an unset dlt pipeline state (first run) backfills everything.
+_INCREMENTAL_EPOCH = "19000101"
+
+
+def _build_resource_config(
+    endpoint: str,
+    table_name: str,
+    *,
+    api_key: str,
+    search: str | None,
+    page: int,
+    incremental_cursor: str | None,
+    primary_key: str | None,
+    incremental_lag_days: int,
+) -> dict[str, Any]:
+    """Pure config-building step, factored out of :func:`openfda_source` so it
+    can be unit-tested without going through dlt's ``rest_api_source`` (see
+    ``tests/test_openfda_components.py``)."""
+    params: dict[str, Any] = {"limit": page}
+    if api_key:
+        params["api_key"] = api_key
+
+    resource: dict[str, Any] = {
+        "name": table_name,
+        "endpoint": {
+            "path": f"{endpoint}.json",
+            "data_selector": "results",
+            "paginator": HeaderLinkPaginator(),
+            "params": params,
+        },
+        # What makes the filesystem destination commit an Iceberg table
+        # (registered in Horizon) rather than bare Parquet files — see
+        # ohdp_ingestion.iceberg_destination.
+        "table_format": "iceberg",
+    }
+
+    if incremental_cursor:
+        # search_after requires an explicit sort on the field you're paging
+        # by (openFDA's documented workaround for the skip ceiling above).
+        params["sort"] = f"{incremental_cursor}:asc"
+        date_clause = f"{incremental_cursor}:[{{incremental.start_value}} TO *]"
+        params["search"] = f"{search} AND {date_clause}" if search else date_clause
+        resource["write_disposition"] = "merge"
+        resource["primary_key"] = primary_key
+        resource["endpoint"]["incremental"] = {
+            "cursor_path": incremental_cursor,
+            "initial_value": _INCREMENTAL_EPOCH,
+            "lag": incremental_lag_days,
+        }
+    else:
+        if search:
+            params["search"] = search
+        resource["write_disposition"] = "replace"
+
+    return resource
 
 
 def openfda_source(
@@ -57,6 +126,9 @@ def openfda_source(
     search: str | None = None,
     row_limit: int | None = None,
     page_size: int = _MAX_PAGE_SIZE,
+    incremental_cursor: str | None = None,
+    primary_key: str | None = None,
+    incremental_lag_days: int = 90,
 ) -> Any:
     """A single-resource ``dlt`` source over one openFDA endpoint, e.g.
     ``endpoint="drug/enforcement"`` for ``GET /drug/enforcement.json``.
@@ -68,47 +140,30 @@ def openfda_source(
     uses. Unlike those, it's genuinely optional — an empty key just means
     every request goes out unauthenticated.
 
+    ``incremental_cursor``/``primary_key`` (see the module docstring) switch
+    this resource from full ``replace`` to `lag`-windowed ``merge``; leave
+    both ``None`` to keep the old full-replace behavior.
+
     ``rest_api_source`` is given a fixed ``name="openfda"`` — like
     ``cms_source``'s ``name="cms"`` — the dlt *schema* name recorded in the
     destination's pipeline state, which must stay stable across every openFDA
     endpoint instance.
     """
-    key = api_key or os.environ.get("OHDP_OPENFDA_API_KEY", "")
-    page = min(page_size, _MAX_PAGE_SIZE)
-    # See the module docstring: MAX_SKIP is a hard API ceiling, not just a
-    # cost control, so it wins even over a larger configured row_limit.
-    effective_limit = min(row_limit, MAX_SKIP) if row_limit else MAX_SKIP
-    paginator = OffsetPaginator(
-        limit=page,
-        offset_param="skip",
-        limit_param="limit",
-        total_path="meta.results.total",
-        maximum_offset=effective_limit,
+    resource = _build_resource_config(
+        endpoint,
+        table_name,
+        api_key=api_key or os.environ.get("OHDP_OPENFDA_API_KEY", ""),
+        search=search,
+        page=min(page_size, _MAX_PAGE_SIZE),
+        incremental_cursor=incremental_cursor,
+        primary_key=primary_key,
+        incremental_lag_days=incremental_lag_days,
     )
-
-    params: dict[str, Any] = {}
-    if search:
-        params["search"] = search
-    if key:
-        params["api_key"] = key
-
     config: RESTAPIConfig = {
         "client": {"base_url": OPENFDA_API_BASE_URL},
-        "resources": [
-            {
-                "name": table_name,
-                "endpoint": {
-                    "path": f"{endpoint}.json",
-                    "data_selector": "results",
-                    "paginator": paginator,
-                    "params": params,
-                },
-                "write_disposition": "replace",
-                # What makes the filesystem destination commit an Iceberg
-                # table (registered in Horizon) rather than bare Parquet
-                # files — see ohdp_ingestion.iceberg_destination.
-                "table_format": "iceberg",
-            }
-        ],
+        "resources": [resource],
     }
-    return rest_api_source(config, name="openfda")
+    source = rest_api_source(config, name="openfda")
+    if row_limit:
+        source.resources[table_name].add_limit(row_limit, count_rows=True)
+    return source

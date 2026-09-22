@@ -13,10 +13,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from ohdp_ingestion import naming
-from ohdp_ingestion.openfda import CADENCES, MAX_SKIP, DatasetConfig
+from ohdp_ingestion.openfda import CADENCES, DatasetConfig
+from ohdp_ingestion.openfda.source import _build_resource_config
 
 SOURCE = "openfda"
 _DEFS_FILE = (
@@ -60,7 +62,7 @@ def test_every_instance_is_a_valid_dataset_component() -> None:
         assert re.fullmatch(r"[a-z_][a-z0-9_]*", cfg.raw_table), where
         assert cfg.cadence in CADENCES, where
         assert cfg.endpoint, where
-        assert cfg.row_limit is None or cfg.row_limit <= MAX_SKIP, where
+        assert bool(cfg.incremental_cursor) == bool(cfg.primary_key), where
 
 
 def test_raw_table_names_are_unique() -> None:
@@ -142,3 +144,54 @@ def test_three_cadence_jobs_and_schedules_regardless_of_enabled_set() -> None:
 
 def test_at_least_one_dataset_is_enabled() -> None:
     assert any(cfg.enabled for _, cfg in _configs())
+
+
+def test_incremental_cursor_and_primary_key_require_each_other() -> None:
+    base = {"name": "x", "raw_table": "x", "endpoint": "drug/enforcement"}
+    incremental = {"incremental_cursor": "report_date", "primary_key": "recall_number"}
+    DatasetConfig.model_validate({**base, **incremental})
+    DatasetConfig.model_validate(base)
+    with pytest.raises(ValueError):
+        DatasetConfig.model_validate({**base, "incremental_cursor": "report_date"})
+    with pytest.raises(ValueError):
+        DatasetConfig.model_validate({**base, "primary_key": "recall_number"})
+
+
+def test_resource_config_without_incremental_cursor_is_a_full_replace() -> None:
+    resource = _build_resource_config(
+        "drug/enforcement",
+        "drug_enforcement",
+        api_key="",
+        search='country:"United States"',
+        page=1000,
+        incremental_cursor=None,
+        primary_key=None,
+        incremental_lag_days=90,
+    )
+    assert resource["write_disposition"] == "replace"
+    assert "primary_key" not in resource
+    assert "incremental" not in resource["endpoint"]
+    assert resource["endpoint"]["params"]["search"] == 'country:"United States"'
+    assert "sort" not in resource["endpoint"]["params"]
+
+
+def test_resource_config_with_incremental_cursor_is_a_lag_windowed_merge() -> None:
+    resource = _build_resource_config(
+        "drug/enforcement",
+        "drug_enforcement",
+        api_key="",
+        search='country:"United States"',
+        page=1000,
+        incremental_cursor="report_date",
+        primary_key="recall_number",
+        incremental_lag_days=90,
+    )
+    assert resource["write_disposition"] == "merge"
+    assert resource["primary_key"] == "recall_number"
+    assert resource["endpoint"]["params"]["sort"] == "report_date:asc"
+    assert resource["endpoint"]["params"]["search"] == (
+        'country:"United States" AND report_date:[{incremental.start_value} TO *]'
+    )
+    incremental = resource["endpoint"]["incremental"]
+    assert incremental["cursor_path"] == "report_date"
+    assert incremental["lag"] == 90

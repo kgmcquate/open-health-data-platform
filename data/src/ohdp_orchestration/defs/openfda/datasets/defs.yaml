@@ -2,8 +2,9 @@
 # ohdp_orchestration.defs.openfda's docstring), unlike CDC/HealthData.gov/CMS's
 # scripts/scrape_*.py. Add a new `---` document here for another openFDA
 # endpoint (e.g. `drug/event`, `drug/label`, `device/event`) if one is ever
-# ingested — mind ohdp_ingestion.openfda.config.MAX_SKIP (25,000 rows) when
-# picking `search`/`row_limit` for a high-volume endpoint.
+# ingested -- set incremental_cursor/primary_key only if the endpoint has a
+# documented date field and unique identifier to page/upsert on (see
+# ohdp_ingestion.openfda.source), otherwise leave both unset for full replace.
 type: ohdp_orchestration.defs.openfda.component.OpenFDADataset
 attributes:
   name: openFDA Drug Enforcement Reports
@@ -12,14 +13,16 @@ attributes:
   raw_table: drug_enforcement
   endpoint: drug/enforcement
   search: 'country:"United States"'
-  row_limit: 25000
+  incremental_cursor: report_date
+  primary_key: recall_number
+  incremental_lag_days: 90
   source_url: https://open.fda.gov/apis/drug/enforcement/
   description: >-
     US drug recall enforcement reports -- recall reason, classification (I/II/III severity),
-    status, distribution pattern and the recalling firm, one row per report. Full replace each
-    run (no reliable per-row `updated_at` -- a report's `status` can change after publication,
-    e.g. Ongoing -> Terminated); capped at 25,000 rows, openFDA's `skip` paging ceiling -- see
-    ohdp_ingestion.openfda.source for why that isn't just a safety cap here.
+    status, distribution pattern and the recalling firm, one row per report. Merged on
+    recall_number, paged ascending by report_date; every run re-fetches and re-merges the
+    trailing 90 days so a report's status changing after publication (e.g. Ongoing ->
+    Terminated) still gets picked up -- see ohdp_ingestion.openfda.source.
 
 ---
 type: ohdp_orchestration.defs.openfda.component.OpenFDADataset
@@ -30,12 +33,14 @@ attributes:
   raw_table: food_enforcement
   endpoint: food/enforcement
   search: 'country:"United States"'
-  row_limit: 25000
+  incremental_cursor: report_date
+  primary_key: recall_number
+  incremental_lag_days: 90
   source_url: https://open.fda.gov/apis/food/enforcement/
   description: >-
     US food recall enforcement reports -- same shape as drug/device enforcement (recall reason,
-    classification, status, distribution pattern, recalling firm). Full replace each run; capped
-    at 25,000 rows -- see ohdp_ingestion.openfda.source.
+    classification, status, distribution pattern, recalling firm). Merged on recall_number,
+    90-day rolling window -- see ohdp_ingestion.openfda.source.
 
 ---
 type: ohdp_orchestration.defs.openfda.component.OpenFDADataset
@@ -46,9 +51,11 @@ attributes:
   raw_table: device_enforcement
   endpoint: device/enforcement
   search: 'country:"United States"'
-  row_limit: 25000
+  incremental_cursor: report_date
+  primary_key: recall_number
+  incremental_lag_days: 90
   source_url: https://open.fda.gov/apis/device/enforcement/
   description: >-
     US medical device recall enforcement reports -- same shape as drug/food enforcement (recall
-    reason, classification, status, distribution pattern, recalling firm). Full replace each run;
-    capped at 25,000 rows -- see ohdp_ingestion.openfda.source.
+    reason, classification, status, distribution pattern, recalling firm). Merged on
+    recall_number, 90-day rolling window -- see ohdp_ingestion.openfda.source.

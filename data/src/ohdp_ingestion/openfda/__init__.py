@@ -23,12 +23,11 @@ the same three-asset shape as Socrata/CMS/OpenAQ sources
 """
 
 from ohdp_ingestion.iceberg_destination import build_pipeline
-from ohdp_ingestion.openfda.config import CADENCES, MAX_SKIP, Cadence, DatasetConfig
+from ohdp_ingestion.openfda.config import CADENCES, Cadence, DatasetConfig
 from ohdp_ingestion.openfda.source import OPENFDA_API_BASE_URL, openfda_source
 
 __all__ = [
     "CADENCES",
-    "MAX_SKIP",
     "OPENFDA_API_BASE_URL",
     "Cadence",
     "DatasetConfig",

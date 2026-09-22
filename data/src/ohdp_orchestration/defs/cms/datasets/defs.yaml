@@ -8,7 +8,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: payroll_based_journal_employee_detail_nursing_home_staffing
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/payroll-based-journal-employee-detail-nursing-home-staffing
   row_count: 64034955
   keywords:
@@ -31,7 +31,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: facility_level_minimum_data_set_frequency
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/facility-level-minimum-data-set-frequency
   row_count: 31403215
   keywords:
@@ -54,7 +54,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_part_d_prescribers_by_provider_and_drug
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider-and-drug
   row_count: 28023892
   keywords:
@@ -78,7 +78,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: physician_supplier_procedure_summary
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/physiciansupplier-procedure-summary
   row_count: 14474585
   keywords:
@@ -101,7 +101,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_dialysis_facilities
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/medicare-dialysis-facilities
   row_count: 12456456
   keywords:
@@ -128,7 +128,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_physician_other_practitioners_by_provider_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners/medicare-physician-other-practitioners-by-provider-and-service
   row_count: 9781673
   keywords:
@@ -150,7 +150,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: public_reporting_of_missing_digital_contact_information
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-compliance/public-reporting-of-missing-digital-contact-information
   row_count: 3952218
   keywords:
@@ -171,7 +171,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: revalidation_reassignment_list
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/revalidation-reassignment-list
   row_count: 3600883
   keywords:
@@ -192,7 +192,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: revalidation_clinic_group_practice_reassignment
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/revalidation-clinic-group-practice-reassignment
   row_count: 3391590
   keywords:
@@ -214,7 +214,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_fee_for_service_public_provider_enrollment
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/medicare-fee-for-service-public-provider-enrollment
   row_count: 2978925
   keywords:
@@ -236,7 +236,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: revalidation_due_date_list
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/revalidation-due-date-list
   row_count: 2943135
   keywords:
@@ -259,7 +259,7 @@ attributes:
   enabled: false
   cadence: daily
   raw_table: fiscal_intermediary_shared_system_attending_and_rendering
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/fiscal-intermediary-shared-system-attending-and-rendering
   row_count: 2061837
   keywords:
@@ -288,7 +288,7 @@ attributes:
   enabled: false
   cadence: daily
   raw_table: order_and_referring
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/order-and-referring
   row_count: 2036207
   keywords:
@@ -311,7 +311,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_part_d_prescribers_by_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider
   row_count: 1416883
   keywords:
@@ -335,7 +335,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_durable_medical_equipment_devices_supplies_by_referring_provider_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-durable-medical-equipment-devices-supplies/medicare-durable-medical-equipment-devices-supplies-by-referring-provider-and-service
   row_count: 1347255
   keywords:
@@ -358,7 +358,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: payroll_based_journal_daily_non_nurse_staffing
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/payroll-based-journal-daily-non-nurse-staffing
   row_count: 1303830
   keywords:
@@ -384,7 +384,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: payroll_based_journal_daily_nurse_staffing
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/payroll-based-journal-daily-nurse-staffing
   row_count: 1303830
   keywords:
@@ -410,7 +410,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_physician_other_practitioners_by_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners/medicare-physician-other-practitioners-by-provider
   row_count: 1296739
   keywords:
@@ -432,7 +432,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospital_service_area
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-inpatient-hospitals/hospital-service-area
   row_count: 1175708
   keywords:
@@ -454,7 +454,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: market_saturation_utilization_state_county
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/program-integrity-market-saturation-by-type-of-service/market-saturation-utilization-state-county
   row_count: 1030290
   keywords:
@@ -481,7 +481,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_clinical_laboratory_fee_schedule_private_payer_rates_and_volumes
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/medicare-clinical-laboratory-fee-schedule-private-payer-rates-and-volumes
   row_count: 967129
   keywords:
@@ -504,7 +504,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: provider_of_services_file_clinical_laboratories
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/provider-of-services-file-clinical-laboratories
   row_count: 681059
   keywords:
@@ -528,7 +528,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicaid_opioid_prescribing_rates_by_geography
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-opioid-prescribing-rates/medicaid-opioid-prescribing-rates-by-geography
   row_count: 597297
   keywords:
@@ -551,7 +551,7 @@ attributes:
   enabled: true
   cadence: monthly
   raw_table: medicare_monthly_enrollment
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-beneficiary-enrollment/medicare-and-medicaid-reports/medicare-monthly-enrollment
   row_count: 580443
   keywords:
@@ -581,7 +581,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: quality_payment_program_experience
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/quality-payment-program-experience
   row_count: 503917
   keywords:
@@ -604,7 +604,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_durable_medical_equipment_devices_supplies_by_supplier_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-durable-medical-equipment-devices-supplies/medicare-durable-medical-equipment-devices-supplies-by-supplier-and-service
   row_count: 440670
   keywords:
@@ -627,7 +627,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_durable_medical_equipment_devices_supplies_by_referring_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-durable-medical-equipment-devices-supplies/medicare-durable-medical-equipment-devices-supplies-by-referring-provider
   row_count: 381228
   keywords:
@@ -650,7 +650,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_part_d_opioid_prescribing_rates_by_geography
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-opioid-prescribing-rates/medicare-part-d-opioid-prescribing-rates-by-geography
   row_count: 359139
   keywords:
@@ -677,7 +677,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: skilled_nursing_facility_all_owners
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/skilled-nursing-facility-all-owners
   row_count: 295083
   keywords:
@@ -703,7 +703,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_physician_other_practitioners_by_geography_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-physician-other-practitioners/medicare-physician-other-practitioners-by-geography-and-service
   row_count: 268350
   keywords:
@@ -727,7 +727,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: aco_reach_providers
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/accountable-care-models/aco-reach-providers
   row_count: 234886
   keywords:
@@ -751,7 +751,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: market_saturation_utilization_core_based_statistical_areas
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/program-integrity-market-saturation-by-type-of-service/market-saturation-utilization-core-based-statistical-areas
   row_count: 228484
   keywords:
@@ -778,7 +778,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: value_modifier
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-value-based-payment-modifier-program/value-modifier
   row_count: 207151
   keywords:
@@ -803,7 +803,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_fee_for_service_comprehensive_error_rate_testing
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-compliance/fee-for-service-error-rate-improper-payment/medicare-fee-for-service-comprehensive-error-rate-testing
   row_count: 163940
   keywords:
@@ -832,7 +832,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: federally_qualified_health_center_all_owners
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/federally-qualified-health-center-all-owners
   row_count: 149816
   keywords:
@@ -854,7 +854,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospital_all_owners
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/hospital-all-owners
   row_count: 146859
   keywords:
@@ -876,7 +876,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_inpatient_hospitals_by_provider_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-inpatient-hospitals/medicare-inpatient-hospitals-by-provider-and-service
   row_count: 145879
   keywords:
@@ -908,7 +908,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: number_of_accountable_care_organization_assigned_beneficiaries_by_county
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-shared-savings-program/number-of-accountable-care-organization-assigned-beneficiaries-by-county
   row_count: 135203
   keywords:
@@ -933,7 +933,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: minimum_data_set_frequency
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/minimum-data-set-frequency
   row_count: 133920
   keywords:
@@ -956,7 +956,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_post_acute_care_utilization_home_health_agency_by_geography_provider_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-post-acute-care-hospice/medicare-post-acute-care-utilization-home-health-agency-by-geography-provider-and-service
   row_count: 124399
   keywords:
@@ -984,7 +984,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: skilled_nursing_facility_change_of_ownership_owner_information
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/skilled-nursing-facility-change-of-ownership-owner-information
   row_count: 119419
   keywords:
@@ -1007,7 +1007,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_part_d_prescribers_by_geography_and_drug
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-geography-and-drug
   row_count: 117661
   keywords:
@@ -1034,7 +1034,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_outpatient_hospitals_by_provider_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-outpatient-hospitals/medicare-outpatient-hospitals-by-provider-and-service
   row_count: 116182
   keywords:
@@ -1058,7 +1058,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: home_health_agency_all_owners
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/home-health-agency-all-owners
   row_count: 101188
   keywords:
@@ -1081,7 +1081,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_outpatient_hospitals_by_geography_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-outpatient-hospitals/medicare-outpatient-hospitals-by-geography-and-service
   row_count: 89021
   keywords:
@@ -1107,7 +1107,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: provider_of_services_file_internet_quality_improvement_and_evaluation_system
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/provider-of-services-file-internet-quality-improvement-and-evaluation-system
   row_count: 77564
   keywords:
@@ -1135,7 +1135,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospice_all_owners
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/hospice-all-owners
   row_count: 70444
   keywords:
@@ -1158,7 +1158,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: rural_health_clinic_all_owners
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/rural-health-clinic-all-owners
   row_count: 66807
   keywords:
@@ -1181,7 +1181,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_covid_19_hospitalization_trends
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/covid-19/medicare-covid-19-hospitalization-trends
   row_count: 62702
   keywords:
@@ -1214,7 +1214,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_durable_medical_equipment_devices_supplies_by_supplier
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-durable-medical-equipment-devices-supplies/medicare-durable-medical-equipment-devices-supplies-by-supplier
   row_count: 60060
   keywords:
@@ -1237,7 +1237,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: opt_out_affidavits
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opt-out-affidavits
   row_count: 57780
   keywords:
@@ -1257,7 +1257,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: provider_of_services_file_quality_improvement_and_evaluation_system
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/provider-of-services-file-quality-improvement-and-evaluation-system
   row_count: 44707
   keywords:
@@ -1282,7 +1282,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_durable_medical_equipment_devices_supplies_by_geography_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-durable-medical-equipment-devices-supplies/medicare-durable-medical-equipment-devices-supplies-by-geography-and-service
   row_count: 40440
   keywords:
@@ -1306,7 +1306,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_telehealth_trends
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-service-type-reports/medicare-telehealth-trends
   row_count: 37324
   keywords:
@@ -1324,7 +1324,7 @@ attributes:
   enabled: true
   cadence: monthly
   raw_table: medicare_geographic_variation_by_national_state_county
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county
   row_count: 36994
   keywords:
@@ -1354,7 +1354,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_quarterly_part_d_spending_by_drug
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-quarterly-part-d-spending-by-drug
   row_count: 27748
   keywords:
@@ -1384,7 +1384,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_inpatient_hospitals_by_geography_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-inpatient-hospitals/medicare-inpatient-hospitals-by-geography-and-service
   row_count: 26571
   keywords:
@@ -1410,7 +1410,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospital_change_of_ownership_owner_information
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/hospital-change-of-ownership-owner-information
   row_count: 23857
   keywords:
@@ -1433,7 +1433,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: restructured_betos_classification_system
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/provider-service-classifications/restructured-betos-classification-system
   row_count: 20081
   keywords:
@@ -1459,7 +1459,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicaid_managed_care
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-service-type-reports/medicaid-managed-care
   row_count: 19559
   keywords:
@@ -1484,7 +1484,7 @@ attributes:
   enabled: true
   cadence: monthly
   raw_table: medicaid_spending_by_drug
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicaid-spending-by-drug
   row_count: 18511
   keywords:
@@ -1518,7 +1518,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: accountable_care_organization_participants
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-shared-savings-program/accountable-care-organization-participants
   row_count: 15370
   keywords:
@@ -1540,7 +1540,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: skilled_nursing_facility_cost_report
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-compliance/cost-reports/skilled-nursing-facility-cost-report
   row_count: 14933
   keywords:
@@ -1566,7 +1566,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: long_term_care_facility_characteristics
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/long-term-care-facility-characteristics
   row_count: 14696
   keywords:
@@ -1588,7 +1588,7 @@ attributes:
   enabled: true
   cadence: monthly
   raw_table: medicare_part_d_spending_by_drug
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-part-d-spending-by-drug
   row_count: 14536
   keywords:
@@ -1623,7 +1623,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: skilled_nursing_facility_enrollments
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/skilled-nursing-facility-enrollments
   row_count: 14410
   keywords:
@@ -1651,7 +1651,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_post_acute_care_utilization_inpatient_rehabilitation_facility_by_geography_provider_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-post-acute-care-hospice/medicare-post-acute-care-utilization-inpatient-rehabilitation-facility-by-geography-provider-and-service
   row_count: 13856
   keywords:
@@ -1677,7 +1677,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_post_acute_care_utilization_skilled_nursing_facility_by_geography_and_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-post-acute-care-hospice/medicare-post-acute-care-utilization-skilled-nursing-facility-by-geography-and-provider
   row_count: 13837
   keywords:
@@ -1702,7 +1702,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_post_acute_care_utilization_skilled_nursing_facility_by_geography_provider_and_service
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-post-acute-care-hospice/medicare-post-acute-care-utilization-skilled-nursing-facility-by-geography-provider-and-service
   row_count: 13837
   keywords:
@@ -1729,7 +1729,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospital_price_transparency_enforcement_activities_and_outcomes
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/hospital-price-transparency-enforcement-activities-and-outcomes
   row_count: 13355
   keywords:
@@ -1752,7 +1752,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: aco_reach_aligned_beneficiaries
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/accountable-care-models/aco-reach-aligned-beneficiaries
   row_count: 12521
   keywords:
@@ -1776,7 +1776,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: deficit_reduction_act_hospital_acquired_condition_measures
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/deficit-reduction-act-hospital-acquired-condition-measures
   row_count: 12120
   keywords:
@@ -1800,7 +1800,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: home_health_agency_enrollments
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/home-health-agency-enrollments
   row_count: 11494
   keywords:
@@ -1823,7 +1823,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: federally_qualified_health_center_enrollments
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/federally-qualified-health-center-enrollments
   row_count: 11154
   keywords:
@@ -1845,7 +1845,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: home_health_agency_cost_report
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-compliance/cost-reports/home-health-agency-cost-report
   row_count: 10715
   keywords:
@@ -1869,7 +1869,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospital_enrollments
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/hospital-enrollments
   row_count: 9161
   keywords:
@@ -1891,7 +1891,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_post_acute_care_utilization_home_health_agency_by_geography_and_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-post-acute-care-hospice/medicare-post-acute-care-utilization-home-health-agency-by-geography-and-provider
   row_count: 8662
   keywords:
@@ -1916,7 +1916,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: revoked_medicare_providers_and_suppliers
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/revoked-medicare-providers-and-suppliers
   row_count: 8136
   keywords:
@@ -1938,7 +1938,7 @@ attributes:
   enabled: false
   cadence: daily
   raw_table: pending_initial_logging_and_tracking_non_physicians
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/pending-initial-logging-and-tracking-non-physicians
   row_count: 7074
   keywords:
@@ -1958,7 +1958,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: health_insurance_exchanges_monthly_effectuated_enrollment
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-beneficiary-enrollment/health-insurance-marketplace/health-insurance-exchanges-monthly-effectuated-enrollment
   row_count: 6588
   keywords:
@@ -1983,7 +1983,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_post_acute_care_utilization_hospice_by_geography_and_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-post-acute-care-hospice/medicare-post-acute-care-utilization-hospice-by-geography-and-provider
   row_count: 6187
   keywords:
@@ -2009,7 +2009,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospital_provider_cost_report
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-compliance/cost-reports/hospital-provider-cost-report
   row_count: 6103
   keywords:
@@ -2034,7 +2034,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospice_enrollments
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/hospice-enrollments
   row_count: 5802
   keywords:
@@ -2057,7 +2057,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: rural_health_clinic_enrollments
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/rural-health-clinic-enrollments
   row_count: 5596
   keywords:
@@ -2080,7 +2080,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: ambulatory_specialty_model_participants
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/disease-episode-based-payment-models/ambulatory-specialty-model-participants
   row_count: 5556
   keywords:
@@ -2104,7 +2104,7 @@ attributes:
   enabled: false
   cadence: daily
   raw_table: pending_initial_logging_and_tracking_physicians
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/pending-initial-logging-and-tracking-physicians
   row_count: 5481
   keywords:
@@ -2124,7 +2124,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: skilled_nursing_facility_change_of_ownership
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/skilled-nursing-facility-change-of-ownership
   row_count: 5227
   keywords:
@@ -2147,7 +2147,7 @@ attributes:
   enabled: false
   cadence: weekly
   raw_table: innovation_center_model_participants
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/cms-innovation-models-overview/innovation-center-model-participants
   row_count: 3427
   keywords:
@@ -2174,7 +2174,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: agency_for_healthcare_research_and_quality_ahrq_patient_safety_indicator_11_psi_11_measure_rates
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/agency-for-healthcare-research-and-quality-ahrq-patient-safety-indicator-11-psi-11-measure-rates
   row_count: 3319
   keywords:
@@ -2200,7 +2200,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: aco_reach_eligible_beneficiaries
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/accountable-care-models/aco-reach-eligible-beneficiaries
   row_count: 3229
   keywords:
@@ -2225,7 +2225,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: county_level_aggregate_expenditure_and_risk_score_data_on_assignable_beneficiaries
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-shared-savings-program/county-level-aggregate-expenditure-and-risk-score-data-on-assignable-beneficiaries
   row_count: 3226
   keywords:
@@ -2258,7 +2258,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: accountable_care_organization_skilled_nursing_facility_affiliates
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-shared-savings-program/accountable-care-organization-skilled-nursing-facility-affiliates
   row_count: 3196
   keywords:
@@ -2281,7 +2281,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_inpatient_hospitals_by_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-inpatient-hospitals/medicare-inpatient-hospitals-by-provider
   row_count: 3044
   keywords:
@@ -2305,7 +2305,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_quarterly_part_b_spending_by_drug
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-quarterly-part-b-spending-by-drug
   row_count: 1742
   keywords:
@@ -2339,7 +2339,7 @@ attributes:
   enabled: false
   cadence: weekly
   raw_table: home_infusion_therapy_providers
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/home-infusion-therapy-providers
   row_count: 1611
   keywords:
@@ -2364,7 +2364,7 @@ attributes:
   enabled: false
   cadence: weekly
   raw_table: opioid_treatment_program_providers
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers
   row_count: 1573
   keywords:
@@ -2385,7 +2385,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_post_acute_care_utilization_inpatient_rehabilitation_facility_by_geography_and_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-post-acute-care-hospice/medicare-post-acute-care-utilization-inpatient-rehabilitation-facility-by-geography-and-provider
   row_count: 1218
   keywords:
@@ -2411,7 +2411,7 @@ attributes:
   enabled: false
   cadence: weekly
   raw_table: innovation_center_milestones_and_updates
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/cms-innovation-models-overview/innovation-center-milestones-and-updates
   row_count: 1189
   keywords:
@@ -2436,7 +2436,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_diabetes_prevention_program
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/disease-episode-based-payment-models/medicare-diabetes-prevention-program
   row_count: 1037
   keywords:
@@ -2460,7 +2460,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: managing_clinician_aggregation_group_performance
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/disease-episode-based-payment-models/managing-clinician-aggregation-group-performance
   row_count: 907
   keywords:
@@ -2495,7 +2495,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_part_b_discarded_drug_units
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-part-b-discarded-drug-units
   row_count: 824
   keywords:
@@ -2519,7 +2519,7 @@ attributes:
   enabled: true
   cadence: monthly
   raw_table: medicare_part_b_spending_by_drug
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-part-b-spending-by-drug
   row_count: 799
   keywords:
@@ -2548,7 +2548,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: hospital_change_of_ownership
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/hospital-change-of-ownership
   row_count: 772
   keywords:
@@ -2571,7 +2571,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: nursing_home_chain_performance_measures
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/quality-of-care/nursing-home-chain-performance-measures
   row_count: 611
   keywords:
@@ -2594,7 +2594,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_provider_and_supplier_taxonomy_crosswalk
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/medicare-provider-and-supplier-taxonomy-crosswalk
   row_count: 566
   keywords:
@@ -2617,7 +2617,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: health_insurance_exchanges_annual_effectuated_enrollment
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-beneficiary-enrollment/health-insurance-marketplace/health-insurance-exchanges-annual-effectuated-enrollment
   row_count: 540
   keywords:
@@ -2644,7 +2644,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: accountable_care_organizations
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-shared-savings-program/accountable-care-organizations
   row_count: 511
   keywords:
@@ -2667,7 +2667,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: cpc_initiative_participating_primary_care_practices
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/accountable-care-models/cpc-initiative-participating-primary-care-practices
   row_count: 497
   keywords:
@@ -2688,7 +2688,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: performance_year_financial_and_quality_results
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-shared-savings-program/performance-year-financial-and-quality-results
   row_count: 476
   keywords:
@@ -2713,7 +2713,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: end_stage_renal_disease_facility_aggregation_group_performance
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/disease-episode-based-payment-models/end-stage-renal-disease-facility-aggregation-group-performance
   row_count: 433
   keywords:
@@ -2748,7 +2748,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_advantage_geographic_variation_national_state
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-advantage-geographic-variation-national-state
   row_count: 432
   keywords:
@@ -2773,7 +2773,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: innovation_center_data_and_reports
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/cms-innovation-models-overview/innovation-center-data-and-reports
   row_count: 376
   keywords:
@@ -2797,7 +2797,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_post_acute_care_utilization_long_term_care_hospital_by_geography_and_provider
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/provider-summary-by-type-of-service/medicare-post-acute-care-hospice/medicare-post-acute-care-utilization-long-term-care-hospital-by-geography-and-provider
   row_count: 369
   keywords:
@@ -2823,7 +2823,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: innovation_center_webinars_and_forums
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/cms-innovation-models-overview/innovation-center-webinars-and-forums
   row_count: 289
   keywords:
@@ -2848,7 +2848,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: advance_investment_payment_spend_plan
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-shared-savings-program/advance-investment-payment-spend-plan
   row_count: 272
   keywords:
@@ -2871,7 +2871,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: innovation_center_model_awardees
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/cms-innovation-models-overview/innovation-center-model-awardees
   row_count: 177
   keywords:
@@ -2895,7 +2895,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: aco_reach_financial_and_quality_results
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/accountable-care-models/aco-reach-financial-and-quality-results
   row_count: 115
   keywords:
@@ -2919,7 +2919,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: innovation_center_model_summary_information
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/cms-innovation-models-overview/innovation-center-model-summary-information
   row_count: 105
   keywords:
@@ -2945,7 +2945,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: income_and_asset_ownership
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-current-beneficiary-survey-mcbs/income-and-asset-ownership
   row_count: 74
   keywords:
@@ -2969,7 +2969,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: reach_acos
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/accountable-care-models/reach-acos
   row_count: 74
   keywords:
@@ -2991,7 +2991,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: innovation_center_innovation_advisors
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/cms-innovation-models-overview/innovation-center-innovation-advisors
   row_count: 71
   keywords:
@@ -3014,7 +3014,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: comprehensive_care_for_joint_replacement_model_metropolitan_statistical_areas
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/disease-episode-based-payment-models/comprehensive-care-for-joint-replacement-model-metropolitan-statistical-areas
   row_count: 67
   keywords:
@@ -3039,7 +3039,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_home_health_patients_and_visits_by_state
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-service-type-reports/medicare-home-health-patients-and-visits-by-state
   row_count: 55
   keywords:
@@ -3063,7 +3063,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_demonstrations
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/cms-innovation-models-overview/medicare-demonstrations
   row_count: 42
   keywords:
@@ -3084,7 +3084,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: comprehensive_end_stage_renal_disease_care_model_data
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/disease-episode-based-payment-models/comprehensive-end-stage-renal-disease-care-model-data
   row_count: 37
   keywords:
@@ -3110,7 +3110,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: next_generation_accountable_care_organization_model_data
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/accountable-care-models/next-generation-accountable-care-organization-model-data
   row_count: 35
   keywords:
@@ -3135,7 +3135,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: prepaid_shared_savings_spend_plan
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/medicare-shared-savings-program/prepaid-shared-savings-spend-plan
   row_count: 29
   keywords:
@@ -3158,7 +3158,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: strong_start_awardees
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/healthcare-support-models/strong-start-awardees
   row_count: 27
   keywords:
@@ -3185,7 +3185,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_short_stay_hospital_discharge_rankings
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-service-type-reports/medicare-short-stay-hospital-discharge-rankings
   row_count: 25
   keywords:
@@ -3210,7 +3210,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: medicare_alternative_payment_model_adoption
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/disease-episode-based-payment-models/medicare-alternative-payment-model-adoption
   row_count: 12
   keywords:
@@ -3234,7 +3234,7 @@ attributes:
   enabled: false
   cadence: monthly
   raw_table: pioneer_aco_model
-  row_limit: 1000000
+  row_limit: null
   source_url: https://data.cms.gov/cms-innovation-center-programs/accountable-care-models/pioneer-aco-model
   row_count: 8
   keywords:

@@ -139,6 +139,16 @@ class OpenFDADataset(Component, DatasetConfig, Resolvable):
     def lakehouse_raw_key(self) -> AssetKey:
         return self._lakehouse_raw_key(self.raw_table)
 
+    @property
+    def _write_disposition_description(self) -> str:
+        if self.incremental_cursor:
+            return (
+                f"merge on {self.primary_key}, cursor {self.incremental_cursor} "
+                f"({self.incremental_lag_days}d rolling window -- see "
+                "ohdp_ingestion.openfda.source)"
+            )
+        return "replace (no incremental_cursor/primary_key configured)"
+
     # --- specs ---------------------------------------------------------------
     def _catalog_spec(self) -> AssetSpec:
         metadata: dict[str, object] = {
@@ -149,9 +159,7 @@ class OpenFDADataset(Component, DatasetConfig, Resolvable):
             "lands_in": (
                 f"{self._raw_namespace}.{self.raw_table}" if self.enabled else "(not ingested)"
             ),
-            "write_disposition": (
-                "replace (no reliable updated_at -- see ohdp_ingestion.openfda.source)"
-            ),
+            "write_disposition": self._write_disposition_description,
             "row_limit": self.row_limit,
         }
         if self.search:
@@ -172,13 +180,14 @@ class OpenFDADataset(Component, DatasetConfig, Resolvable):
         metadata: dict[str, object] = {
             "dagster/table_name": f"{self._raw_namespace}.{self.raw_table}",
             "openfda_endpoint": self.endpoint,
-            "write_disposition": "replace",
+            "write_disposition": self._write_disposition_description,
         }
+        verb = "merges into" if self.incremental_cursor else "replaces"
         return AssetSpec(
             key=self.table_key,
             deps=[self.catalog_key],
             group_name=f"{INGESTION_PREFIX}_{self._group}",
-            description=f"{self.name} — replaces {self._raw_namespace}.{self.raw_table} by dlt.",
+            description=f"{self.name} — {verb} {self._raw_namespace}.{self.raw_table} by dlt.",
             metadata=metadata,
             # cadence lives only on the table asset: it is what the cadence
             # schedules select on.
@@ -202,7 +211,13 @@ class OpenFDADataset(Component, DatasetConfig, Resolvable):
 
         @dlt_assets(
             dlt_source=openfda_source(
-                cfg.endpoint, cfg.raw_table, search=cfg.search, row_limit=cfg.row_limit
+                cfg.endpoint,
+                cfg.raw_table,
+                search=cfg.search,
+                row_limit=cfg.row_limit,
+                incremental_cursor=cfg.incremental_cursor,
+                primary_key=cfg.primary_key,
+                incremental_lag_days=cfg.incremental_lag_days,
             ),
             dlt_pipeline=build_pipeline(pipeline_name=f"{SOURCE}_{cfg.raw_table}", source=SOURCE),
             name=cfg.raw_table,
