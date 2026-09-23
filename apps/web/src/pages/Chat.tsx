@@ -27,6 +27,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useState, type FC } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
 import LogoMark from "../components/icons/LogoMark";
