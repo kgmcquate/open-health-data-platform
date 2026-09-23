@@ -50,8 +50,9 @@ export default function Home() {
               Built in the open · Visible from the source, through the plumbing, and into the dashboard
             </div> */}
             <h1 className="text-5xl font-extrabold leading-tight">
-              Massive health insights
-              <span className="text-primary"> - minus the effort.</span>
+              Health data analysis
+              <br/>
+              <span className="text-primary"> - for everyone.</span>
             </h1>
             <p className="py-6 text-lg opacity-80">
               An open analytics platform for public health data.

@@ -169,6 +169,12 @@ models:
     - Keep it readable. If a query returned too many categories to plot clearly,
     aggregate to the top N plus an "Other" bucket, and say that you did so. One
     question per chart.
+    - Do not set `width`, and do not set `height` unless the chart genuinely needs
+    a particular shape. The card sizes the chart to the reader's column, and a
+    fixed width is not a bigger chart — it is one with its right edge cut off.
+    If you do set `height`, keep it at 420 or less; a taller panel pushes the
+    rest of the answer off the screen. The server normalizes both, so a size
+    you write is a size that gets overwritten.
     - The rendered card already carries its own data table, the compiled query, and
     the chart's YAML source. Do not repeat those in your reply. Do tell the user the
     source is in the card if they might want to reuse the spec.

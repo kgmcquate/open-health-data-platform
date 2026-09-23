@@ -27,6 +27,7 @@ from hub_api.main import app
 from ohdp_agent.cube import CubeError
 from ohdp_agent.dashboard import (
     DEFAULT_DATA_PATH,
+    MAX_CHART_HEIGHT,
     ChartData,
     DashboardSpec,
     bind_data,
@@ -542,8 +543,8 @@ def test_a_unit_spec_gets_width_and_autosize_defaults() -> None:
     assert spec["autosize"] == {"type": "fit", "contains": "padding"}
 
 
-def test_a_composite_spec_is_left_to_size_itself() -> None:
-    """`width: container` would fight a `layer`; composites size their own children."""
+def test_a_layered_spec_is_sized_like_a_unit_one() -> None:
+    """A `layer` is one view with one set of axes — it takes container width."""
     layer = {
         "layer": [
             {
@@ -553,9 +554,64 @@ def test_a_composite_spec_is_left_to_size_itself() -> None:
         ]
     }
     spec = bind_data(layer, ROWS, list(ROWS[0]))
+    assert spec["width"] == "container"
+    assert spec["autosize"] == {"type": "fit", "contains": "padding"}
+    assert spec["data"] == {"values": ROWS}
+
+
+def test_an_arranging_composite_is_left_to_size_itself() -> None:
+    """Vega-Lite has no container width under facet/concat/repeat."""
+    faceted = {
+        "facet": {"field": "ed_visits.week_end", "type": "nominal"},
+        "spec": {
+            "mark": "line",
+            "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+        },
+    }
+    spec = bind_data(faceted, ROWS, list(ROWS[0]))
     assert "width" not in spec
     assert "autosize" not in spec
-    assert spec["data"] == {"values": ROWS}
+
+
+def test_an_authored_size_is_replaced_by_the_cards_own() -> None:
+    """An 880px chart in a ~700px column is clipped, not scaled — so it is capped."""
+    wide = {
+        "width": 880,
+        "height": 560,
+        "mark": "circle",
+        "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+    }
+    spec = bind_data(wide, ROWS, list(ROWS[0]))
+    assert spec["width"] == "container"
+    assert spec["height"] == MAX_CHART_HEIGHT
+
+
+def test_a_height_under_the_cap_is_kept() -> None:
+    """The cap is a ceiling, not a size: a short chart stays short."""
+    short = {
+        "height": 120,
+        "mark": "line",
+        "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+    }
+    assert bind_data(short, ROWS, list(ROWS[0]))["height"] == 120
+
+
+def test_a_layer_childs_own_size_is_dropped() -> None:
+    """A child's width beats the top level's, so it would undo the cap silently."""
+    layer = {
+        "layer": [
+            {
+                "width": 880,
+                "height": 560,
+                "mark": "line",
+                "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+            }
+        ]
+    }
+    spec = bind_data(layer, ROWS, list(ROWS[0]))
+    assert spec["width"] == "container"
+    assert "width" not in spec["layer"][0]
+    assert "height" not in spec["layer"][0]
 
 
 def test_a_transform_output_is_not_escaped() -> None:

@@ -29,8 +29,9 @@ makes them easy to get wrong:
     the single most likely way a panel fails silently.
 
   - **Theme and defaults.** The page owns one Vega `config` per theme and merges
-    it at render time; `bind_data` supplies `width: container`/`autosize: fit`
-    for a unit spec that did not set its own.
+    it at render time; `bind_data` sizes the panel to the card — `width:
+    container`/`autosize: fit`, height capped — rather than drawing whatever
+    the spec asked for.
 
 The rendered HTML is a full document for a sandboxed iframe (Open WebUI's Rich
 UI embed, ADR-0025). It loads Vega from a CDN, reports its own height by
@@ -48,6 +49,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from copy import deepcopy
 from typing import Annotated, Any
 
@@ -418,17 +420,66 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
             _escape_fields(item, columns)
 
 
-# Composite views size their own children; a top-level `width: container` and
-# `autosize: fit` are a unit-view convenience that would fight a `layer`/`facet`.
-_COMPOSITE_KEYS = frozenset({"layer", "concat", "hconcat", "vconcat", "facet", "repeat", "spec"})
+# Views that *arrange* children — concat, facet, repeat — size themselves from
+# those children, and Vega-Lite supports neither `width: container` nor
+# `autosize: fit` there. A `layer` is not one of them: it is one view with one
+# set of axes, and compiling a layered geoshape confirms it takes both (a
+# `width` signal, `autosize` preserved, no warning). So layers are sized here
+# like any unit view, and only the arranging views are left alone.
+_ARRANGING_KEYS = frozenset({"concat", "hconcat", "vconcat", "facet", "repeat", "spec"})
+
+# The tallest a panel may draw. The card holds the chart plus its data table
+# and its YAML source, and the embed reports `document.body.scrollHeight` up to
+# the chat page as the iframe's height — so a spec that asks for 560px of chart
+# pushes the whole card past a screen before a word of the answer is read. An
+# authored height *below* this is kept: a sparkline that wants 120 knows more
+# than a cap does.
+MAX_CHART_HEIGHT = 420
 
 
-def _unit_defaults(spec: dict[str, Any]) -> dict[str, Any]:
-    """Width/autosize defaults for a single-view spec; composites are left alone."""
-    if any(key in spec for key in _COMPOSITE_KEYS):
-        return {}
-    defaults = {"width": "container", "autosize": {"type": "fit", "contains": "padding"}}
-    return {k: v for k, v in defaults.items() if k not in spec}
+def _layer_children(spec: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """Every `layer` child of `spec`, at any nesting depth."""
+    children = spec.get("layer")
+    if isinstance(children, list):
+        for child in children:
+            if isinstance(child, dict):
+                yield child
+                yield from _layer_children(child)
+
+
+def _normalize_size(spec: dict[str, Any]) -> None:
+    """Size the panel to the card it is embedded in, in place.
+
+    The prompt tells the model not to size its own chart, and this is what
+    happens when it does anyway. An authored `width: 880` is not a chart that
+    renders 880px wide in a ~700px chat column — it is a chart with its right
+    edge cut off — and an authored `height: 560` is a card that fills a screen
+    before the reader reaches the answer. Neither failure is visible on this
+    side of the wire, which is the same reason `_assert_vega_lite_transforms`
+    and `_assert_data_path_binds_rows` run here rather than being left to the
+    prompt: the browser is where it goes wrong and nobody is watching.
+
+    `width: container` hands the measurement to vega-embed, which redraws on
+    every resize of the panel; `autosize: fit` keeps title, legend and axes
+    inside that width instead of letting them push the drawing out of it. The
+    authored width is replaced rather than defaulted — a number is the thing
+    being corrected.
+
+    A `layer` *child* is stripped of its own `width`/`height`: a child's value
+    beats the top level in Vega-Lite ("Conflicting property \"width\" (880 and
+    \"container\"). Using 880.", logged in the reader's console and nowhere
+    else), so leaving one there would silently undo all of the above.
+    """
+    if any(key in spec for key in _ARRANGING_KEYS):
+        return
+    spec["width"] = "container"
+    spec.setdefault("autosize", {"type": "fit", "contains": "padding"})
+    height = spec.get("height")
+    if isinstance(height, int | float) and not isinstance(height, bool):
+        spec["height"] = min(height, MAX_CHART_HEIGHT)
+    for child in _layer_children(spec):
+        child.pop("width", None)
+        child.pop("height", None)
 
 
 _VL_SCHEMA = "https://vega.github.io/schema/vega-lite/v5.json"
@@ -597,9 +648,11 @@ def bind_data(
     No `config` here either: the page holds one config per theme and merges it
     at render time, so a single spec serves light and dark (see `_THEME_CONFIG`).
 
-    Field references are escaped first (see `_escape_field_reference`), and a
-    single-view spec gets `width: container`/`autosize: fit` when it did not set
-    its own, so a bare `{mark, encoding}` matches the compiled-output rendering.
+    Field references are escaped first (see `_escape_field_reference`), and the
+    panel is sized to the card it will be embedded in (see `_normalize_size`) —
+    `width: container`/`autosize: fit`, and a height capped at
+    `MAX_CHART_HEIGHT` — so a bare `{mark, encoding}` matches the
+    compiled-output rendering and an over-sized one is brought back to it.
 
     A `data_path` that names the wrong block raises before anything is bound
     (`_assert_data_path_binds_rows`): rows over a basemap `url`, or a
@@ -613,7 +666,8 @@ def bind_data(
     # moves the columns into the source the `lookup` actually reads.
     _assert_data_path_binds_rows(vl_spec, data_path)
     _escape_fields(vl_spec, columns)
-    bound = {**_unit_defaults(vl_spec), **vl_spec, "$schema": _VL_SCHEMA}
+    bound = {**vl_spec, "$schema": _VL_SCHEMA}
+    _normalize_size(bound)
     _inject_values(bound, data_path, rows)
     return bound
 
