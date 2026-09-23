@@ -627,8 +627,11 @@ function ChatThread({
   pendingAsk,
   answerPendingAsk,
   isRunning,
+  initialQuestion,
 }: ModelPickerProps &
-  Pick<HubChatRuntime, "suggestions" | "pendingAsk" | "answerPendingAsk" | "isRunning">) {
+  Pick<HubChatRuntime, "suggestions" | "pendingAsk" | "answerPendingAsk" | "isRunning"> & {
+    initialQuestion?: string;
+  }) {
   return (
     <ThreadPrimitive.Root className="flex h-full flex-col">
       <AuiIf condition={(s) => s.thread.isEmpty}>
@@ -644,6 +647,16 @@ function ChatThread({
               only; not medical advice.
             </p>
             <Composer models={models} model={model} onModelChange={onModelChange} />
+            {initialQuestion && (
+              <div className="hidden" aria-hidden>
+                <ThreadPrimitive.Suggestion
+                  key={`initial-${initialQuestion}`}
+                  prompt={initialQuestion}
+                  method="replace"
+                  autoSend
+                />
+              </div>
+            )}
             <div className="flex flex-wrap items-center justify-center gap-2">
               {SUGGESTIONS.map((s) => (
                 <ThreadPrimitive.Suggestion
@@ -704,6 +717,16 @@ function ChatThread({
             </div>
           )}
           <Composer models={models} model={model} onModelChange={onModelChange} />
+          {initialQuestion && (
+            <div className="hidden" aria-hidden>
+              <ThreadPrimitive.Suggestion
+                key={`initial-${initialQuestion}-2`}
+                prompt={initialQuestion}
+                method="replace"
+                autoSend
+              />
+            </div>
+          )}
           <p className="pt-2 text-center text-[11px] opacity-50">
             Locked-down agent: curated tools only, server-side token limits,
             every turn logged.
@@ -719,6 +742,9 @@ function ChatThread({
 // ---------------------------------------------------------------------------
 
 export default function Chat() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const initialQuestion = params.get("q") ?? "";
   const { user, signIn } = useAuth();
   const [models, setModels] = useState<ChatModel[]>([]);
   const [model, setModel] = useState("");
@@ -809,6 +835,7 @@ export default function Chat() {
             pendingAsk={pendingAsk}
             answerPendingAsk={answerPendingAsk}
             isRunning={isRunning}
+            initialQuestion={initialQuestion}
           />
         </AssistantRuntimeProvider>
       </div>

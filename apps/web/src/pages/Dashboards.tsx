@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
 import {
@@ -62,7 +62,16 @@ function Votes({ dashboard }: { dashboard: Dashboard }) {
         title={user ? "Useful" : "Sign in to vote"}
         aria-label="Vote up"
       >
-        ▲
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          className="w-4 h-4"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        </svg>
       </button>
       <span className="text-sm tabular-nums w-6 text-center">{score}</span>
       <button
@@ -72,7 +81,16 @@ function Votes({ dashboard }: { dashboard: Dashboard }) {
         title={user ? "Not useful" : "Sign in to vote"}
         aria-label="Vote down"
       >
-        ▼
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          className="w-4 h-4"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
       </button>
       {failed && <span className="text-xs text-error">vote failed</span>}
     </div>
@@ -165,17 +183,64 @@ export function DashboardCard({
   dashboard: Dashboard;
   onDeleted?: (name: string) => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyPermalink() {
+    const path = `/dashboards/${encodeURIComponent(dashboard.name)}`;
+    const url = `${window.location.origin}${path}`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore copy failures silently for now
+    }
+  }
+  const navigate = useNavigate();
+
+  function startChat() {
+    const path = `/dashboards/${encodeURIComponent(dashboard.name)}`;
+    const queryJson = JSON.stringify(dashboard.query ?? {}, null, 2);
+    const question = `Discuss the dashboard "${dashboard.title}" at ${window.location.origin}${path}\n\nQuery JSON:\n\`\`\`json\n${queryJson}\n\`\`\``;
+    navigate(`/chat?q=${encodeURIComponent(question)}`);
+  }
+
+  function ChatAndVotes({ dashboard }: { dashboard: Dashboard }) {
+    return (
+      <div className="flex items-center">
+        <button
+          className="btn btn-ghost btn-xs"
+          title="Start a chat about this dashboard"
+          aria-label="Chat about dashboard"
+          onClick={() => void startChat()}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
+        <div role="separator" aria-hidden="true" className="w-px h-5 bg-gray-300 dark:bg-gray-600 mx-2 self-center" />
+        <Votes dashboard={dashboard} />
+      </div>
+    );
+  }
   return (
     <div className="card bg-base-200 shadow-sm">
-      <div className="card-body">
+      <div>
         {/* The embed renders the dashboard's own title, description, caption,
          * Cube query and YAML source, so the card carries only what the stored
          * page cannot know about itself: how it got here, which topics claim
          * it, and what this visitor may do to it. */}
 
-        <div className="mt-4">
-          <DashboardEmbed src={dashboardHtmlUrl(dashboard.name)} title={dashboard.title} />
-        </div>
+        <DashboardEmbed src={dashboardHtmlUrl(dashboard.name)} title={dashboard.title} />
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-2 flex-wrap">
@@ -195,26 +260,58 @@ export function DashboardCard({
               </Link>
             ))}
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-1">
-              <Link
-                to={`/dashboards/${encodeURIComponent(dashboard.name)}`}
+          <div className="flex flex-col items-end gap-1 flex-1">
+
+            <div className="flex items-center gap-1 mt-2 mb-2 w-full">
+              <p className="text-xs opacity-60 mr-auto text-left">
+                Data as of {renderedAgo(dashboard.last_rendered)}
+                {dashboard.stale && " — refreshing for the next visitor"}
+              </p>
+              <button
                 className="btn btn-ghost btn-xs"
-                title="Permalink to this dashboard"
-                aria-label="Open this dashboard's own page"
+                title="Copy permalink to clipboard"
+                aria-label="Copy permalink"
+                onClick={() => void copyPermalink()}
               >
-                🔗
-              </Link>
-              <Votes dashboard={dashboard} />
+                {copied ? (
+                  <span className="flex items-center gap-1">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      className="w-4 h-4 text-success"
+                      aria-hidden="true"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-xs">Copied</span>
+                  </span>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    className="w-4 h-4 text-primary"
+                    aria-hidden="true"
+                  >
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+                  </svg>
+                )}
+              </button>
+              <div
+                role="separator"
+                aria-hidden="true"
+                className="w-px h-5 bg-gray-300 dark:bg-gray-600 mx-2 self-center"
+              />
+              <ChatAndVotes dashboard={dashboard} />
             </div>
             <DeleteDashboard dashboard={dashboard} onDeleted={onDeleted} />
           </div>
         </div>
 
-        <p className="text-xs opacity-60">
-          Data as of {renderedAgo(dashboard.last_rendered)}
-          {dashboard.stale && " — refreshing for the next visitor"}
-        </p>
       </div>
     </div>
   );
