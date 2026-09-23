@@ -5,6 +5,12 @@ export interface User {
   email: string;
   name: string;
   tier: string;
+  /** Whether this user holds the admin role. Derived server-side from the
+   * deployment's configured admin list on every request (`hub_api.auth`), so
+   * it is a fresh answer rather than something baked into a session — but it
+   * is still only a *display* signal here. Hiding a button is not access
+   * control; every admin route checks the role itself. */
+  is_admin: boolean;
 }
 
 /** A Consumer-aligned OpenMetadata domain — the subject a Topics page groups
@@ -223,3 +229,10 @@ export const answerAsk = (askId: string, answer: string) =>
  * means anything with a verified identity behind it. */
 export const voteDashboard = (name: string, value: 1 | 0 | -1) =>
   sendJson<Dashboard>(`/api/dashboards/${encodeURIComponent(name)}/vote`, "POST", { value });
+
+/** Delete a dashboard, its stored render and every vote on it. Admin only and
+ * irreversible — the spec lives nowhere else, so there is nothing to restore
+ * it from. 403 for a non-admin, which is the real wall; the UI only decides
+ * whether to offer the button. */
+export const deleteDashboard = (name: string) =>
+  sendJson<{ ok: true }>(`/api/dashboards/${encodeURIComponent(name)}`, "DELETE");

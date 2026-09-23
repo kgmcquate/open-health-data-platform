@@ -200,10 +200,22 @@ class Settings(BaseSettings):
     # that used to live in oauth2-proxy-app.yaml's `authenticatedEmailsFile`,
     # now that the hub does its own OIDC instead of sitting behind that wall.
     allowed_emails: str = ""
+    # Comma-separated list of emails that get the admin role (hub_api.auth's
+    # `is_admin`). Config, not a database column, on purpose: an admin can
+    # delete published dashboards, so the set of them should be something a
+    # deploy changes and a database write cannot — and revoking one takes
+    # effect on the next request rather than at their next sign-in, because
+    # the role is derived per request instead of being frozen into the session
+    # cookie the way `tier` is. Empty means nobody is an admin.
+    admin_emails: str = ""
 
     @property
     def allowed_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()]
+
+    @property
+    def admin_emails_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
 
     @property
     def horizon_catalog_uri(self) -> str:

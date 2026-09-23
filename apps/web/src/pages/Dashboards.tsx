@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
-import { dashboardHtmlUrl, fetchDashboards, voteDashboard, type Dashboard } from "../lib/api";
+import {
+  dashboardHtmlUrl,
+  deleteDashboard,
+  fetchDashboards,
+  voteDashboard,
+  type Dashboard,
+} from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 
 /** How long ago the stored page was rendered, in words. The numbers in a
@@ -73,9 +79,92 @@ function Votes({ dashboard }: { dashboard: Dashboard }) {
   );
 }
 
+/** Take a dashboard down. Admins only, and only rendered for them — but the
+ * route checks the role itself, so this is about not offering a button that
+ * would 403, not about who can actually delete.
+ *
+ * Two clicks, not a `window.confirm`: the row, its stored render and its
+ * votes go, and nothing anywhere can rebuild the spec. Confirming inline
+ * keeps that warning next to the chart it is about instead of in a browser
+ * dialog that names nothing. */
+function DeleteDashboard({
+  dashboard,
+  onDeleted,
+}: {
+  dashboard: Dashboard;
+  onDeleted?: (name: string) => void;
+}) {
+  const { user } = useAuth();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  if (!user?.is_admin) return null;
+
+  async function remove() {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await deleteDashboard(dashboard.name);
+      // The parent drops the card. Nothing is re-fetched: the row is gone, so
+      // there is no fresher server state to go and read.
+      onDeleted?.(dashboard.name);
+    } catch (exc) {
+      setFailed(exc instanceof Error ? exc.message : "Delete failed");
+      setConfirming(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!confirming) {
+    return (
+      <div className="flex flex-col items-end">
+        <button
+          className="btn btn-ghost btn-xs text-error"
+          onClick={() => setConfirming(true)}
+          title="Delete this dashboard (admin)"
+        >
+          Delete
+        </button>
+        {failed && <span className="text-xs text-error">{failed}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs opacity-70">Delete for good?</span>
+      <button
+        className="btn btn-error btn-xs"
+        onClick={() => void remove()}
+        disabled={busy}
+      >
+        {busy ? "Deleting…" : "Yes, delete"}
+      </button>
+      <button
+        className="btn btn-ghost btn-xs"
+        onClick={() => setConfirming(false)}
+        disabled={busy}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 // Exported so TopicDetail can render a topic's own dashboards with the same
 // card (including the live chart) instead of a copy of it.
-export function DashboardCard({ dashboard }: { dashboard: Dashboard }) {
+//
+// `onDeleted` is how the page that owns the list hears about an admin delete —
+// the card cannot drop itself.
+export function DashboardCard({
+  dashboard,
+  onDeleted,
+}: {
+  dashboard: Dashboard;
+  onDeleted?: (name: string) => void;
+}) {
   const query = useMemo(() => JSON.stringify(dashboard.query, null, 2), [dashboard.query]);
 
   return (
@@ -94,7 +183,10 @@ export function DashboardCard({ dashboard }: { dashboard: Dashboard }) {
             </div>
             <p className="opacity-80">{dashboard.description}</p>
           </div>
-          <Votes dashboard={dashboard} />
+          <div className="flex flex-col items-end gap-1">
+            <Votes dashboard={dashboard} />
+            <DeleteDashboard dashboard={dashboard} onDeleted={onDeleted} />
+          </div>
         </div>
 
         {dashboard.topics.length > 0 && (
@@ -139,6 +231,11 @@ export function DashboardCard({ dashboard }: { dashboard: Dashboard }) {
 
 export default function Dashboards() {
   const { data, loading, error } = useFetch<Dashboard[]>(fetchDashboards);
+  // Names an admin has deleted this visit. Kept beside `useFetch`'s result
+  // rather than refetching the list: the row is gone server-side, and a
+  // refetch would redraw every other card's iframe to learn that.
+  const [deleted, setDeleted] = useState<string[]>([]);
+  const shown = data?.filter((dashboard) => !deleted.includes(dashboard.name));
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
@@ -154,7 +251,7 @@ export default function Dashboards() {
 
       {loading && <span className="loading loading-spinner loading-lg" />}
       {error && <div className="alert alert-error">{error}</div>}
-      {data && data.length === 0 && (
+      {shown && shown.length === 0 && (
         <div className="alert">
           No dashboards yet — ask the chatbot to draw something and save it, and
           it will show up here.
@@ -162,8 +259,12 @@ export default function Dashboards() {
       )}
 
       <div className="space-y-6">
-        {data?.map((dashboard) => (
-          <DashboardCard key={dashboard.id} dashboard={dashboard} />
+        {shown?.map((dashboard) => (
+          <DashboardCard
+            key={dashboard.id}
+            dashboard={dashboard}
+            onDeleted={(name) => setDeleted((names) => [...names, name])}
+          />
         ))}
       </div>
     </div>

@@ -26,10 +26,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from hub_api import chat, dashboards, db, issues, library
 from hub_api.main import app
+from ohdp_shared import settings
 
 SPEC: dict[str, Any] = {
     "name": "ed-visits",
@@ -55,6 +57,10 @@ ROWS = [
 
 VOTER = "voter@example.org"
 OTHER_VOTER = "other@example.org"
+# Who `/auth/login`'s local-dev bypass signs in as (hub_api.auth.login). The
+# admin tests below use that bypass rather than a dependency override, so the
+# email they name in `admin_emails` has to be this one.
+DEV = "dev@localhost"
 
 
 @pytest.fixture
@@ -99,6 +105,32 @@ def signed_in(client: TestClient) -> Iterator[TestClient]:
         yield client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def browser(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    """A caller holding a **real** signed-in session cookie, and no role.
+
+    Deliberately not a dependency override like `signed_in` above. What the
+    admin tests are checking is the chain from the session cookie through
+    `auth.is_admin` to `auth.require_admin`, and overriding any link in it
+    would leave the thing under test unexercised. `/auth/login` with no OIDC
+    client configured is the local-dev bypass that mints exactly that cookie
+    (`hub_api.auth.login`), so pointing the settings at local dev here gets a
+    signed-in browser without an identity provider in the loop.
+    """
+    monkeypatch.setattr(settings, "environment", "local")
+    monkeypatch.setattr(settings, "oidc_client_id", "")
+    monkeypatch.setattr(settings, "admin_emails", "")
+    assert client.get("/auth/login", follow_redirects=False).status_code == 303
+    return client
+
+
+@pytest.fixture
+def admin(browser: TestClient, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    """The same session, with that email named in the deployment's admin list."""
+    monkeypatch.setattr(settings, "admin_emails", DEV)
+    return browser
 
 
 def _save(client: TestClient, **overrides: Any) -> None:
@@ -436,3 +468,89 @@ def test_a_vote_must_be_up_down_or_withdrawn(signed_in: TestClient, cube: None) 
     _save(signed_in)
 
     assert signed_in.post("/api/dashboards/ed-visits/vote", json={"value": 7}).status_code == 422
+
+
+# --- deleting (admins only) ------------------------------------------------
+
+
+def test_an_admin_can_take_a_dashboard_down(admin: TestClient, cube: None) -> None:
+    """The escape hatch voting does not provide: a dashboard that should never
+    have been published is gone now, not once two people have downvoted it."""
+    _save(admin)
+
+    response = admin.delete("/api/dashboards/ed-visits")
+
+    assert response.status_code == 200
+    assert response.json()["deleted"]["title"] == SPEC["title"]
+    assert admin.get("/api/dashboards").json() == []
+
+
+def test_a_delete_takes_the_render_and_the_votes_with_it(
+    admin: TestClient, engine: Engine, cube: None
+) -> None:
+    """Nothing is left behind to resurrect or to count. The votes matter
+    because the foreign key's CASCADE is not honoured by SQLite without a
+    pragma we do not set — `library.delete` deletes them itself."""
+    _save(admin)
+    library.vote(engine, name="ed-visits", voter_email=OTHER_VOTER, value=1)
+
+    admin.delete("/api/dashboards/ed-visits")
+
+    assert library.by_name(engine, "ed-visits") is None
+    assert library.rendered_page(engine, "ed-visits") is None
+    with engine.connect() as connection:
+        assert connection.execute(select(library.dashboard_votes)).first() is None
+
+
+def test_a_signed_in_visitor_who_is_not_an_admin_cannot_delete(
+    browser: TestClient, cube: None
+) -> None:
+    """Voting is what a signed-in visitor gets. Deleting is not — and the
+    dashboard is still there afterwards, which is the part that matters."""
+    _save(browser)
+
+    response = browser.delete("/api/dashboards/ed-visits")
+
+    assert response.status_code == 403
+    assert [entry["name"] for entry in browser.get("/api/dashboards").json()] == ["ed-visits"]
+
+
+def test_a_signed_out_visitor_cannot_delete(client: TestClient, cube: None) -> None:
+    _save(client)
+
+    assert client.delete("/api/dashboards/ed-visits").status_code == 401
+
+
+def test_the_role_is_read_per_request_not_frozen_into_the_session(
+    admin: TestClient, monkeypatch: pytest.MonkeyPatch, cube: None
+) -> None:
+    """The reason `is_admin` reads configuration instead of the session it was
+    issued with: a session cookie lives fourteen days, and revoking an admin
+    must not have to wait that long. Same cookie, admin removed, refused."""
+    _save(admin)
+    monkeypatch.setattr(settings, "admin_emails", "someone-else@example.org")
+
+    assert admin.delete("/api/dashboards/ed-visits").status_code == 403
+
+
+def test_the_admin_list_is_case_insensitive(
+    browser: TestClient, monkeypatch: pytest.MonkeyPatch, cube: None
+) -> None:
+    """An IdP's casing is not a permission boundary."""
+    _save(browser)
+    monkeypatch.setattr(settings, "admin_emails", DEV.upper())
+
+    assert browser.delete("/api/dashboards/ed-visits").status_code == 200
+
+
+def test_deleting_a_dashboard_that_does_not_exist(admin: TestClient) -> None:
+    assert admin.delete("/api/dashboards/nope").status_code == 404
+
+
+def test_the_session_route_reports_the_role(admin: TestClient) -> None:
+    """What the UI decides whether to offer a delete button on."""
+    assert admin.get("/auth/me").json()["is_admin"] is True
+
+
+def test_the_session_route_reports_no_role_for_everyone_else(browser: TestClient) -> None:
+    assert browser.get("/auth/me").json()["is_admin"] is False

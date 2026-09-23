@@ -13,6 +13,13 @@ What a session carries: `{"user": {"email", "name", "tier"}}`. `tier` comes
 from the `users` table at login time, so a Stripe-driven tier change takes
 effect at next login; that is acceptable until billing ships (M4).
 
+The **admin role is deliberately not in that dict**. It is derived from
+`settings.admin_emails_list` on every read (`is_admin`), so a session cookie
+issued before someone was made an admin — or after they stopped being one —
+carries no stale authority. `require_admin` is the dependency that gates the
+destructive routes; today that is deleting a published dashboard
+(`hub_api.content`).
+
 The `/tools` sub-app (`hub_api.issues.get_reporter`) reads the same session
 cookie for its browser callers, and falls back to a shared bearer token for
 the configured `ohdp-tools` MCP/OpenAPI connection, which has no session of its
@@ -69,6 +76,35 @@ class User(BaseModel):
     email: str
     name: str = ""
     tier: str = "free"
+    # Derived from `settings.admin_emails_list` on every read — never taken
+    # from the session cookie, even if an older cookie carries the field. See
+    # `is_admin`.
+    is_admin: bool = False
+
+
+def is_admin(email: str) -> bool:
+    """Whether this verified email holds the admin role.
+
+    Read from configuration at call time rather than from the session or the
+    `users` table, and that is the whole design:
+
+      - **Not the session.** A session cookie lives fourteen days, so a role
+        baked into one at login outlives the decision to revoke it by up to
+        that long. `tier` accepts that lag because it only widens a quota;
+        admin permits destroying other people's published work, so it is
+        resolved per request and a removed admin loses the role on the next
+        one.
+      - **Not the database.** `users` is written by the login path. Keeping
+        the role out of it means no code path that touches that table can
+        grant admin, and the set of admins is reviewable in the deployment's
+        values file rather than only in production data.
+
+    The cost is that adding an admin is a deploy (`OHDP_ADMIN_EMAILS`), not a
+    click. At one operator that is the right trade; a hub with real admin
+    turnover would want a `role` column plus an admin-only route to set it,
+    and this function is the seam to change.
+    """
+    return email.lower() in settings.admin_emails_list
 
 
 def get_current_user(request: Request) -> User:
@@ -76,7 +112,20 @@ def get_current_user(request: Request) -> User:
     data = request.session.get("user")
     if not data:
         raise HTTPException(401, "Not signed in.")
-    return User(**data)
+    email = str(data.get("email", ""))
+    return User(**{**data, "email": email, "is_admin": is_admin(email)})
+
+
+def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
+    """An admin, or 403. The wall in front of every destructive route.
+
+    403 rather than 404: the caller is signed in and the resource they named
+    is real, so hiding its existence buys nothing and costs a confusing error.
+    """
+    if not user.is_admin:
+        log.warning("admin_route_refused", email=user.email)
+        raise HTTPException(403, "Admin access is required.")
+    return user
 
 
 def _upsert_user(engine: Engine, *, email: str, name: str) -> str:

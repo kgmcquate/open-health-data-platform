@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import {
   fetchDashboards,
@@ -101,6 +101,9 @@ export default function TopicDetail() {
   const topic = useFetch<TopicDetailData>(() => fetchTopic(name), [name]);
   const dashboards = useFetch<Dashboard[]>(() => fetchDashboards(name), [name]);
   const literature = useFetch<LiteratureItem[]>(() => fetchLiterature(name), [name]);
+  // Dashboards an admin deleted from this page — same trick as the Dashboards
+  // page, and declared up here because the early returns below are after it.
+  const [deleted, setDeleted] = useState<string[]>([]);
 
   if (topic.loading) {
     return (
@@ -121,6 +124,9 @@ export default function TopicDetail() {
   }
 
   const { topic: domain, metrics, assets, sources } = topic.data;
+  const shownDashboards = (dashboards.data ?? []).filter(
+    (dashboard) => !deleted.includes(dashboard.name),
+  );
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
@@ -165,11 +171,15 @@ export default function TopicDetail() {
         title="Dashboards"
         loading={dashboards.loading}
         error={dashboards.error}
-        empty={(dashboards.data ?? []).length === 0}
+        empty={shownDashboards.length === 0}
       >
         <div className="space-y-6">
-          {dashboards.data?.map((dashboard) => (
-            <DashboardCard key={dashboard.id} dashboard={dashboard} />
+          {shownDashboards.map((dashboard) => (
+            <DashboardCard
+              key={dashboard.id}
+              dashboard={dashboard}
+              onDeleted={(deletedName) => setDeleted((names) => [...names, deletedName])}
+            />
           ))}
         </div>
       </Section>

@@ -202,7 +202,10 @@ flowchart TB
 > `hub-api` (A2) serves its own chat UI at `app.`, reached through ingress directly
 > — it does its own OIDC sign-in (`hub_api.auth`) rather than sitting behind an
 > oauth2-proxy wall, gated by `settings.allowed_emails_list` until billing (M4)
-> can meter strangers.
+> can meter strangers. A second list, `settings.admin_emails_list`, carries the
+> one role the hub has: an admin can delete a published dashboard. It is read
+> from configuration on every request rather than stored in the session or the
+> `users` table, so revoking it does not wait out a fourteen-day cookie.
 >
 > `cube` (D6) is reached directly through ingress, not behind oauth2-proxy —
 > unlike Dagster, its authn/authz is Cube's own JWT security

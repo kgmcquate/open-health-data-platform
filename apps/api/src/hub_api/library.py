@@ -65,10 +65,12 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
-    delete,
     func,
     select,
     update,
+)
+from sqlalchemy import (
+    delete as delete_statement,
 )
 from sqlalchemy.engine import Connection, Engine
 
@@ -418,6 +420,38 @@ def save(
     return existing is None, count
 
 
+def delete(engine: Engine, name: str) -> dict[str, Any] | None:
+    """Remove a dashboard for good. Returns what was deleted, or `None`.
+
+    The counterpart to hiding, not a stronger version of it. A downvoted
+    dashboard is hidden from the public page and stays readable and
+    correctable by the agent (`by_name`); this erases the row, the stored
+    render and the votes cast on it, and nothing rebuilds it — the spec lives
+    nowhere else. That is why `hub_api.content` puts it behind
+    `auth.require_admin` while a vote needs only a signed-in session: votes
+    are reversible and a delete is not.
+
+    Its votes go with it. The foreign key declares `ON DELETE CASCADE`, but
+    SQLite only honours that with `PRAGMA foreign_keys=ON`, which
+    `db.make_engine` does not set — so the vote rows are deleted explicitly,
+    in the same transaction, rather than relying on a behaviour that differs
+    between the database we test on and the one we run on.
+
+    The summary is built before the row is gone, so a caller can log what it
+    removed instead of just the name it was handed.
+    """
+    with engine.begin() as connection:
+        row = connection.execute(select(dashboards).where(dashboards.c.name == name)).first()
+        if row is None:
+            return None
+        entry = _summary(row)
+        connection.execute(
+            delete_statement(dashboard_votes).where(dashboard_votes.c.dashboard_id == int(row.id))
+        )
+        connection.execute(delete_statement(dashboards).where(dashboards.c.id == int(row.id)))
+    return entry
+
+
 def vote(engine: Engine, *, name: str, voter_email: str, value: int) -> dict[str, Any] | None:
     """Record one person's vote (+1/-1), or withdraw it with 0.
 
@@ -434,7 +468,7 @@ def vote(engine: Engine, *, name: str, voter_email: str, value: int) -> dict[str
         dashboard_id = int(row.id)
 
         connection.execute(
-            delete(dashboard_votes).where(
+            delete_statement(dashboard_votes).where(
                 dashboard_votes.c.dashboard_id == dashboard_id,
                 dashboard_votes.c.voter_email == voter_email,
             )

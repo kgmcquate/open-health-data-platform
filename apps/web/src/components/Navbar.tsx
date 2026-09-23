@@ -55,6 +55,8 @@ export default function Navbar() {
             <button tabIndex={0} className="btn btn-ghost btn-sm">
               {user.name || user.email}
               {user.tier === "paid" && <span className="badge badge-accent badge-sm">pro</span>}
+              {/* So it is never a surprise that this session can delete things. */}
+              {user.is_admin && <span className="badge badge-outline badge-sm">admin</span>}
             </button>
             <ul className="dropdown-content menu bg-base-100 rounded-box z-50 w-52 p-2 shadow border border-base-300">
               <li className="menu-title px-4 py-1 text-xs">{user.email}</li>

@@ -23,10 +23,14 @@ Topics are the exception: that page reads OpenMetadata's own Consumer-aligned
 domains directly (`ohdp_agent.domains`) rather than a table here, so a topic
 added or edited in the catalog shows up with no redeploy — OpenMetadata is
 the source of truth for what topics, metrics and data assets exist, the same
-shift ADR-0019 made for the lakehouse's schema. The public GET routes are all
-read-only: they are marketing surfaces, and gating them behind sign-in would
-defeat them. `POST /api/internal/literature/trending` is the one write route
-in this module and is not public — see its own docstring.
+shift ADR-0019 made for the lakehouse's schema. The GET routes are all
+read-only and all public: they are marketing surfaces, and gating them behind
+sign-in would defeat them. The three writes here are each gated differently,
+in increasing order of what they can wreck — a dashboard vote needs a signed-in
+session (one row per person, and reversible), deleting a dashboard needs the
+admin role (`hub_api.auth.require_admin`, irreversible), and
+`POST /api/internal/literature/trending` is not a browser route at all but a
+bearer-token call from Dagster — see its own docstring.
 
 **Why the trending sync writes over HTTP rather than opening its own
 connection to this database:** hub-api is the only thing that writes to the
@@ -60,7 +64,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Engine
 
-from hub_api import dashboards, db, library
+from hub_api import auth, dashboards, db, library
 from hub_api.chat import get_optional_user_email, get_user_email
 from ohdp_agent.domains import CatalogAsset, Domain, DomainsClient, DomainsError
 from ohdp_shared import get_logger, settings
@@ -244,6 +248,46 @@ def vote_dashboard(
         raise HTTPException(404, "No such dashboard.")
     log.info("dashboard_voted", name=name, value=body.value, score=entry["score"])
     return entry
+
+
+@router.delete("/dashboards/{name}")
+def delete_dashboard(
+    request: Request,
+    name: str,
+    # The only admin-gated route on the hub. Voting a dashboard down hides it
+    # and anyone signed in can do that; removing it is irreversible, so it
+    # takes the role (`hub_api.auth.require_admin`) rather than a session.
+    admin: Annotated[auth.User, Depends(auth.require_admin)],
+) -> dict[str, Any]:
+    """Delete a published dashboard, its stored render and its votes.
+
+    This is the escape hatch the "the agent can publish, and votes sort it
+    out" decision needs (`hub_api.library`'s docstring). Voting handles a
+    dashboard that is merely unpopular; it does nothing for one that should
+    never have been on a public page at all — a chart built on a
+    misunderstood metric, say — because `HIDE_AT_SCORE` still requires two
+    net downvotes from people who had to see it first. An admin can take that
+    one down immediately.
+
+    Nothing recreates the row: the spec exists only here, so the deleted
+    entry is logged with what it was rather than just the name that was
+    passed in.
+    """
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        raise HTTPException(503, "Database is not available.")
+    entry = library.delete(engine, name)
+    if entry is None:
+        raise HTTPException(404, "No such dashboard.")
+    log.info(
+        "dashboard_deleted",
+        name=name,
+        title=entry["title"],
+        source=entry["source"],
+        score=entry["score"],
+        by=admin.email,
+    )
+    return {"ok": True, "deleted": entry}
 
 
 @router.get("/literature")
