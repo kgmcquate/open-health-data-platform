@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
@@ -165,32 +165,21 @@ export function DashboardCard({
   dashboard: Dashboard;
   onDeleted?: (name: string) => void;
 }) {
-  const query = useMemo(() => JSON.stringify(dashboard.query, null, 2), [dashboard.query]);
-
   return (
     <div className="card bg-base-200 shadow-sm">
       <div className="card-body">
+        {/* The embed renders the dashboard's own title, description, caption,
+         * Cube query and YAML source, so the card carries only what the stored
+         * page cannot know about itself: how it got here, which topics claim
+         * it, and what this visitor may do to it. */}
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="card-title">{dashboard.title}</h2>
-              {dashboard.featured && <span className="badge badge-accent">featured</span>}
-              {dashboard.source === "chat" && (
-                <span className="badge badge-ghost" title="Saved from a chat conversation">
-                  from chat
-                </span>
-              )}
-            </div>
-            <p className="opacity-80">{dashboard.description}</p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <Votes dashboard={dashboard} />
-            <DeleteDashboard dashboard={dashboard} onDeleted={onDeleted} />
-          </div>
-        </div>
-
-        {dashboard.topics.length > 0 && (
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {dashboard.featured && <span className="badge badge-accent">featured</span>}
+            {dashboard.source === "chat" && (
+              <span className="badge badge-ghost" title="Saved from a chat conversation">
+                from chat
+              </span>
+            )}
             {dashboard.topics.map((topic) => (
               <Link
                 key={topic}
@@ -201,29 +190,20 @@ export function DashboardCard({
               </Link>
             ))}
           </div>
-        )}
+          <div className="flex flex-col items-end gap-1">
+            <Votes dashboard={dashboard} />
+            <DeleteDashboard dashboard={dashboard} onDeleted={onDeleted} />
+          </div>
+        </div>
 
         <div className="mt-4">
           <DashboardEmbed src={dashboardHtmlUrl(dashboard.name)} title={dashboard.title} />
         </div>
 
-        {dashboard.caption && (
-          <p className="text-sm opacity-70 mt-2">{dashboard.caption}</p>
-        )}
-
         <p className="text-xs opacity-60">
           Data as of {renderedAgo(dashboard.last_rendered)}
           {dashboard.stale && " — refreshing for the next visitor"}
         </p>
-
-        <details className="collapse collapse-arrow bg-base-300 mt-2">
-          <summary className="collapse-title text-sm font-medium">
-            The query behind this dashboard
-          </summary>
-          <div className="collapse-content">
-            <pre className="text-xs overflow-x-auto p-2">{query}</pre>
-          </div>
-        </details>
       </div>
     </div>
   );
