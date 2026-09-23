@@ -57,22 +57,7 @@ export default function Navbar() {
           <button className="btn btn-primary btn-sm" onClick={signIn}>
             Sign in
           </button>
-        ) : (
-          <div className="dropdown dropdown-end">
-            <button tabIndex={0} className="btn btn-ghost btn-sm">
-              {user.name || user.email}
-              {user.tier === "paid" && <span className="badge badge-accent badge-sm">pro</span>}
-              {/* So it is never a surprise that this session can delete things. */}
-              {user.is_admin && <span className="badge badge-outline badge-sm">admin</span>}
-            </button>
-            <ul className="dropdown-content menu bg-base-100 rounded-box z-50 w-52 p-2 shadow border border-base-300">
-              <li className="menu-title px-4 py-1 text-xs">{user.email}</li>
-              <li>
-                <button onClick={() => void signOut()}>Sign out</button>
-              </li>
-            </ul>
-          </div>
-        )}
+        ) : null}
 
         <div className="dropdown dropdown-end lg:hidden">
           <button tabIndex={0} className="btn btn-ghost btn-sm" aria-label="Menu">
@@ -89,11 +74,28 @@ export default function Navbar() {
           </ul>
         </div>
 
+        {/* The signed-in identity lives in here rather than in the bar itself:
+            an email is far wider than the gear, and it is only needed on the
+            way to signing out. */}
         <div className="dropdown dropdown-end">
           <button tabIndex={0} className="btn btn-ghost btn-sm btn-circle" aria-label="Settings">
             <GearIcon className="h-5 w-5" />
           </button>
-          <div className="dropdown-content menu bg-base-100 rounded-box z-50 w-56 p-4 shadow border border-base-300 gap-2">
+          <div className="dropdown-content menu bg-base-100 rounded-box z-50 w-64 p-4 shadow border border-base-300 gap-2">
+            {user && (
+              <div className="flex flex-col gap-1 pb-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium truncate">{user.name || user.email}</span>
+                  {user.tier === "paid" && <span className="badge badge-accent badge-sm">pro</span>}
+                  {/* So it is never a surprise that this session can delete things. */}
+                  {user.is_admin && <span className="badge badge-outline badge-sm">admin</span>}
+                </div>
+                {user.name && (
+                  <span className="text-xs opacity-70 truncate">{user.email}</span>
+                )}
+              </div>
+            )}
+
             <label className="label" htmlFor="theme-select">
               <span className="label-text">Appearance</span>
             </label>
@@ -113,6 +115,15 @@ export default function Navbar() {
                 </option>
               ))}
             </select>
+
+            {user && (
+              <>
+                <div className="divider my-1" />
+                <button className="btn btn-ghost btn-sm justify-start" onClick={() => void signOut()}>
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
