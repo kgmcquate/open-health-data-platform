@@ -72,6 +72,7 @@ The job/schedule for this asset live in ``ohdp_orchestration.jobs``/
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import httpx
@@ -163,6 +164,30 @@ _COLUMN_TYPE_TO_OM_TYPE: dict[str, DataTypeTopic] = {
     "string": DataTypeTopic.STRING,
     "text": DataTypeTopic.STRING,
 }
+
+# OM validates every entity/field `name` server-side against this pattern
+# (`entityName` in its JSON schemas): no `>`, no `"`, no control characters
+# and no `::` anywhere. A source column name is free text straight from the
+# upstream catalog and happily violates it — CMS's
+# `innovation_center_milestones_and_updates` ships a column literally named
+# `Link ("Learn More")` — and the server rejects the *whole* APIEndpoint PUT
+# with a 400 when a single `responseSchema` field name does, so the
+# offending characters are stripped for the catalog only, never for the
+# ingested data.
+_OM_NAME_FORBIDDEN = re.compile(r'[>"\x00-\x1f]')
+
+
+def _om_field_name(raw: str) -> FieldName:
+    """`raw` conformed to OM's `entityName` pattern: forbidden characters
+    dropped, `::` collapsed to `:`, then truncated to OM's 128-char cap
+    (some CDC source columns, e.g. NNDSS's vibriosis tables, carry
+    auto-generated Socrata field names past it). Truncation comes last so a
+    stripped character can't push the result back over the limit, and a name
+    that sanitizes to empty falls back to the untouched original so the
+    column still shows up rather than failing the request."""
+    cleaned = _OM_NAME_FORBIDDEN.sub("", raw).replace("::", ":")
+    return FieldName((cleaned or raw)[:128])
+
 
 _ASSET_NODES_QUERY = """
 query OpenMetadataAssetGraph {
@@ -318,10 +343,7 @@ def _endpoint_request(
     if table_schema:
         schema_fields = [
             FieldModel(
-                # Some CDC source columns (e.g. NNDSS's vibriosis tables) carry
-                # auto-generated Socrata field names past OM's 128-char FieldName
-                # cap — truncate for the catalog only, not the ingested data.
-                name=FieldName(column["name"][:128]),
+                name=_om_field_name(column["name"]),
                 dataType=_COLUMN_TYPE_TO_OM_TYPE.get(
                     str(column["type"]).lower(), DataTypeTopic.STRING
                 ),

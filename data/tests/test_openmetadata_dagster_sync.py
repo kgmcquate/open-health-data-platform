@@ -95,6 +95,32 @@ def test_endpoint_request_from_catalog_node() -> None:
     assert field_names == {"state", "_2017"}
 
 
+def test_endpoint_request_sanitizes_column_names_om_would_reject() -> None:
+    """OM rejects the whole APIEndpoint PUT with a 400 when any field name
+    breaks its `entityName` pattern, and upstream column names are free text
+    — CMS's `innovation_center_milestones_and_updates` really does ship a
+    column named `Link ("Learn More")`. The forbidden characters are
+    stripped, and an over-long name is still truncated to 128 chars *after*
+    stripping."""
+    from ohdp_orchestration.assets.openmetadata_dagster_sync import _endpoint_request
+
+    node = _catalog_node()
+    node["metadataEntries"][2]["schema"]["columns"] = [
+        {"name": 'Link ("Learn More")', "type": "url", "description": None},
+        {"name": "a::b", "type": "text", "description": None},
+        {"name": 'x"' + "y" * 200, "type": "text", "description": None},
+    ]
+
+    request = _endpoint_request(node, "cms.datasets", _fake_tags())
+
+    assert request.responseSchema is not None
+    assert request.responseSchema.schemaFields is not None
+    field_names = [str(f.name.root) for f in request.responseSchema.schemaFields]
+    assert field_names[0] == "Link (Learn More)"
+    assert field_names[1] == "a:b"
+    assert field_names[2] == "x" + "y" * 127
+
+
 def test_endpoint_request_tags_dataset_as_available_when_disabled() -> None:
     from ohdp_orchestration.assets.openmetadata_dagster_sync import _endpoint_request
 
