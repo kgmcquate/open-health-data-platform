@@ -9,12 +9,13 @@ opposed to the Source-aligned domains that name an upstream data provider
 catalog is what updates the site — no redeploy, no second copy to keep in
 sync.
 
-Three reads, all feeding `hub_api.content`'s `/api/topics` routes:
+Four reads, feeding `hub_api.content`'s `/api/topics` and `/api/search`:
 
     list_by_type      the topics themselves (and, internally, the
                       Source-aligned domains `upstream_sources` matches against)
     assets_in_domain  a topic's tables and metrics, via the search index
     upstream_sources  which providers a topic's tables came from, via lineage
+    search            free-text catalog search, via the same search index
 
 This hits OM's plain REST API, not the MCP endpoint `ohdp_agent.catalog`
 talks to: these are flat reads with no need for JSON-RPC or an LLM tool-call
@@ -35,7 +36,8 @@ relies on.
 page is otherwise five-plus OM round trips. Every read here is cached in
 process for `_CACHE_TTL_SECONDS`; the catalog changes on a daily sync at
 most, so serving a ten-minute-old topic list is free accuracy-wise and keeps
-a hot page off OM's back.
+a hot page off OM's back. `search` shares that cache, which is also why it has
+a size cap — see the cache section at the bottom of this module.
 """
 
 from __future__ import annotations
@@ -57,6 +59,19 @@ log = get_logger(__name__)
 # sync, so this only has to be short enough that a hand edit in OM's UI shows
 # up while someone is still looking for it.
 _CACHE_TTL_SECONDS = 600
+
+# The entity types `search` will return. Not a taste call: `_to_asset` builds a
+# link as `<om>/<entityType>/<fqn>`, which is a real OM route for exactly these
+# two. The `dataAsset` index also carries pipelines, containers, stored
+# procedures and glossary terms, whose pages either live at a different path or
+# mean nothing to a visitor — dropping them beats linking them wrongly.
+SEARCHABLE_ENTITY_TYPES = ("table", "metric")
+
+# Characters Elasticsearch's query_string parser reads as syntax. OM passes `q`
+# straight through to it, so a visitor typing `covid (2024` or an unbalanced
+# quote would get a 400 back mid-keystroke instead of results. Replaced with
+# spaces rather than deleted, so `flu/rsv` searches for two words.
+_QUERY_STRING_RESERVED = str.maketrans({ch: " " for ch in '+-=&|!(){}[]^"~*?:\\/<>'})
 
 # Upstream hops to walk from a curated mart before giving up on finding the
 # provider it came from. 3 is also OM's own server-side ceiling for this
@@ -197,6 +212,46 @@ class DomainsClient:
         assets.sort(key=lambda a: a.name)
         return assets
 
+    async def search(self, text: str, *, limit: int = 10) -> list[CatalogAsset]:
+        """Free-text search across the catalog's tables and metrics.
+
+        The same `/api/v1/search/query` endpoint `assets_in_domain` uses, with
+        the visitor's words in `q` instead of a domain filter. OM's index is
+        already built over every asset's name, description and columns and is
+        rebuilt by the same sync that seeds the domains, so the hub's search
+        bar asks it rather than keeping a second index of its own.
+
+        Results come back in OM's relevance order — unlike `assets_in_domain`,
+        which lists a whole domain and therefore sorts by name. An empty or
+        all-punctuation `text` is not a query and returns `[]` without a round
+        trip.
+        """
+        query = search_query(text)
+        if not query:
+            return []
+        query_filter = {
+            "query": {"bool": {"must": [{"terms": {"entityType": list(SEARCHABLE_ENTITY_TYPES)}}]}}
+        }
+        body = await self._get(
+            "/api/v1/search/query",
+            {
+                "q": query,
+                "index": "dataAsset",
+                "from": "0",
+                "size": str(limit),
+                "query_filter": json.dumps(query_filter),
+            },
+        )
+        assets: list[CatalogAsset] = []
+        for hit in body.get("hits", {}).get("hits", []):
+            raw = hit.get("_source", {})
+            entity_type = str(raw.get("entityType", ""))
+            # The filter above should have done this; re-checked here because
+            # the link built for an unknown type would be a dead one.
+            if entity_type in SEARCHABLE_ENTITY_TYPES:
+                assets.append(_to_asset(self._link_base_url, raw, entity_type))
+        return assets
+
     async def topics_for_tables(self, table_names: list[str]) -> list[str]:
         """Which topics own these curated tables, by bare table name.
 
@@ -273,6 +328,22 @@ class DomainsClient:
         return [source for source in sources if source.name in domain_names]
 
 
+def search_query(text: str) -> str:
+    """`text` as something safe to hand OM's `q` parameter.
+
+    Reserved query_string syntax is stripped (see `_QUERY_STRING_RESERVED`) and
+    the final word is left open-ended, so a search bar that fires while someone
+    is still typing finds "Diabetes" for "diabet". Earlier words are matched
+    whole: they are finished words, and a trailing `*` on each of them only
+    widens a query the visitor already narrowed. `""` when nothing survives,
+    which callers treat as "no query" rather than as a match-everything `*`.
+    """
+    words = text.translate(_QUERY_STRING_RESERVED).split()
+    if not words:
+        return ""
+    return " ".join([*words[:-1], f"{words[-1]}*"])
+
+
 def _table_keys(asset: CatalogAsset) -> set[str]:
     """The names a table might be recognised by, lowercased."""
     return {asset.name.strip().lower(), asset.fqn.rsplit(".", 1)[-1].strip().lower()}
@@ -303,9 +374,15 @@ def _to_asset(base_url: str, raw: dict[str, Any], entity_type: str) -> CatalogAs
 
 
 # ------------------------------------------------------------------- cache
-# Deliberately a module-level dict rather than anything with eviction: the
-# key space is bounded by the number of domains and their assets (tens of
-# entries), and every value is a decoded OM response measured in kilobytes.
+# A module-level dict with a TTL and a size cap. The TTL is what this is for
+# (see the module docstring); the cap exists because `search` made the key
+# space unbounded. The topic reads key on a fixed set of domains and entity
+# types — tens of entries, which is why this cache had no eviction at all
+# originally — but a search bar keys on whatever anyone types, one entry per
+# debounced keystroke, and this process is long-lived.
+
+_CACHE_MAX_ENTRIES = 512
+
 
 _cache: dict[tuple[str, str, str], tuple[float, dict[str, Any]]] = {}
 
@@ -322,7 +399,25 @@ def _cache_get(key: tuple[str, str, str]) -> dict[str, Any] | None:
 
 
 def _cache_put(key: tuple[str, str, str], value: dict[str, Any]) -> None:
+    if len(_cache) >= _CACHE_MAX_ENTRIES:
+        _evict()
     _cache[key] = (time.monotonic() + _CACHE_TTL_SECONDS, value)
+
+
+def _evict() -> None:
+    """Make room: expired entries first, then the oldest inserted.
+
+    Insertion order is the eviction order (a plain dict keeps it), so this is
+    FIFO rather than LRU — a re-read does not refresh an entry's position. That
+    is the right way round here: the entries worth keeping are the ones a TTL
+    would keep anyway, and the ones filling the dict up are one-off search
+    queries nobody types twice.
+    """
+    now = time.monotonic()
+    for key in [key for key, (expires_at, _) in _cache.items() if expires_at < now]:
+        del _cache[key]
+    while len(_cache) >= _CACHE_MAX_ENTRIES:
+        del _cache[next(iter(_cache))]
 
 
 def clear_cache() -> None:

@@ -8,7 +8,13 @@ import httpx
 import pytest
 
 from ohdp_agent import domains as domains_module
-from ohdp_agent.domains import CatalogAsset, Domain, DomainsClient, DomainsError
+from ohdp_agent.domains import (
+    CatalogAsset,
+    Domain,
+    DomainsClient,
+    DomainsError,
+    search_query,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -383,3 +389,147 @@ async def test_topics_for_tables_asks_nothing_when_there_are_no_tables() -> None
     client = DomainsClient("http://om", "jwt", client=_mock(handler))
 
     assert await client.topics_for_tables([]) == []
+
+
+# ------------------------------------------------------------------------ search
+
+SEARCH_PAYLOAD = {
+    "hits": {
+        "hits": [
+            {
+                "_source": {
+                    "id": "f1f1f1f1-0000-0000-0000-000000000001",
+                    "name": "NNDSS_WEEKLY",
+                    "fullyQualifiedName": "snowflake.CURATED.INFECTIOUS_DISEASE.NNDSS_WEEKLY",
+                    "entityType": "table",
+                    "description": "NNDSS weekly case counts.",
+                },
+            },
+            {
+                "_source": {
+                    "id": "f2f2f2f2-0000-0000-0000-000000000002",
+                    "name": "weekly_cases",
+                    "fullyQualifiedName": "cube.infectious_disease.weekly_cases",
+                    "entityType": "metric",
+                    "description": "Reported cases per week.",
+                },
+            },
+            {
+                "_source": {
+                    "id": "f3f3f3f3-0000-0000-0000-000000000003",
+                    "name": "nndss_weekly_ingest",
+                    "fullyQualifiedName": "dagster.nndss_weekly_ingest",
+                    "entityType": "pipeline",
+                    "description": "Loads NNDSS.",
+                },
+            },
+        ]
+    }
+}
+
+
+async def test_search_keeps_relevance_order_and_both_asset_kinds() -> None:
+    """Unlike `assets_in_domain`, which lists a domain and sorts by name, this
+    must hand back whatever order OM ranked the hits in."""
+    client = DomainsClient(
+        "http://om", "jwt", client=_mock(lambda r: httpx.Response(200, json=SEARCH_PAYLOAD))
+    )
+
+    hits = await client.search("nndss weekly")
+
+    assert [(h.name, h.entity_type) for h in hits] == [
+        ("NNDSS_WEEKLY", "table"),
+        ("weekly_cases", "metric"),
+    ]
+
+
+async def test_search_drops_entity_types_it_cannot_link_to() -> None:
+    """A pipeline is in the `dataAsset` index but `<om>/pipeline/<fqn>` is not
+    the link `_to_asset` would build, so it is filtered rather than offered."""
+    client = DomainsClient(
+        "http://om", "jwt", client=_mock(lambda r: httpx.Response(200, json=SEARCH_PAYLOAD))
+    )
+
+    hits = await client.search("nndss")
+
+    assert "pipeline" not in {h.entity_type for h in hits}
+
+
+async def test_search_filters_on_the_searchable_entity_types() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["q"] = request.url.params["q"]
+        seen["query_filter"] = request.url.params["query_filter"]
+        seen["size"] = request.url.params["size"]
+        return httpx.Response(200, json=SEARCH_PAYLOAD)
+
+    client = DomainsClient("http://om", "jwt", client=_mock(handler))
+
+    await client.search("respiratory", limit=5)
+
+    assert seen["q"] == "respiratory*"
+    assert '"entityType": ["table", "metric"]' in seen["query_filter"]
+    assert seen["size"] == "5"
+
+
+async def test_search_with_no_usable_words_makes_no_request() -> None:
+    """`"*"` would be a match-everything query — an empty search must be no
+    search, not the whole catalog."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("OM should not have been called")
+
+    client = DomainsClient("http://om", "jwt", client=_mock(handler))
+
+    assert await client.search("   ") == []
+    assert await client.search("*?!") == []
+
+
+def test_search_query_leaves_the_last_word_open_ended() -> None:
+    assert search_query("diabet") == "diabet*"
+    assert search_query("respiratory illness bur") == "respiratory illness bur*"
+
+
+def test_search_query_strips_elasticsearch_syntax() -> None:
+    """A half-typed query is a query, not a 400: OM hands `q` straight to
+    Elasticsearch's query_string parser, which would reject these."""
+    assert search_query("covid (2024") == "covid 2024*"
+    assert search_query('"unbalanced') == "unbalanced*"
+    assert search_query("flu/rsv") == "flu rsv*"
+
+
+# ------------------------------------------------------------------------- cache
+
+
+async def test_the_cache_is_bounded_once_search_keys_on_free_text() -> None:
+    """The cache had no eviction because the topic reads key on a fixed set of
+    domains. `search` keys on whatever anyone types — one entry per debounced
+    keystroke in a process that runs for weeks — so the cap is what keeps that
+    from being a slow leak."""
+    client = DomainsClient(
+        "http://om", "jwt", client=_mock(lambda r: httpx.Response(200, json=SEARCH_PAYLOAD))
+    )
+
+    for index in range(domains_module._CACHE_MAX_ENTRIES + 50):
+        await client.search(f"query{index}")
+
+    assert len(domains_module._cache) <= domains_module._CACHE_MAX_ENTRIES
+
+
+async def test_a_repeated_search_is_served_from_the_cache() -> None:
+    """The flip side of the cap: typing the same thing twice is one OM call,
+    which is the point of sharing the topic reads' cache."""
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=SEARCH_PAYLOAD)
+
+    client = DomainsClient("http://om", "jwt", client=_mock(handler))
+
+    await client.search("respiratory")
+    await client.search("respiratory")
+
+    assert calls == 1

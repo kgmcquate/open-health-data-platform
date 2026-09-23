@@ -80,6 +80,15 @@ _EMBED_HEADERS = {
 }
 
 
+# How many results of each kind `/api/search` returns by default. Small on
+# purpose: the default caller is a dropdown someone skims mid-keystroke. The
+# `/search` page asks for more, up to `SEARCH_LIMIT_MAX` — a ceiling rather
+# than an open `limit`, because the topic and literature sections are filtered
+# in this process and the asset section is a live OM query.
+SEARCH_LIMIT = 8
+SEARCH_LIMIT_MAX = 50
+
+
 class DashboardVote(BaseModel):
     # 0 withdraws — `library.vote` deletes the row rather than storing a
     # neutral one, so "has not voted" stays a single state.
@@ -150,6 +159,14 @@ def _rows(request: Request, table: Table, *order_by: Any) -> list[dict[str, Any]
         statement = statement.order_by(*order_by)
     with engine.connect() as connection:
         return [dict(row) for row in connection.execute(statement).mappings()]
+
+
+def _matches(terms: list[str], *fields: Any) -> bool:
+    """Whether every word in `terms` (already lowercased) appears somewhere in
+    `fields`. AND, not OR: an extra word should narrow a search, which is what
+    someone adding one to a too-long list of results expects."""
+    haystack = " ".join(str(field) for field in fields).lower()
+    return all(term in haystack for term in terms)
 
 
 def _domains_client() -> DomainsClient | None:
@@ -413,6 +430,95 @@ async def get_topic(name: str) -> dict[str, Any]:
         "metrics": [_asset_dict(m) for m in metrics],
         "assets": [_asset_dict(t) for t in tables],
         "sources": [_domain_dict(s) for s in sources],
+    }
+
+
+@router.get("/search")
+async def search(
+    request: Request,
+    q: str = Query(default="", max_length=200),
+    limit: int = Query(default=SEARCH_LIMIT, ge=1, le=SEARCH_LIMIT_MAX),
+    viewer_email: Annotated[str | None, Depends(get_optional_user_email)] = None,
+) -> dict[str, Any]:
+    """Everything on the hub matching `q`, grouped by what kind of thing it is
+    — the header search bar's one call.
+
+    **Why this fans out instead of just proxying OpenMetadata.** OM's search
+    index is the right backend for the catalog half (tables and metrics: it
+    already indexes names, descriptions and columns, and is rebuilt by the
+    nightly seed sync), and the browser cannot query it directly anyway — the
+    JWT is server-side and `openmetadata_url` is a cluster address. But OM
+    knows nothing about the two things a visitor is most likely to search for:
+    dashboards and literature live in this database, not the catalog. So the
+    catalog sections come from OM and the other two from Postgres, and a
+    visitor types once.
+
+    Topics are matched here in Python rather than through the search index:
+    `list_by_type` is a cached list of a few dozen domains, so substring
+    matching is both cheaper and exact, with no dependence on how OM analyses
+    a domain's name.
+
+    Every section degrades independently to `[]`, like the topic routes above:
+    this is a public surface, and an unreachable catalog should cost the
+    catalog results, not the whole dropdown.
+    """
+    terms = [word for word in q.lower().split() if word]
+    if not terms:
+        return {"query": q, "topics": [], "assets": [], "dashboards": [], "literature": []}
+
+    client = _domains_client()
+
+    topics: list[dict[str, Any]] = []
+    assets: list[dict[str, Any]] = []
+    if client is not None:
+        try:
+            topics = [
+                {
+                    "id": topic.id,
+                    "name": topic.name,
+                    "description": topic.description,
+                    "catalog_url": topic.catalog_url,
+                }
+                for topic in await client.list_by_type("Consumer-aligned")
+                if _matches(terms, topic.name, topic.description)
+            ][:limit]
+        except DomainsError as exc:
+            log.warning("search_topics_unavailable", error=str(exc))
+        try:
+            assets = [
+                {
+                    "id": asset.id,
+                    "name": asset.name,
+                    "description": asset.description,
+                    "entity_type": asset.entity_type,
+                    "catalog_url": asset.catalog_url,
+                }
+                for asset in await client.search(q, limit=limit)
+            ]
+        except DomainsError as exc:
+            log.warning("search_assets_unavailable", error=str(exc))
+
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    dashboard_hits: list[dict[str, Any]] = []
+    literature_hits: list[dict[str, Any]] = []
+    if engine is not None:
+        dashboard_hits = [
+            entry
+            for entry in library.public_rows(engine, viewer_email=viewer_email)
+            if _matches(terms, entry["title"], entry["description"], *entry["topics"])
+        ][:limit]
+        literature_hits = [
+            row
+            for row in _rows(request, curated_literature, curated_literature.c.trending.desc())
+            if _matches(terms, row["title"], row["authors"], row["summary"], *(row["tags"] or []))
+        ][:limit]
+
+    return {
+        "query": q,
+        "topics": topics,
+        "assets": assets,
+        "dashboards": dashboard_hits,
+        "literature": literature_hits,
     }
 
 

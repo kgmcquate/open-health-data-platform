@@ -11,6 +11,7 @@ const Dashboards = lazy(() => import("./pages/Dashboards"));
 const DashboardDetail = lazy(() => import("./pages/DashboardDetail"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Privacy = lazy(() => import("./pages/Privacy"));
+const Search = lazy(() => import("./pages/Search"));
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="/dashboards" element={<Dashboards />} />
             <Route path="/dashboards/:name" element={<DashboardDetail />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/search" element={<Search />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route
               path="*"

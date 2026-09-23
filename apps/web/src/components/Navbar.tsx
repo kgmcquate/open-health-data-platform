@@ -4,6 +4,7 @@ import { THEMES, applyTheme, storedTheme } from "../theme";
 import { useState } from "react";
 import GearIcon from "./icons/GearIcon";
 import LogoMark from "./icons/LogoMark";
+import SearchBar from "./SearchBar";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
@@ -18,13 +19,19 @@ export default function Navbar() {
 
   return (
     <div className="navbar bg-base-100/90 backdrop-blur border-b border-base-300 sticky top-0 z-40 px-4">
-      <div className="flex-1 gap-2">
-        <Link to="/" className="flex items-center gap-2 font-bold text-lg">
+      <div className="flex-1 min-w-0 flex items-center gap-4">
+        <Link to="/" className="flex items-center gap-2 font-bold text-lg shrink-0">
           <LogoMark className="h-12 w-12" />
-          <span>
+          <span className="hidden sm:inline whitespace-nowrap">
             Open Health <span className="text-primary">Data Platform</span>
           </span>
         </Link>
+        {/* On every width: it is the only search input anywhere now that the
+            /search page has none of its own. The wordmark gives up its text
+            below `sm` to make the room. */}
+        <div className="flex grow min-w-0">
+          <SearchBar />
+        </div>
       </div>
 
       <nav className="hidden lg:flex">

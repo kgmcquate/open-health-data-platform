@@ -122,6 +122,29 @@ export const fetchDashboard = (name: string) =>
 export const fetchLiterature = (topic?: string) =>
   getJson<LiteratureItem[]>(topic ? `/api/literature?topic=${encodeURIComponent(topic)}` : "/api/literature");
 
+/** What `GET /api/search` returns: one query, four kinds of hit.
+ *
+ * The four sections come from two different backends — topics and assets from
+ * OpenMetadata's search index, dashboards and literature from hub-api's own
+ * tables (see `hub_api.content.search`) — and each can be empty on its own
+ * because that backend was unreachable rather than because nothing matched.
+ * That is why the UI never says "no results" per section, only overall. */
+export interface SearchResults {
+  query: string;
+  topics: Topic[];
+  assets: CatalogAsset[];
+  dashboards: Dashboard[];
+  literature: LiteratureItem[];
+}
+
+/** `limit` is per section, and the server caps it (`hub_api.content`'s
+ * `SEARCH_LIMIT_MAX`). Omitted for the header dropdown, which wants the small
+ * default; the `/search` page asks for more. */
+export const fetchSearch = (q: string, limit?: number) =>
+  getJson<SearchResults>(
+    `/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`,
+  );
+
 export interface ChatModel {
   id: string;
   label: string;
