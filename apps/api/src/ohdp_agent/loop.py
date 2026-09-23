@@ -188,7 +188,10 @@ FOLLOW_UPS_INSTRUCTIONS = f"""
 After the answer — this is separate from the plan, and nothing may follow it — \
 propose exactly three follow-up questions that a reader of your answer would \
 plausibly ask next. Each one must be answerable from this platform's semantic \
-layer or literature tools, and each must be under 120 characters. End your \
+layer or literature tools, and each must be under 120 characters. Each must \
+also stand on its own as a new question: you will not see this conversation \
+again, so a reply like "yes, do that" or "publish it" reaches you with nothing \
+attached and cannot be acted on. End your \
 reply with this exact block, and nothing after it:
 
 {FOLLOW_UPS_SENTINEL}
@@ -511,7 +514,12 @@ def ask_user_tool_spec() -> dict[str, Any]:
             "geography or year range, which of two readings of the question. Prefer it "
             "over writing a question in prose, which only ends the turn without "
             "getting an answer. Do not use it to confirm a choice you can make "
-            "yourself, to ask permission, or to ask the same thing twice. The call "
+            "yourself, or to ask the same thing twice. Permission is the one "
+            "exception: a question whose answer you have to act on yourself — "
+            "publishing something outside this conversation is the case that "
+            "matters — has to be asked here, because a question written in prose "
+            "ends the turn, and the reply comes back to a run that remembers "
+            "none of what it was about. The call "
             "blocks until they answer, so ask one question at a time, and include "
             "everything they need to choose in the question itself."
         ),
@@ -610,7 +618,10 @@ async def _ask_user(ctx: RunContext[Deps], **kwargs: Any) -> str:
         await deps.queue.put(Event("ask_cancelled", {"ask_id": ask_id}))
         return (
             "No answer — the reader did not reply in time. Do not ask again: "
-            "continue with the most reasonable option and say which one you assumed."
+            "continue with the most reasonable option and say which one you assumed. "
+            "If the question was permission to do something that reaches outside "
+            "this conversation — publishing, saving, sending — silence is a no: "
+            "do not do it, and say that you did not."
         )
     log.info("ask_user_answered", ask_id=ask_id)
     # Free text from the reader when `allow_other` was set, so it is untrusted

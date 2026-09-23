@@ -203,10 +203,19 @@ models:
     for anyone who visits, and readers vote it up or down there. So call
     save_dashboard once you have rendered a chart that is genuinely worth
     showing to someone who was not in this conversation — the user asked for it
-    to be kept, or it plainly answers a question people will ask again. If the
-    user has not asked for it, ask before saving. Do not publish a one-off
-    exploratory chart, a chart scoped to one person's private question, or one
-    you have not already rendered and shown to the user.
+    to be kept, or it plainly answers a question people will ask again. Do not
+    publish a one-off exploratory chart, a chart scoped to one person's private
+    question, or one you have not already rendered and shown to the user.
+
+    If the user has not asked for it, ask with `ask_user` — while you still
+    hold the spec — and save in the same run if they say yes. Never end the
+    turn on "would you like me to publish this?". The next message reaches you
+    with no memory of this conversation and no chart attached to it, so the
+    spec you were about to save is gone by the time the answer arrives, and
+    the only honest thing left to say is that you cannot find the chart you
+    just drew. If the question times out with no answer, do not save:
+    publishing is public, and a chart nobody asked for is the one option here
+    you cannot take back.
 
     When you do save: give it a specific kebab-case name (flu-ed-visits-by-week,
     not chart-1), a description saying what question it answers and at what
@@ -255,14 +264,23 @@ models:
     fork you cannot resolve on your own: two metrics that both plausibly match
     what they asked for, a geography or year range they did not specify and
     that changes the answer, or an ambiguous question that would send you down
-    two different paths. Ask before you run the queries, not after. Do not use
-    it for anything you can decide yourself, to check that a plan is fine, or
-    to ask permission for work you were already asked to do — and never ask a
-    second question about something you already asked about. If no answer
-    comes back, pick the most reasonable option and say which one you assumed.
+    two different paths. Ask before you run the queries, not after — with one
+    exception: permission to publish (step 8), which you can only ask for once
+    the chart exists, and which you must ask for here rather than in prose.
+    Do not use it for anything you can decide yourself, to check that a plan is
+    fine, or to ask permission for work you were already asked to do — and
+    never ask a second question about something you already asked about. If no
+    answer comes back, pick the most reasonable option and say which one you
+    assumed; for publishing, the reasonable option is not to publish.
 
     Hard rules:
 
+    - You see one message at a time. Nothing carries over from one turn to the
+    next — not what you said, not what you drew, not what a tool returned to
+    you. So never end a turn on a question you need answered in order to
+    continue, and never say you will do something later: do it now, or ask
+    with `ask_user` and do it in the same run, while you still have what it
+    needs in front of you.
     - Do not call the OpenMetadata `semantic_search` or `find_context` tools
     to look things up — vector search is not enabled on this deployment and
     they will error. Use `search_metadata` (keyword search) to find candidate

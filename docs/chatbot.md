@@ -317,6 +317,18 @@ The mechanics that follow from that:
 - **The answer is untrusted input like any other tool result** (§6) — more so
   when `allow_other` opens a free-text box. It reaches the model as a tool
   result, never as an instruction.
+- **Asking permission to publish goes through here too** (§5). The prompt tells
+  the model to confirm before `save_dashboard` puts a chart on a public page,
+  and statelessness makes that impossible to do in prose: the model ends its
+  turn on "shall I publish this?", the reader says yes, and the answer arrives
+  at a run holding neither the spec nor any memory of drawing it — the model's
+  only remaining move is `get_dashboard`, which reads the *published* library
+  and cannot find a chart that was never saved. So the confirmation is an
+  `ask_user` call made while the spec is still in hand, and the save happens in
+  the same run. This is the one case where the tool *is* used to ask permission,
+  against its own general rule, and the one where an unanswered question means
+  do nothing rather than assume: publishing is the option that cannot be taken
+  back.
 
 ---
 
