@@ -25,14 +25,30 @@ attributes:
   raw_table: monthly_measurements
   resource: monthly_measurements
   countries: [US]
-  parameters: [pm25, pm10, o3, no2, so2, co]
+  # Narrowed from all six criteria pollutants after a run fanned out to every
+  # matching sensor, took 6h and then lost all of it to a 500. These three are
+  # the health-relevant, most widely monitored ones, and each dropped parameter
+  # is one fewer `days/monthly` call per station that reports it.
+  parameters: [pm25, o3, no2]
   reference_monitors_only: true
+  # The binding cost controls: one API call per location walked plus one per
+  # matched sensor, at 25 req/min (ohdp_ingestion.openaq.source). 400 + 800 is
+  # a worst case of ~1,200 calls, i.e. a ~50-minute run -- against ~1,200
+  # US reference-monitor locations and ~3,000 sensors unbounded, which is where
+  # the 6-hour run came from. Locations are taken in `id` asc order, so this is
+  # the same station set every month, not a different slice each run. Raise
+  # these (and widen `parameters`) once the monthly run is proven stable.
+  max_locations: 400
+  max_sensors: 800
   # Trailing months re-fetched (and appended -- not replaced) each run; a
   # revised current month lands as a new row, deduped to latest load in
   # macros/openaq_current_rows.sql. Set to null for a one-off full historical
   # backfill (landed as a full replace instead) -- see
   # ohdp_ingestion.openaq.source.openaq_monthly_measurements_source.
-  lookback_months: 3
+  # 1, not 3: OpenAQ only keeps revising the most recent month or two, so the
+  # third month back was re-fetched every run to land rows identical to the
+  # ones already in raw.
+  lookback_months: 1
   source_url: https://docs.openaq.org/resources/sensors
   description: >-
     Monthly-average readings (min/max/avg/median/percentiles) for the criteria pollutants
@@ -43,5 +59,7 @@ attributes:
     ohdp_ingestion.openaq.source.openaq_monthly_measurements_source for why scope is restricted to
     reference monitors -- every low-cost sensor too would turn a monthly job that fits comfortably
     under OpenAQ's free-tier rate limit into one that reruns for hours every single month forever.
-    Widen `countries`/`parameters`/`reference_monitors_only` here if that cost is acceptable for
+    Bounded per run by `max_locations`/`max_sensors` -- the fan-out caps, not the `row_limit`
+    row cap -- to keep the monthly run under an hour. Widen those,
+    `countries`/`parameters`/`reference_monitors_only` here if that cost is acceptable for
     your use case.

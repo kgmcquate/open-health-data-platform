@@ -51,6 +51,10 @@ from dlt.sources.helpers import requests
 from dlt.sources.helpers.rest_client.paginators import PageNumberPaginator
 from dlt.sources.rest_api import RESTAPIConfig, rest_api_source
 
+from ohdp_shared import get_logger
+
+log = get_logger(__name__)
+
 OPENAQ_API_BASE_URL = "https://api.openaq.org/v3/"
 _MAX_PAGE_SIZE = 1000  # OpenAQ's documented ceiling on `limit`
 
@@ -180,6 +184,9 @@ def openaq_monthly_measurements_source(
     reference_monitors_only: bool = True,
     row_limit: int | None = None,
     lookback_months: int | None = 3,
+    max_locations: int | None = None,
+    max_sensors: int | None = None,
+    max_consecutive_errors: int = 25,
 ) -> Any:
     """A hand-rolled ``dlt`` source: monthly-average air-quality readings for
     every sensor at every location matching ``countries``/``parameters``.
@@ -212,6 +219,28 @@ def openaq_monthly_measurements_source(
     between a call budget that comfortably fits a monthly scheduled run and
     one that takes several hours *every single run forever* (``lookback_months``
     shrinks payload size, not this call count — see the module docstring).
+
+    **Why ``max_locations``/``max_sensors`` exist on top of those filters.**
+    Even fully filtered, US reference monitors alone are ~1,200 locations and
+    ~3,000 matching sensors, so the fan-out is ~4,200 calls — at
+    ``_MAX_REQUESTS_PER_MINUTE`` that is most of a working day, and the run
+    that produced it is all-or-nothing: dlt commits at the end, so an abort
+    six hours in lands nothing. ``max_locations`` and ``max_sensors`` cap the
+    fan-out *per country* (both counted after their respective filters), which
+    is what actually bounds wall-clock time: total calls per country are at
+    most ``max_locations + max_sensors``, so at 25 req/min a 400/800 budget is
+    a ~50-minute run. ``row_limit`` cannot substitute — it caps rows, and by
+    the time a row is counted its call has already been paid for. Locations
+    page back ordered by ``id`` asc, so a cap keeps the *same* stations run
+    over run rather than resampling an arbitrary subset each month.
+
+    **Why one sensor's 500 no longer ends the run.** dlt's ``requests`` helper
+    already retries 5xx/429 with exponential backoff, so an error that reaches
+    this loop is one OpenAQ returns *persistently* for that sensor — and
+    letting it propagate throws away every row gathered so far. Such a sensor
+    is logged and skipped instead. ``max_consecutive_errors`` keeps that from
+    silently swallowing a real outage: an unbroken streak that long means
+    OpenAQ is down, not that one sensor is bad, and still aborts.
 
     ``countries`` is a list of ISO 3166-1 alpha-2 codes (``/v3/locations``'
     own ``iso`` filter only takes one at a time, so this fans out one
@@ -251,9 +280,15 @@ def openaq_monthly_measurements_source(
             seen = 0
             for country in country_list:
                 locations = _iter_locations(
-                    base, country, reference_monitors_only, headers, limiter
+                    base, country, reference_monitors_only, headers, limiter, max_locations
                 )
+                # Both counters reset per country: the caps are a per-country
+                # budget, so one country cannot starve the next of coverage.
+                sensors_fetched = 0
+                consecutive_errors = 0
                 for location in locations:
+                    if max_sensors is not None and sensors_fetched >= max_sensors:
+                        break
                     location_id = location["id"]
                     sensors = _get(
                         f"{base}/locations/{location_id}/sensors",
@@ -265,17 +300,41 @@ def openaq_monthly_measurements_source(
                         parameter_name = (sensor.get("parameter") or {}).get("name")
                         if parameter_set and parameter_name not in parameter_set:
                             continue
+                        if max_sensors is not None and sensors_fetched >= max_sensors:
+                            break
                         sensor_id = sensor["id"]
+                        sensors_fetched += 1
                         batch = []
-                        for row in _iter_sensor_monthly(
-                            base, sensor_id, headers, limiter, date_from
-                        ):
-                            row["location_id"] = location_id
-                            row["location_name"] = location.get("name")
-                            row["country"] = country
-                            row["sensor_id"] = sensor_id
-                            row["period_label"] = (row.get("period") or {}).get("label")
-                            batch.append(row)
+                        try:
+                            for row in _iter_sensor_monthly(
+                                base, sensor_id, headers, limiter, date_from
+                            ):
+                                row["location_id"] = location_id
+                                row["location_name"] = location.get("name")
+                                row["country"] = country
+                                row["sensor_id"] = sensor_id
+                                row["period_label"] = (row.get("period") or {}).get("label")
+                                batch.append(row)
+                        except Exception as exc:
+                            # Already past dlt's own 5xx/429 retries — see the
+                            # docstring for why this skips rather than aborts.
+                            consecutive_errors += 1
+                            log.warning(
+                                "OpenAQ days/monthly failed for sensor %s (location %s, %s): "
+                                "%s -- skipping (%s consecutive)",
+                                sensor_id,
+                                location_id,
+                                country,
+                                exc,
+                                consecutive_errors,
+                            )
+                            if consecutive_errors >= max_consecutive_errors:
+                                raise RuntimeError(
+                                    f"{consecutive_errors} consecutive OpenAQ days/monthly "
+                                    f"failures -- treating as an outage, not bad sensors"
+                                ) from exc
+                            continue
+                        consecutive_errors = 0
                         if row_limit is not None and batch:
                             remaining = row_limit - seen
                             if remaining <= 0:
@@ -293,10 +352,24 @@ def openaq_monthly_measurements_source(
 
 
 def _iter_locations(
-    base: str, country: str, monitor_only: bool, headers: dict[str, str], limiter: _RateLimiter
+    base: str,
+    country: str,
+    monitor_only: bool,
+    headers: dict[str, str],
+    limiter: _RateLimiter,
+    max_locations: int | None = None,
 ) -> Iterator[dict[str, Any]]:
+    """Pages ``/v3/locations`` for one country, stopping at ``max_locations``.
+
+    ``order_by=id``/``sort_order=asc`` is what makes that cap stable: the
+    truncated set is the same stations every run, so capping narrows coverage
+    without also making each month's coverage differ from the last.
+    """
     page = 1
+    yielded = 0
     while True:
+        if max_locations is not None and yielded >= max_locations:
+            return
         params: dict[str, Any] = {
             "iso": country,
             "limit": _MAX_PAGE_SIZE,
@@ -311,7 +384,10 @@ def _iter_locations(
         )
         if not batch:
             return
+        if max_locations is not None:
+            batch = batch[: max_locations - yielded]
         yield from batch
+        yielded += len(batch)
         if len(batch) < _MAX_PAGE_SIZE:
             return
         page += 1

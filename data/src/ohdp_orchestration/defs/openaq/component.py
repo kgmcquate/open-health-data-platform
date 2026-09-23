@@ -167,6 +167,15 @@ class OpenAQDataset(Component, DatasetConfig, Resolvable):
             metadata["parameters"] = MetadataValue.json(self.parameters)
             metadata["reference_monitors_only"] = self.reference_monitors_only
             metadata["lookback_months"] = self.lookback_months
+            metadata["max_locations"] = self.max_locations
+            metadata["max_sensors"] = self.max_sensors
+            # The fan-out's own worst case, which is what actually predicts
+            # wall-clock time (one call per location + one per matched sensor,
+            # at ohdp_ingestion.openaq.source._MAX_REQUESTS_PER_MINUTE).
+            if self.max_locations is not None and self.max_sensors is not None:
+                calls = (self.max_locations + self.max_sensors) * len(self.countries)
+                metadata["max_api_calls"] = calls
+                metadata["est_runtime_minutes"] = round(calls / 25, 1)
         if self.source_url:
             metadata["dagster/uri"] = MetadataValue.url(self.source_url)
 
@@ -221,6 +230,9 @@ class OpenAQDataset(Component, DatasetConfig, Resolvable):
             reference_monitors_only=self.reference_monitors_only,
             row_limit=self.row_limit,
             lookback_months=self.lookback_months,
+            max_locations=self.max_locations,
+            max_sensors=self.max_sensors,
+            max_consecutive_errors=self.max_consecutive_errors,
         )
 
     def _table_asset(self) -> AssetsDefinition:

@@ -79,3 +79,31 @@ class DatasetConfig(BaseModel):
             "historical backfill landed as replace instead — see source.py's docstring."
         ),
     )
+    max_locations: int | None = Field(
+        default=None,
+        description=(
+            "Hard cap on locations walked *per country*, applied after the `monitor`/`iso` "
+            "filters (monthly_measurements only). Unlike `row_limit` — a cap on rows, which "
+            "only stops the fan-out once the calls have already been made — this is a cap on "
+            "the fan-out itself, and it is the only knob that bounds the locations->sensors "
+            "discovery walk. Locations come back ordered by `id` asc, so the same stations are "
+            "kept run over run rather than an arbitrary subset each time."
+        ),
+    )
+    max_sensors: int | None = Field(
+        default=None,
+        description=(
+            "Hard cap on sensors fanned out into `days/monthly` *per country*, counted after "
+            "the `parameters` filter (monthly_measurements only). Same reasoning as "
+            "`max_locations`: bounds calls, not rows."
+        ),
+    )
+    max_consecutive_errors: int = Field(
+        default=25,
+        description=(
+            "How many sensors in a row may fail their `days/monthly` call (after dlt's own "
+            "5xx/429 retries) before the run is aborted. A single sensor OpenAQ persistently "
+            "500s on is skipped rather than discarding the whole run's work; a long unbroken "
+            "streak means OpenAQ itself is down, and that should still fail loudly."
+        ),
+    )
