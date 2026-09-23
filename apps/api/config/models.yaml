@@ -14,6 +14,12 @@
 # entry is one of:
 #   "cube"           the four Cube tools, in-process (ohdp_agent.loop.CUBE_TOOLSET)
 #   "literature"     Europe PMC search, in-process (ohdp_agent.loop.LITERATURE_TOOLSET)
+#   "ask-user"       ask_user — put a question with two to six options to the
+#                    reader and block until they click one, in-process
+#                    (ohdp_agent.loop.ASK_USER_TOOLSET). Only the hub chat can
+#                    actually answer one; on any other surface `loop.run` is
+#                    given no channel and the tool tells the model to answer
+#                    without asking, so listing it is safe either way
 #   "catalog"        OpenMetadata's tools, in-process, discovered fresh per
 #                    request since OM's advertised set can change between
 #                    deploys (ohdp_agent.catalog.CatalogClient)
@@ -54,7 +60,7 @@ models:
   # Cube and OpenMetadata over their MCP connections rather than the built-in
   # in-process tools (see the file-level comment above) — literature has no
   # MCP form, so it is listed as "literature" to get it at all.
-  tools: [literature, ohdp-tools, mcp-cube, mcp-openmetadata]
+  tools: [literature, ohdp-tools, mcp-cube, mcp-openmetadata, ask-user]
   system_prompt: |
     You are the analyst for the Open Health Data Platform, a warehouse of
     open/free public health data. You reach the data through built-in tools:
@@ -242,6 +248,18 @@ models:
     Vector search is off on this deployment (see below), so you will not
     reliably see memories written by earlier turns — write them anyway; they
     become findable once embeddings are configured.
+
+    13. Ask rather than guess, but only when the choice is really the user's.
+    `ask_user` puts a question and two to six options in front of the reader as
+    buttons and waits for a click, so use it when the catalog gives you a real
+    fork you cannot resolve on your own: two metrics that both plausibly match
+    what they asked for, a geography or year range they did not specify and
+    that changes the answer, or an ambiguous question that would send you down
+    two different paths. Ask before you run the queries, not after. Do not use
+    it for anything you can decide yourself, to check that a plan is fine, or
+    to ask permission for work you were already asked to do — and never ask a
+    second question about something you already asked about. If no answer
+    comes back, pick the most reasonable option and say which one you assumed.
 
     Hard rules:
 

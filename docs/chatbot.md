@@ -40,6 +40,8 @@ that context lives in OpenMetadata, not in our prompt (§3).
 
 Three groups, no raw SQL anywhere (ARCHITECTURE.md §9, ADR-0003). The agent is a
 tool-use loop in `hub-api`; every group below is a set of tools it can call.
+(`ask_user` — §4b — is a fourth tool but not a fourth source: it reaches the
+reader, not the platform, and returns nothing citable.)
 
 ### 2.1 Context — OpenMetadata MCP (`{OM_URL}/mcp`)
 
@@ -266,6 +268,55 @@ tool call is logged and shown to the user exactly like a built-in one — `ohdp_
 reports every `tool_call` from pydantic-ai's own `FunctionToolCallEvent` rather than having each
 tool self-report, specifically so a connection that never runs through `_run_tool` still shows up in
 both the SSE stream and `turn.tool_calls` (the eval log, §7).
+
+**§4b. `ask_user` — the agent asking back.** Every other tool answers the
+model; this one asks the reader. The model calls `ask_user` with a question and
+two to six options, those options render as buttons above the chat composer,
+and the tool call *blocks* — the pydantic-ai run stays suspended, holding its
+whole context, until the browser POSTs the chosen option to `/api/chat/answer`,
+at which point the click comes back as that tool call's result and the run
+continues. Five minutes with no answer
+(`ohdp_agent.loop.ASK_USER_TIMEOUT_SECONDS`) and the tool returns "no answer,
+carry on and say what you assumed" instead — not an error and not a
+`ModelRetry`, because asking a second time is the wrong response to an empty
+room.
+
+Blocking, rather than the obvious alternative of ending the turn on a question
+and treating the next message as the answer, because **this loop passes no
+`message_history` to `agent.run`**: every turn starts from the question and the
+system prompt alone. A question asked by ending a turn would be forgotten by
+the turn that answered it, and the reader would be replying to a model with no
+memory of asking. Blocking keeps one question and its answer inside one run,
+one turn-log row, and one quota unit.
+
+The mechanics that follow from that:
+
+- **Two requests, because SSE only goes one way.** The asking request is busy
+  holding its stream open, so the answer arrives on a separate
+  `POST /api/chat/answer` carrying the `ask_id` from the `ask_user` event. The
+  stream stays alive on its existing 15s keepalives meanwhile.
+- **A process-local registry** (`app.state.pending_asks`, `ohdp_agent.loop`'s
+  `AskRegistry`) maps `ask_id` to the future the run is awaiting. It is not a
+  database row because it is only meaningful to the event loop still awaiting
+  it. This is safe on the current single-replica `Recreate` deployment and is
+  the thing that would have to change first for a second replica — the answer
+  must reach the pod holding the stream, not just any pod.
+- **The `ask_id` is a uuid4 and the entry carries its owner.** Unguessable is
+  not an authorisation model; `resolve_ask` checks the answering session
+  against the asking one, and 404s identically for an unknown id, an expired
+  one, a cancelled run and another user's question.
+- **The chips live by the composer, not inline in the message.** The composer
+  is a Stop button while a turn runs, so that is the only place the reader can
+  act mid-turn — and the `ask_user` and `tool_call` events are queued by
+  different coroutines, so they can reach the browser in either order and
+  there is no message part the chips can reliably attach themselves to.
+- **A run with no reader is not an error.** `loop.run`'s `ask` defaults to
+  `None` (an eval harness, a test), and the tool then tells the model to answer
+  without asking. Giving a model the toolset (`models.yaml`'s `ask-user`) and
+  giving a run somewhere to ask are separate decisions on purpose.
+- **The answer is untrusted input like any other tool result** (§6) — more so
+  when `allow_other` opens a free-text box. It reaches the model as a tool
+  result, never as an instruction.
 
 ---
 

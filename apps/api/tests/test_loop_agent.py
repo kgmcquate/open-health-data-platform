@@ -23,12 +23,16 @@ from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
 from ohdp_agent.cube import CubeInfo
 from ohdp_agent.literature import LiteratureClient
 from ohdp_agent.loop import (
+    ASK_USER_TOOLSET,
     CUBE_TOOLSET,
     LITERATURE_TOOLSET,
+    AskRegistry,
+    AskUserChannel,
     Deps,
     Turn,
     _extract_followups,
     build_agent,
+    resolve_ask,
     run,
 )
 
@@ -317,3 +321,173 @@ def test_build_agent_picks_the_backend_from_base_url() -> None:
         model_id="openai/gpt-4o-mini", base_url="https://openrouter.ai/api/v1", api_key="sk-or-test"
     )
     assert isinstance(openai_agent.model, OpenAIChatModel)
+
+
+# ---------------------------------------------------------------------------
+# ask_user — the one tool whose result comes from the reader (docs/chatbot.md §4b)
+# ---------------------------------------------------------------------------
+
+
+def _ask_agent(stream_function: Any) -> Agent[Deps, str]:
+    return Agent(
+        FunctionModel(stream_function=stream_function),
+        deps_type=Deps,
+        toolsets=[ASK_USER_TOOLSET],
+    )
+
+
+async def _run_with_ask(
+    agent: Agent[Deps, str], ask: AskUserChannel | None
+) -> tuple[Turn, list[Any], asyncio.Queue[Any]]:
+    turn = Turn(question="which metric did you mean?", persona="")
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    await run(
+        agent,
+        question=turn.question,
+        persona="",
+        turn=turn,
+        queue=queue,
+        cube=FakeCube(),  # type: ignore[arg-type]
+        literature=LiteratureClient(),
+        catalog=None,
+        ask=ask,
+    )
+    events = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    return turn, events, queue
+
+
+def _asks_once(options: str) -> Any:
+    """A model that calls ask_user on its first turn and answers on its second."""
+    calls = 0
+
+    async def stream_function(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield {
+                0: DeltaToolCall(
+                    name="ask_user",
+                    json_args='{"question": "Which one?", "options": ' + options + "}",
+                    tool_call_id="call_ask",
+                )
+            }
+        else:
+            # The chosen option came back as this tool call's result, so the
+            # answer can quote it — that round trip is the whole point.
+            last = messages[-1].parts[-1]
+            yield f"You picked: {getattr(last, 'content', '')}"
+
+    return stream_function
+
+
+async def test_ask_user_blocks_until_the_reader_answers() -> None:
+    """The tool emits an `ask_user` event, waits, and returns the reader's
+    choice to the model as an ordinary tool result."""
+    pending: AskRegistry = {}
+    channel = AskUserChannel(owner="researcher@example.org", pending=pending)
+    agent = _ask_agent(_asks_once('["Adults 18+", "Ages 35+"]'))
+
+    task = asyncio.create_task(_run_with_ask(agent, channel))
+
+    # The run must still be blocked on the question — an `ask_user` that
+    # returned before anyone answered would defeat the entire design.
+    ask_id = await _await_ask_id(pending)
+    assert not task.done()
+
+    assert resolve_ask(pending, ask_id=ask_id, owner="researcher@example.org", answer="Ages 35+")
+    turn, events, _queue = await task
+
+    ask_events = [e for e in events if e.type == "ask_user"]
+    assert len(ask_events) == 1
+    assert ask_events[0].data["question"] == "Which one?"
+    assert ask_events[0].data["options"] == ["Adults 18+", "Ages 35+"]
+    assert ask_events[0].data["tool_call_id"] == "call_ask"
+    assert ask_events[0].data["allow_other"] is False
+    assert turn.answer == "You picked: Ages 35+"
+    # The registry entry is gone once answered, so a second click 404s rather
+    # than resolving an already-finished future.
+    assert pending == {}
+
+
+async def _await_ask_id(pending: AskRegistry) -> str:
+    """Wait for the run to register its question, without a fixed sleep."""
+    for _ in range(200):
+        if pending:
+            return next(iter(pending))
+        await asyncio.sleep(0.01)
+    raise AssertionError("the run never registered an ask_user question")
+
+
+async def test_ask_user_rejects_another_users_answer() -> None:
+    pending: AskRegistry = {}
+    channel = AskUserChannel(owner="researcher@example.org", pending=pending)
+    agent = _ask_agent(_asks_once('["Adults 18+", "Ages 35+"]'))
+
+    task = asyncio.create_task(_run_with_ask(agent, channel))
+    ask_id = await _await_ask_id(pending)
+
+    assert not resolve_ask(pending, ask_id=ask_id, owner="someone@else.org", answer="Ages 35+")
+    assert not task.done()
+
+    assert resolve_ask(pending, ask_id=ask_id, owner="researcher@example.org", answer="Adults 18+")
+    turn, _events, _queue = await task
+    assert turn.answer == "You picked: Adults 18+"
+
+
+async def test_ask_user_times_out_into_a_keep_going_result() -> None:
+    """Nobody answers: the tool comes back with an instruction to continue,
+    not an error and not a retry — asking again is the wrong response to an
+    empty room."""
+    pending: AskRegistry = {}
+    channel = AskUserChannel(owner="researcher@example.org", pending=pending, timeout=0.05)
+    agent = _ask_agent(_asks_once('["Adults 18+", "Ages 35+"]'))
+
+    turn, events, _queue = await _run_with_ask(agent, channel)
+
+    assert "No answer" in turn.answer
+    assert [e.type for e in events if e.type == "ask_cancelled"] == ["ask_cancelled"]
+    assert pending == {}
+
+
+async def test_ask_user_without_a_channel_tells_the_model_to_answer_anyway() -> None:
+    """A surface with no reader attached (an eval harness) still builds the
+    agent with the toolset — `loop.run` just gives it nowhere to ask."""
+    agent = _ask_agent(_asks_once('["Adults 18+", "Ages 35+"]'))
+
+    turn, events, _queue = await _run_with_ask(agent, None)
+
+    assert [e for e in events if e.type == "ask_user"] == []
+    assert "no one to ask" in turn.answer.lower()
+
+
+async def test_ask_user_needs_two_distinct_options() -> None:
+    """One option is not a choice. The model is told so and gets to fix it."""
+    calls = 0
+
+    async def stream_function(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield {
+                0: DeltaToolCall(
+                    name="ask_user",
+                    json_args='{"question": "Which one?", "options": ["Ages 35+", "Ages 35+"]}',
+                    tool_call_id="call_ask",
+                )
+            }
+        else:
+            yield "Assuming ages 35+."
+
+    pending: AskRegistry = {}
+    channel = AskUserChannel(owner="researcher@example.org", pending=pending)
+    turn, events, _queue = await _run_with_ask(_ask_agent(stream_function), channel)
+
+    assert calls == 2  # the rejection reached the model as a retry
+    assert [e for e in events if e.type == "ask_user"] == []
+    assert turn.answer == "Assuming ages 35+."

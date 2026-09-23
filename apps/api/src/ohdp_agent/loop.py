@@ -33,6 +33,7 @@ import json
 from collections.abc import AsyncIterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 from pydantic import ValidationError
 from pydantic_ai import Agent, ModelRetry, RunContext
@@ -85,6 +86,90 @@ DISCLAIMER = (
     "This answers from population-level public health data. "
     "It is not clinical decision support and not medical advice."
 )
+
+# `ask_user` — the model asking the reader a question mid-answer, rendered as
+# buttons in the chat (docs/chatbot.md §4b). The tool blocks the run until the
+# browser POSTs back the chosen option, so the model keeps its whole context
+# across the question instead of having to end the turn and re-derive it from
+# a fresh one — this app deliberately passes no `message_history` to
+# `agent.run`, so a question asked by ending a turn would be forgotten by the
+# turn that answered it.
+#
+# Five minutes is the bound on that block. The SSE stream stays alive on
+# keepalives (`hub_api.chat.KEEPALIVE`) for as long as it, but the model run,
+# its context and a queue slot are all held open the whole time, so this is a
+# real resource bound — long enough to read three options and click one, short
+# enough that a tab left open over lunch does not pin a run indefinitely.
+ASK_USER_TIMEOUT_SECONDS = 300.0
+
+# Two to six. One "option" is not a choice, and a list longer than this is a
+# menu the reader has to study rather than a question they can answer at a
+# glance — at which point the model should narrow it down itself, which is
+# what it has the catalog tools for.
+MIN_ASK_OPTIONS = 2
+MAX_ASK_OPTIONS = 6
+
+
+@dataclass
+class PendingAsk:
+    """One `ask_user` call waiting on the browser.
+
+    `owner` is the signed-in email of the run that asked, checked before any
+    answer is accepted: `ask_id` is a uuid4 and unguessable, but "unguessable"
+    is not an authorisation model, and this registry is shared by every
+    in-flight run in the process.
+    """
+
+    owner: str
+    future: asyncio.Future[str]
+
+
+# ask_id -> the run waiting on it. Owned by hub-api (one dict on `app.state`,
+# `hub_api.chat`) rather than by this module, because the thing that resolves
+# an entry is a *different HTTP request* from the one that created it — the
+# browser POSTing the chosen option while the asking request is still holding
+# its SSE stream open. Process-local, which is what the single-replica
+# `Recreate` deployment makes safe; a second replica would need the answer
+# routed to the pod holding the stream, not just to any pod.
+AskRegistry = dict[str, PendingAsk]
+
+
+@dataclass
+class AskUserChannel:
+    """The asking half of `AskRegistry`, scoped to one run and one user."""
+
+    owner: str
+    pending: AskRegistry
+    timeout: float = ASK_USER_TIMEOUT_SECONDS
+
+    async def ask(self, ask_id: str) -> str | None:
+        """Block until someone resolves `ask_id`, or `timeout` elapses (None)."""
+        future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+        self.pending[ask_id] = PendingAsk(owner=self.owner, future=future)
+        try:
+            return await asyncio.wait_for(future, self.timeout)
+        except TimeoutError:
+            return None
+        finally:
+            # Also covers the cancellation path — the reader navigating away
+            # cancels the whole run, and this entry must not outlive it.
+            self.pending.pop(ask_id, None)
+
+
+def resolve_ask(pending: AskRegistry, *, ask_id: str, owner: str, answer: str) -> bool:
+    """Hand `answer` to the run waiting on `ask_id`. False if nothing is.
+
+    False covers every "that question is over" case the browser can hit —
+    unknown id, a question that already timed out, a run that was cancelled,
+    and another user's question — deliberately without distinguishing them,
+    for the same reason `hub_api.chat._get_owned_thread` 404s rather than 403s.
+    """
+    entry = pending.get(ask_id)
+    if entry is None or entry.owner != owner or entry.future.done():
+        return False
+    entry.future.set_result(answer)
+    return True
+
 
 # Follow-up suggestions — the "what next?" chips under the latest answer.
 # The model is told to end its final reply with a sentinel-delimited JSON array
@@ -172,6 +257,11 @@ class Deps:
     catalog: CatalogClient | None
     turn: Turn
     queue: asyncio.Queue[Event]
+    # The `ask_user` tool's way back to the browser, or None when this run has
+    # no reader waiting on it (an eval harness, a test). The tool tells the
+    # model to answer without asking in that case rather than blocking on a
+    # channel nobody is listening to.
+    ask: AskUserChannel | None = None
     # Text from every model request this run makes, in order — not just the
     # last one. pydantic-ai's own `result.output` is only the final request's
     # text; the answer this app shows is the plan *and* the result narrative
@@ -409,6 +499,143 @@ LITERATURE_TOOLSET: FunctionToolset[Deps] = FunctionToolset(
 )
 
 
+def ask_user_tool_spec() -> dict[str, Any]:
+    """The one tool that asks rather than answers (§4b)."""
+    return {
+        "name": "ask_user",
+        "description": (
+            "Ask the person you are answering to choose between a small number of "
+            "concrete options, and wait for their reply. The options are rendered as "
+            "buttons under the chat box, so this is how to resolve an ambiguity the "
+            "catalog cannot: which of several similar metrics they meant, which "
+            "geography or year range, which of two readings of the question. Prefer it "
+            "over writing a question in prose, which only ends the turn without "
+            "getting an answer. Do not use it to confirm a choice you can make "
+            "yourself, to ask permission, or to ask the same thing twice. The call "
+            "blocks until they answer, so ask one question at a time, and include "
+            "everything they need to choose in the question itself."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "One short question, in plain language.",
+                },
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        f"Between {MIN_ASK_OPTIONS} and {MAX_ASK_OPTIONS} answers to "
+                        "choose between. Each is a button label, so keep each one "
+                        "under 80 characters and make it stand on its own."
+                    ),
+                },
+                "allow_other": {
+                    "type": "boolean",
+                    "description": (
+                        "Also offer a free-text box, for when the options may not "
+                        "cover what they meant. Default false."
+                    ),
+                    "default": False,
+                },
+            },
+            "required": ["question", "options"],
+        },
+    }
+
+
+async def _ask_user(ctx: RunContext[Deps], **kwargs: Any) -> str:
+    """Put the question on the wire and block until the browser answers it.
+
+    Not routed through `_run_tool` like the cube/literature/catalog tools:
+    those all dispatch to a client on `ctx.deps` and share one failure
+    translation, and this one has no client, no remote error to translate, and
+    the opposite data flow — it is the only tool whose result comes from the
+    reader rather than from the platform.
+
+    Every `ModelRetry` here is a malformed call the model can fix on the spot
+    (`Agent(retries=...)` covers it), and the timeout is deliberately *not* one:
+    asking again is exactly the wrong response to nobody being there to answer.
+    """
+    deps = ctx.deps
+    if deps.ask is None:
+        raise ModelRetry(
+            "There is no one to ask on this channel. Answer with what you have, "
+            "stating which reading of the question you assumed."
+        )
+
+    question = str(kwargs.get("question", "")).strip()
+    if not question:
+        raise ModelRetry("ask_user needs a `question`.")
+    raw_options = kwargs.get("options") or []
+    if not isinstance(raw_options, list):
+        raise ModelRetry("`options` must be a list of strings.")
+    # De-duplicated because the answer comes back as the option's own text:
+    # two identical buttons would be two ways to send the same reply, and a
+    # reader cannot tell which one the model meant by either.
+    options: list[str] = []
+    for option in raw_options:
+        text = str(option).strip()
+        if text and text not in options:
+            options.append(text)
+    if len(options) < MIN_ASK_OPTIONS:
+        raise ModelRetry(
+            f"ask_user needs at least {MIN_ASK_OPTIONS} distinct options. "
+            "If there is only one sensible answer, take it and say so instead."
+        )
+    options = options[:MAX_ASK_OPTIONS]
+
+    ask_id = uuid4().hex
+    await deps.queue.put(
+        Event(
+            "ask_user",
+            {
+                # The matching `tool_call` event (from `_handle_stream`) and
+                # this one can reach the browser in either order — they are
+                # produced by different coroutines onto the same queue — so
+                # this carries the question and options itself rather than
+                # having the UI read them off the tool call's arguments.
+                "tool_call_id": ctx.tool_call_id or "",
+                "ask_id": ask_id,
+                "question": question,
+                "options": options,
+                "allow_other": bool(kwargs.get("allow_other", False)),
+            },
+        )
+    )
+    answer = await deps.ask.ask(ask_id)
+    if answer is None:
+        log.info("ask_user_timeout", ask_id=ask_id)
+        await deps.queue.put(Event("ask_cancelled", {"ask_id": ask_id}))
+        return (
+            "No answer — the reader did not reply in time. Do not ask again: "
+            "continue with the most reasonable option and say which one you assumed."
+        )
+    log.info("ask_user_answered", ask_id=ask_id)
+    # Free text from the reader when `allow_other` was set, so it is untrusted
+    # input like any other tool result (§6) — it reaches the model as a tool
+    # result, never as an instruction, which is what the system prompt already
+    # tells it about every tool's output.
+    return answer
+
+
+# Separate from CUBE/LITERATURE so an operator can give a model the ability to
+# ask without giving it anything else, and — more to the point — so that a
+# model on a surface with no reader attached simply is not given it.
+ASK_USER_TOOLSET: FunctionToolset[Deps] = FunctionToolset(
+    [
+        Tool.from_schema(
+            function=_ask_user,
+            name="ask_user",
+            description=ask_user_tool_spec()["description"],
+            json_schema=ask_user_tool_spec()["input_schema"],
+            takes_ctx=True,
+        )
+    ]
+)
+
+
 async def _catalog_toolset(catalog: CatalogClient | None) -> FunctionToolset[Deps] | None:
     """Catalog tools, discovered fresh per request (OM's advertised set can
     change between deploys) — this is the one part of the tool surface that
@@ -630,6 +857,7 @@ async def run(
     system_prompt: str = SYSTEM_PROMPT,
     images: Sequence[tuple[bytes, str]] = (),
     include_catalog_tools: bool = False,
+    ask: AskUserChannel | None = None,
 ) -> None:
     """Answer `question`, pushing events onto `queue` as they happen and
     filling `turn`. Always ends by pushing a `done` or `error` event — the
@@ -658,8 +886,15 @@ async def run(
     names twice. A model that names neither gets no catalog tools at all.
     `catalog` is still used for the persona preamble regardless (below) — that
     is context assembly, not a tool, and never collides.
+
+    `ask` is the live reader behind this run, for the `ask_user` tool. `None`
+    — the default — means nobody is watching, and `ask_user` (if this model
+    even has it) says so to the model rather than blocking. Giving a model the
+    tool and giving a run somewhere to ask are two separate decisions on
+    purpose: the toolset comes from models.yaml, this comes from the surface
+    the run is happening on.
     """
-    deps = Deps(cube=cube, literature=literature, catalog=catalog, turn=turn, queue=queue)
+    deps = Deps(cube=cube, literature=literature, catalog=catalog, turn=turn, queue=queue, ask=ask)
     await queue.put(Event("status", {"message": "Reading the catalog"}))
 
     instructions = system_prompt

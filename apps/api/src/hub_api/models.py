@@ -31,7 +31,14 @@ from pydantic_ai import Agent
 from pydantic_ai.toolsets import AbstractToolset
 
 from hub_api import config_dir
-from ohdp_agent.loop import CUBE_TOOLSET, LITERATURE_TOOLSET, SYSTEM_PROMPT, Deps, build_agent
+from ohdp_agent.loop import (
+    ASK_USER_TOOLSET,
+    CUBE_TOOLSET,
+    LITERATURE_TOOLSET,
+    SYSTEM_PROMPT,
+    Deps,
+    build_agent,
+)
 from ohdp_shared import env_file_values, get_logger, settings
 
 # The in-process tool groups a model can name in its `tools:` list, alongside
@@ -41,6 +48,7 @@ from ohdp_shared import env_file_values, get_logger, settings
 _IN_PROCESS_TOOLSETS: dict[str, AbstractToolset[Deps]] = {
     "cube": CUBE_TOOLSET,
     "literature": LITERATURE_TOOLSET,
+    "ask-user": ASK_USER_TOOLSET,
 }
 # The one entry in a model's `tools:` list that is not in `_IN_PROCESS_TOOLSETS`:
 # OpenMetadata's advertised tools can change between deploys, so this one is

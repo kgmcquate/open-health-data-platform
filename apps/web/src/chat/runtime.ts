@@ -8,9 +8,11 @@ import {
   type ThreadMessageLike,
 } from "@assistant-ui/react";
 import {
+  answerAsk,
   createThread,
   fetchThread,
   submitFeedback,
+  type PendingAsk,
   type ThreadSummary,
   type ThreadTurn,
   type ThreadTurnToolCall,
@@ -23,7 +25,7 @@ import {
  * stream and reflects the persisted history back once a turn lands. Events
  * the backend emits (ohdp_agent.loop):
  *   status, thinking, text, plan, tool_call, tool_result, rows, sql,
- *   articles, tool_error, warning, done, error
+ *   articles, tool_error, warning, ask_user, ask_cancelled, done, error
  *
  * Thread *switching* is not this hook's job — `Chat.tsx` owns the sidebar and
  * the list of threads; this hook only drives whichever thread it is told is
@@ -250,6 +252,14 @@ export interface HubChatRuntime {
    * cleared whenever a turn starts or a thread is switched, and only the
    * live stream's latest answer ever has any. */
   suggestions: readonly string[];
+  /** The `ask_user` question the running turn is blocked on, if any — the
+   * agent has stopped and is waiting on a click. Ephemeral in the same way
+   * `suggestions` is, and more so: the run holding the question only exists
+   * for as long as this stream does, so a reload abandons it rather than
+   * resuming it. */
+  pendingAsk: PendingAsk | null;
+  /** Answer the pending question and let the agent continue. */
+  answerPendingAsk: (answer: string) => Promise<void>;
   isRunning: boolean;
 }
 
@@ -266,6 +276,7 @@ export function useHubChatRuntime(
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [suggestions, setSuggestions] = useState<readonly string[]>([]);
+  const [pendingAsk, setPendingAsk] = useState<PendingAsk | null>(null);
   // A ref, not state: aborting a stream is an imperative action, not
   // something the UI renders off of, and — as with the module-level adapters
   // above — anything reached through the store object passed to
@@ -283,6 +294,7 @@ export function useHubChatRuntime(
     setThreadId(null);
     setMessages([]);
     setSuggestions([]);
+    setPendingAsk(null);
   };
 
   const switchThread = async (id: number) => {
@@ -290,6 +302,7 @@ export function useHubChatRuntime(
     setMessages(detail.turns.flatMap(turnToMessages));
     setThreadId(id);
     setSuggestions([]);
+    setPendingAsk(null);
   };
 
   const runTurn = async (
@@ -302,6 +315,7 @@ export function useHubChatRuntime(
     // The previous answer's follow-ups stop being relevant the moment a new
     // question is on its way — chips mid-generation would be for the old turn.
     setSuggestions([]);
+    setPendingAsk(null);
 
     let activeThreadId = threadId;
     let base = messages;
@@ -367,6 +381,31 @@ export function useHubChatRuntime(
         );
       }
       for await (const event of readSse(response)) {
+        // Handled here rather than in `applyEvent`: an ask is not content in
+        // the message, it is the run stopping to wait on the reader, and the
+        // chips for it live next to the composer (`Chat.tsx`) where the
+        // follow-up chips already do. The matching `tool_call` part still
+        // renders inline, and gains its result once the answer goes through.
+        if (event.type === "ask_user") {
+          setPendingAsk({
+            ask_id: String(event.ask_id ?? ""),
+            question: String(event.question ?? ""),
+            options: Array.isArray(event.options)
+              ? event.options.filter((o): o is string => typeof o === "string")
+              : [],
+            allow_other: Boolean(event.allow_other),
+          });
+          continue;
+        }
+        // The agent gave up waiting (`ASK_USER_TIMEOUT_SECONDS`) and is
+        // answering anyway — take the chips away so nothing invites a click
+        // that would now 404.
+        if (event.type === "ask_cancelled") {
+          setPendingAsk((current) =>
+            current && current.ask_id === String(event.ask_id ?? "") ? null : current,
+          );
+          continue;
+        }
         if (event.type === "done") {
           // The server sends the full, citation-checked answer at the end;
           // replace the streamed draft with it.
@@ -396,6 +435,9 @@ export function useHubChatRuntime(
     } finally {
       setIsRunning(false);
       abortControllerRef.current = null;
+      // Covers the cancel and error paths too: the run that was waiting on
+      // the question is gone either way, so nothing is listening for a click.
+      setPendingAsk(null);
     }
 
     // The server is the source of truth for ids, the final answer, and the
@@ -441,6 +483,22 @@ export function useHubChatRuntime(
     } catch {
       // The turn already rendered from the stream; a failed refresh just
       // means ids stay local until the next successful switch/reload.
+    }
+  };
+
+  /** Send the reader's choice and clear the chips. Cleared optimistically:
+   * the agent is already moving on by the time the POST returns, and a 404
+   * (the question stopped waiting while they read it) has the same right
+   * outcome — the chips go away and the turn continues without them. */
+  const answerPendingAsk = async (answer: string) => {
+    const ask = pendingAsk;
+    if (!ask || !answer.trim()) return;
+    setPendingAsk(null);
+    try {
+      await answerAsk(ask.ask_id, answer.trim());
+    } catch {
+      // Nothing to recover: the run either continued without this answer or
+      // has already ended, and either way the stream says what happened next.
     }
   };
 
@@ -490,5 +548,14 @@ export function useHubChatRuntime(
 
   const runtime = useExternalStoreRuntime<ThreadMessageLike>(store);
 
-  return { runtime, threadId, newThread, switchThread, suggestions, isRunning };
+  return {
+    runtime,
+    threadId,
+    newThread,
+    switchThread,
+    suggestions,
+    pendingAsk,
+    answerPendingAsk,
+    isRunning,
+  };
 }

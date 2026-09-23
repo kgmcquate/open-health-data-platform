@@ -33,7 +33,8 @@ from hub_api.models import AgentRegistry, ModelConfig
 from ohdp_agent.catalog import CatalogClient
 from ohdp_agent.cube import CubeClient
 from ohdp_agent.literature import LiteratureClient
-from ohdp_agent.loop import Event, Turn
+from ohdp_agent.loop import AskRegistry, AskUserChannel, Event, Turn
+from ohdp_agent.loop import resolve_ask as resolve_agent_ask
 from ohdp_agent.loop import run as run_agent
 from ohdp_shared import get_logger, settings
 
@@ -92,6 +93,17 @@ class FeedbackRequest(BaseModel):
     rating: Literal["positive", "negative"]
 
 
+class AskAnswer(BaseModel):
+    """The reader's reply to an `ask_user` question still waiting on them."""
+
+    ask_id: str = Field(min_length=1, max_length=64)
+    # Normally one of the options the model offered, but not checked against
+    # them: `allow_other` questions accept free text, and the model is told
+    # either way that a tool result is data and not an instruction (§6). The
+    # length cap is the same one a typed question gets.
+    answer: str = Field(min_length=1, max_length=2000)
+
+
 def get_engine(request: Request) -> Engine:
     """The chat-log pool. Declared *after* the identity dependency on every route
     so an unauthenticated caller never learns whether our database is up."""
@@ -104,6 +116,24 @@ def get_engine(request: Request) -> Engine:
 def get_agents(request: Request) -> AgentRegistry:
     """model id -> its reusable Agent, built once at startup (hub_api.models)."""
     return getattr(request.app.state, "agents", {})
+
+
+def get_pending_asks(request: Request) -> AskRegistry:
+    """Every `ask_user` question currently waiting on a browser (ohdp_agent.loop).
+
+    Created in `hub_api.main`'s lifespan; defaulted here so a test that builds
+    the app without it still works, the same way `get_agents` tolerates an
+    empty registry. This is the one piece of chat state that has to be shared
+    *between* requests — the POST that answers a question is not the request
+    holding the stream that asked it — which is also why it is process-local
+    state and not a database row: it is only meaningful to the event loop that
+    is still awaiting it.
+    """
+    pending: AskRegistry | None = getattr(request.app.state, "pending_asks", None)
+    if pending is None:
+        pending = {}
+        request.app.state.pending_asks = pending
+    return pending
 
 
 @router.get("/models")
@@ -251,6 +281,35 @@ def submit_feedback(
     return {"ok": True}
 
 
+@router.post("/chat/answer")
+async def answer_ask(
+    body: AskAnswer,
+    user_email: Annotated[str, Depends(get_user_email)],
+    pending: Annotated[AskRegistry, Depends(get_pending_asks)],
+) -> dict[str, bool]:
+    """Hand the reader's choice to the `/api/chat` stream that is blocked on it.
+
+    A second request, deliberately: the asking request is busy holding its SSE
+    response open, and SSE is one-directional. 404 covers every way a question
+    can no longer be waiting — answered, timed out, cancelled, or another
+    user's — without saying which (`resolve_ask`).
+
+    **`async def`, not `def`, and that is load-bearing.** FastAPI runs a sync
+    endpoint on a worker thread, and `asyncio.Future.set_result` — which is what
+    `resolve_ask` does — is not thread-safe: off the event loop's own thread it
+    can set the value without ever scheduling the callback that wakes the
+    coroutine awaiting it, leaving the chat run blocked until its five-minute
+    timeout despite the answer having arrived. There is nothing blocking in this
+    handler to justify a worker thread anyway: it touches one dict.
+
+    No quota check: the question that is waiting was already paid for when it
+    was asked, and this route neither starts a run nor spends a token.
+    """
+    if not resolve_agent_ask(pending, ask_id=body.ask_id, owner=user_email, answer=body.answer):
+        raise HTTPException(404, "That question is no longer waiting for an answer.")
+    return {"ok": True}
+
+
 def _decode_image(data_url: str) -> tuple[bytes, str]:
     """`data:<media_type>;base64,<payload>` -> the pair `loop.run`'s `images`
     wants. Raises `HTTPException` rather than a bare parse error — this comes
@@ -272,6 +331,7 @@ async def chat(
     user_email: Annotated[str, Depends(get_user_email)],
     engine: Annotated[Engine, Depends(get_engine)],
     agents: Annotated[AgentRegistry, Depends(get_agents)],
+    pending: Annotated[AskRegistry, Depends(get_pending_asks)],
 ) -> StreamingResponse:
     """Answer one question, streamed as Server-Sent Events.
 
@@ -320,8 +380,12 @@ async def chat(
 
     images = [_decode_image(url) for url in body.images]
 
+    # Scoped to this user so `/api/chat/answer` can check who is allowed to
+    # answer a given question without the browser being trusted to say.
+    ask = AskUserChannel(owner=user_email, pending=pending)
+
     return StreamingResponse(
-        _stream(engine, body, user_email, config, images),
+        _stream(engine, body, user_email, config, images, ask),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -339,6 +403,7 @@ async def _stream(
     user_email: str,
     config: ModelConfig,
     images: list[tuple[bytes, str]],
+    ask: AskUserChannel,
 ) -> AsyncIterator[str]:
     """Drive the agent, forward its events, and log the turn when it ends."""
     turn = Turn(question=body.question, persona=body.persona)
@@ -368,6 +433,7 @@ async def _stream(
                 system_prompt=config.system_prompt,
                 images=images,
                 include_catalog_tools=config.include_catalog_tools,
+                ask=ask,
             )
         except Exception as exc:  # noqa: BLE001 — the stream must always close cleanly
             log.exception("chat_failed", user=user_email)

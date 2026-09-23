@@ -202,6 +202,22 @@ export const deleteThread = (id: number) => sendJson<{ ok: true }>(`/api/threads
 export const submitFeedback = (turnId: number, rating: "positive" | "negative") =>
   sendJson<{ ok: true }>("/api/feedback", "POST", { turn_id: turnId, rating });
 
+/** A question the agent is blocked on mid-answer — the `ask_user` tool
+ * (ohdp_agent.loop). Lives only for as long as that run holds its SSE stream
+ * open, so it is never part of a loaded thread's history. */
+export interface PendingAsk {
+  ask_id: string;
+  question: string;
+  options: string[];
+  allow_other: boolean;
+}
+
+/** Unblock the `/api/chat` stream waiting on `askId`. A second request rather
+ * than a reply on the stream, because SSE only goes one way. 404 means the
+ * question stopped waiting (answered elsewhere, timed out, run cancelled). */
+export const answerAsk = (askId: string, answer: string) =>
+  sendJson<{ ok: true }>("/api/chat/answer", "POST", { ask_id: askId, answer });
+
 /** Vote a dashboard up (1), down (-1), or withdraw the vote (0). Requires a
  * signed-in session — votes are one per person per dashboard, which only
  * means anything with a verified identity behind it. */

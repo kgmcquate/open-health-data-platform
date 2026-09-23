@@ -39,6 +39,7 @@ import {
   renameThread,
   unarchiveThread,
   type ChatModel,
+  type PendingAsk,
   type ThreadSummary,
 } from "../lib/api";
 
@@ -553,6 +554,68 @@ function Composer({ models, model, onModelChange }: ModelPickerProps) {
 }
 
 // ---------------------------------------------------------------------------
+// The agent asking back
+// ---------------------------------------------------------------------------
+
+/** The `ask_user` tool's question, as buttons above the composer.
+ *
+ * It sits where the follow-up chips sit rather than inline in the message,
+ * for two reasons. The composer is disabled while a turn runs (its Send is a
+ * Stop button), so this is the only place the reader can act at all mid-turn;
+ * and the `ask_user` and `tool_call` events race each other onto the stream —
+ * they are queued by different coroutines server-side — so there is no
+ * message part this is reliably able to attach itself to when it arrives.
+ */
+function AskPanel({
+  ask,
+  onAnswer,
+}: {
+  ask: PendingAsk;
+  onAnswer: (answer: string) => void;
+}) {
+  const [other, setOther] = useState("");
+
+  // Keyed on ask_id by the caller, so this resets for each new question
+  // rather than carrying the previous one's half-typed text over.
+  return (
+    <div className="mb-2 rounded-box border border-primary/30 bg-primary/5 px-3.5 py-3">
+      <p className="text-sm font-medium">{ask.question}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {ask.options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className="btn btn-outline btn-primary btn-sm normal-case"
+            onClick={() => onAnswer(option)}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      {ask.allow_other && (
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (other.trim()) onAnswer(other);
+          }}
+        >
+          <input
+            className="input input-sm input-bordered flex-1"
+            placeholder="Something else…"
+            value={other}
+            onChange={(e) => setOther(e.target.value)}
+          />
+          <button type="submit" className="btn btn-sm btn-primary" disabled={!other.trim()}>
+            Send
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Thread
 // ---------------------------------------------------------------------------
 
@@ -561,8 +624,11 @@ function ChatThread({
   model,
   onModelChange,
   suggestions,
+  pendingAsk,
+  answerPendingAsk,
   isRunning,
-}: ModelPickerProps & Pick<HubChatRuntime, "suggestions" | "isRunning">) {
+}: ModelPickerProps &
+  Pick<HubChatRuntime, "suggestions" | "pendingAsk" | "answerPendingAsk" | "isRunning">) {
   return (
     <ThreadPrimitive.Root className="flex h-full flex-col">
       <AuiIf condition={(s) => s.thread.isEmpty}>
@@ -608,6 +674,16 @@ function ChatThread({
           </div>
         </ThreadPrimitive.Viewport>
         <div className="sticky bottom-0 mx-auto w-full max-w-5xl bg-gradient-to-b from-transparent via-base-100/90 to-base-100 px-4 pt-4 pb-3">
+          {/* The agent waiting on an answer (`ask_user`). Never shows at the
+              same time as the follow-up chips below — those only appear once
+              a turn has finished, and this only exists while one is running. */}
+          {pendingAsk && (
+            <AskPanel
+              key={pendingAsk.ask_id}
+              ask={pendingAsk}
+              onAnswer={(answer) => void answerPendingAsk(answer)}
+            />
+          )}
           {/* Follow-ups for the answer that just landed — same chips as the
               welcome screen, but proposed by the model about its own answer
               (the `done` event's `suggestions`). Hidden while a turn runs so
@@ -657,10 +733,16 @@ export default function Chat() {
       return [...next].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     });
 
-  const { runtime, threadId, newThread, switchThread, suggestions, isRunning } = useHubChatRuntime(
-    model,
-    upsertThread,
-  );
+  const {
+    runtime,
+    threadId,
+    newThread,
+    switchThread,
+    suggestions,
+    pendingAsk,
+    answerPendingAsk,
+    isRunning,
+  } = useHubChatRuntime(model, upsertThread);
 
   useEffect(() => {
     fetchModels()
@@ -724,6 +806,8 @@ export default function Chat() {
             model={model}
             onModelChange={setModel}
             suggestions={suggestions}
+            pendingAsk={pendingAsk}
+            answerPendingAsk={answerPendingAsk}
             isRunning={isRunning}
           />
         </AssistantRuntimeProvider>

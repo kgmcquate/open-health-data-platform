@@ -53,6 +53,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     finish restarting. `/api/chat` returns 503 while `state.engine` is unset.
     """
     app.state.engine = None
+    # Every `ask_user` question currently blocking a chat run, keyed by ask_id
+    # (hub_api.chat.get_pending_asks). Process-local: the POST that answers one
+    # must reach the event loop still awaiting it, which one replica makes true
+    # by construction.
+    app.state.pending_asks = {}
     # The same pool, on the mounted sub-app as well: a mounted app resets
     # `scope["app"]` to itself, so `/tools` routes reading `request.app.state`
     # (hub_api.dashboards.get_library_engine, for the dashboard library) see

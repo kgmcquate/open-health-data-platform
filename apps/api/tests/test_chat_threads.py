@@ -149,3 +149,49 @@ def test_models_returns_empty_when_no_models_are_configured(client: TestClient) 
     response = client.get("/api/models")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_answering_a_question_nobody_is_waiting_on_is_a_404(client: TestClient) -> None:
+    """`/api/chat/answer` resolves an in-flight `ask_user` (ohdp_agent.loop).
+    An unknown, expired or someone-else's ask_id is the same 404 — the browser
+    is never told which, for the same reason a thread it does not own 404s."""
+    response = client.post("/api/chat/answer", json={"ask_id": "deadbeef", "answer": "Ages 35+"})
+    assert response.status_code == 404
+
+
+def test_answering_reaches_the_run_waiting_on_that_question(client: TestClient) -> None:
+    import asyncio
+
+    from ohdp_agent.loop import AskRegistry, PendingAsk
+
+    loop = asyncio.new_event_loop()
+    try:
+        future: asyncio.Future[str] = loop.create_future()
+        pending: AskRegistry = {"abc123": PendingAsk(owner=USER, future=future)}
+        client.app.state.pending_asks = pending
+
+        # Another signed-in user cannot answer this user's question, even
+        # holding its id.
+        client.app.dependency_overrides[chat.get_user_email] = lambda: OTHER
+        assert (
+            client.post("/api/chat/answer", json={"ask_id": "abc123", "answer": "no"}).status_code
+            == 404
+        )
+        assert not future.done()
+
+        client.app.dependency_overrides[chat.get_user_email] = lambda: USER
+        ok = client.post("/api/chat/answer", json={"ask_id": "abc123", "answer": "Ages 35+"})
+        assert ok.status_code == 200
+        assert future.result() == "Ages 35+"
+
+        # The future is resolved, so a second click gets the same 404 as a
+        # question that never existed.
+        assert (
+            client.post(
+                "/api/chat/answer", json={"ask_id": "abc123", "answer": "again"}
+            ).status_code
+            == 404
+        )
+    finally:
+        client.app.state.pending_asks = {}
+        loop.close()
