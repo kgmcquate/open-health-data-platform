@@ -150,9 +150,13 @@ domains:
     - name: Environmental Health
       domainType: Consumer-aligned
       description: >
-        Air quality (PM2.5) and other environmental exposure indicators
-        relevant to population health; expected to grow once OpenAQ ingestion
-        lands.
+        Monthly PM2.5, ozone and NO2 concentrations at US government
+        reference-grade air monitors, and the monitoring network behind them,
+        from OpenAQ (see the OpenAQ source-aligned domain). Maps to dbt
+        curated/environmental_health. A consistent panel of capped stations
+        rather than a census — trends are trustworthy, national levels are not.
+      schemas:
+        - snowflake.CURATED.ENVIRONMENTAL_HEALTH
 
     - name: Education
       domainType: Consumer-aligned
@@ -173,6 +177,18 @@ domains:
     - name: Financial
       domainType: Consumer-aligned
       description: >
-        Medicare/Medicaid drug spending and beneficiary enrollment, from CMS
-        (see the CMS source-aligned domain). Staged in CLEAN.STG_CMS; no
-        CURATED.FINANCIAL mart yet — seeded ahead of that build-out.
+        Medicare/Medicaid drug spending, Medicare geographic spending and
+        utilization variation, and Medicare monthly enrollment, from CMS (see
+        the CMS source-aligned domain). Maps to dbt curated/financial.
+      schemas:
+        - snowflake.CURATED.FINANCIAL
+
+    - name: Product Safety
+      domainType: Consumer-aligned
+      description: >
+        FDA recall enforcement reports for drugs, food and medical devices
+        — recall reason, health-hazard classification, status and the
+        recalling firm, from openFDA (see the openFDA source-aligned domain).
+        Maps to dbt curated/product_safety.
+      schemas:
+        - snowflake.CURATED.PRODUCT_SAFETY

@@ -1,0 +1,254 @@
+version: 2
+
+# OpenAQ environmental-health marts: monthly pollutant concentrations at US
+# government reference monitors, and the monitoring network behind them.
+# Dimensions and their descriptions are read from the column docs below by
+# cube-dbt -- semantic/cube/model/environmental_health.yml renders them, so
+# this file is the source of truth for those descriptions, not the Cube model.
+#
+# The caveat every description here keeps repeating, because it is the one
+# that makes numbers wrong rather than merely imprecise: pollutants are
+# measured in different units (pm25 in µg/m3, o3 and no2 in ppm), so no
+# measure may average or sum across `parameter`. The cube exposes one measure
+# per pollutant instead of one "average reading".
+
+models:
+  - name: environmental_health__air_quality_monthly
+    description: >
+      Monthly pollutant concentrations (mean, median, percentiles, min/max) at
+      US government reference-grade air monitors. One row per sensor per month
+      -- equivalently one row per station per pollutant per month. A
+      consistent panel of stations rather than a census: see the model SQL for
+      the ingestion caps that bound it.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (sensor_id, month_start)
+          hashed into one opaque column. It carries the grain -- `unique` on
+          it asserts exactly what unique_combination_of_columns used to -- and
+          is the primary key Cube joins and pre-aggregates on, which is what
+          keeps the natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: sensor_id
+        description: >-
+          OpenAQ's identifier for the sensor. One sensor measures exactly one
+          pollutant at one station, so sensor_id determines both location_id
+          and parameter.
+        data_type: bigint
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: month_start
+        description: First day of the month the readings cover.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: location_id
+        description: The monitoring station the sensor belongs to. Joins environmental_health__monitoring_sites.
+        data_type: bigint
+      - name: location_name
+        description: The station's name, as its provider reports it.
+        data_type: varchar
+      - name: parameter
+        description: >-
+          Pollutant measured -- `pm25` (fine particulate matter), `o3`
+          (ozone) or `no2` (nitrogen dioxide) in the current ingestion scope.
+          Always group or filter on this before aggregating a value column.
+        data_type: varchar
+        data_tests: [not_null]
+      - name: parameter_units
+        description: >-
+          Units the value columns are in: µg/m3 for pm25, ppm for o3 and no2.
+          Determined by parameter -- it is carried on every row so a
+          concentration is never read without its unit.
+        data_type: varchar
+      - name: locality
+        description: City or place the station sits in, where the provider supplies one. Frequently null.
+        data_type: varchar
+      - name: country_code
+        description: ISO 3166-1 alpha-2 code of the station's country. `US` throughout the current ingestion scope.
+        data_type: varchar
+      - name: latitude
+        description: WGS84 latitude of the station -- the map axis.
+        data_type: double
+      - name: longitude
+        description: WGS84 longitude of the station.
+        data_type: double
+      - name: provider_name
+        description: Organization that facilitates sharing the data, e.g. AirNow.
+        data_type: varchar
+      - name: owner_name
+        description: Organization that operates the station, often not the provider.
+        data_type: varchar
+      - name: timezone
+        description: IANA time zone the station sits in.
+        data_type: varchar
+      - name: avg_value
+        description: >-
+          Mean of the month's hourly readings, in parameter_units. The
+          headline concentration. Averaging it across stations gives an
+          unweighted "typical monitor" figure, not a population-weighted
+          exposure -- OpenAQ publishes no population denominator to weight by.
+        data_type: double
+      - name: median_value
+        description: Median hourly reading -- the robust counterpart to avg_value, and the better of the two when a month contains a wildfire or inversion episode.
+        data_type: double
+      - name: min_value
+        description: Lowest hourly reading in the month.
+        data_type: double
+      - name: max_value
+        description: Highest hourly reading in the month. One bad hour moves it; p98_value is the steadier peak measure.
+        data_type: double
+      - name: p25_value
+        description: 25th percentile of the month's hourly readings.
+        data_type: double
+      - name: p75_value
+        description: 75th percentile of the month's hourly readings.
+        data_type: double
+      - name: p98_value
+        description: >-
+          98th percentile of the month's hourly readings -- the usual
+          peak-exposure measure, and the shape most air-quality standards are
+          written against.
+        data_type: double
+      - name: stddev_value
+        description: Standard deviation of the month's hourly readings -- how variable the month was.
+        data_type: double
+      - name: observed_hours
+        description: Hourly values the sensor actually reported. The denominator every average here rests on.
+        data_type: double
+      - name: expected_hours
+        description: Hourly values the month would have held had the sensor reported continuously.
+        data_type: double
+      - name: pct_complete
+        description: observed_hours as a percentage of expected_hours. Low values mean a sparse month whose average is worth distrusting.
+        data_type: double
+      - name: is_complete_month
+        description: >-
+          Whether pct_complete is at least 75%, EPA's own completeness
+          threshold for treating a period average as valid. The default
+          quality filter -- the cube's headline measures apply it.
+        data_type: boolean
+      - name: has_data_flags
+        description: >-
+          Whether an OpenAQ location flag (a marked period of known-affected
+          data, e.g. maintenance) overlaps this month for this sensor. A
+          different concern from sparseness, which is pct_complete's.
+        data_type: boolean
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: environmental_health__monitoring_sites
+    description: >
+      The US government reference-grade air monitoring network OpenAQ indexes,
+      one row per station -- one pin per station on a map, and the denominator
+      behind any question about observational coverage. Low-cost sensor nodes
+      are excluded: the measurement ingestion never visits them.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (location_id) hashed into one
+          opaque column. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: location_id
+        description: >-
+          OpenAQ's identifier for the station, and the join key to
+          environmental_health__air_quality_monthly.
+        data_type: bigint
+        # not_null only, deliberately: cube_dbt turns a column carrying both
+        # `unique` and `not_null` into a Cube primary key, which flips its
+        # `public` default to false and drops it from /meta -- the exact
+        # failure macros/row_sk.sql exists to avoid. row_sk's own `unique`
+        # already asserts this grain.
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: location_name
+        description: The station's name, as its provider reports it.
+        data_type: varchar
+      - name: locality
+        description: City or place the station sits in, where the provider supplies one. Frequently null.
+        data_type: varchar
+      - name: country_code
+        description: ISO 3166-1 alpha-2 code of the station's country.
+        data_type: varchar
+      - name: country_name
+        description: Country name.
+        data_type: varchar
+      - name: latitude
+        description: WGS84 latitude of the station.
+        data_type: double
+      - name: longitude
+        description: WGS84 longitude of the station.
+        data_type: double
+      - name: provider_name
+        description: Organization that facilitates sharing the data, e.g. AirNow.
+        data_type: varchar
+      - name: owner_name
+        description: Organization that operates the station, often not the provider.
+        data_type: varchar
+      - name: timezone
+        description: IANA time zone the station sits in.
+        data_type: varchar
+      - name: is_mobile
+        description: >-
+          True for a mobile platform rather than a fixed station. latitude and
+          longitude are then only the first point measured, so a pin on a map
+          is misleading for these.
+        data_type: boolean
+      - name: has_measurements
+        description: >-
+          Whether any month of readings for this station made it into
+          environmental_health__air_quality_monthly. False is common and
+          expected: the monthly fan-out is capped per country, so a station
+          can be indexed here and never visited. Filter on it before treating
+          this table as the set of stations behind a chart.
+        data_type: boolean
+      - name: parameter_count
+        description: Distinct pollutants this station has ingested readings for. Zero when has_measurements is false.
+        data_type: bigint
+      - name: first_month_with_readings
+        description: Earliest month with ingested readings for this station. Null when has_measurements is false.
+        data_type: date
+      - name: last_month_with_readings
+        description: >-
+          Most recent month with ingested readings. A station whose value is
+          several months stale has dropped out of the capped fan-out or
+          stopped reporting.
+        data_type: date
+      - name: first_measurement_at_utc
+        description: >-
+          Timestamp of the station's earliest measurement *as OpenAQ knows
+          it* -- its full history, which reaches further back than what is
+          ingested here.
+        data_type: timestamp
+      - name: last_measurement_at_utc
+        description: Timestamp of the station's most recent measurement as OpenAQ knows it.
+        data_type: timestamp
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

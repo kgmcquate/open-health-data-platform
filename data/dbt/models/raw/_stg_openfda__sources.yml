@@ -16,13 +16,30 @@
 #     25,000/25,000 food and device), `event_id` is shared by every product
 #     recalled in one event (4,469 events across those 16,888 drug rows).
 #
-# Not declared here: the 21 child tables dlt splits drug/enforcement's nested
-# `openfda` object into (DRUG_ENFORCEMENT__OPENFDA__SUBSTANCE_NAME,
-# ...__PRODUCT_NDC, ...__PHARM_CLASS_EPC and so on — every one of its members is
-# a JSON array). They exist in RAW.OPENFDA and join back on `_dlt_parent_id` =
-# the parent's `_dlt_id`. Food and device enforcement return no `openfda` block
-# at all. Nothing models them yet, and no other source declares its child
-# tables either.
+# **The 21 child tables** at the bottom of this file are dlt's split of
+# drug/enforcement's nested `openfda` object. Every one of that object's 21
+# members is a JSON array, so dlt gives each its own table rather than a
+# flattened `openfda__*` column, keyed back to the parent by `_dlt_parent_id`
+# = the parent row's `_dlt_id`. Food and device enforcement return no
+# `openfda` block at all, so they have no child tables. No other source in
+# this project declares its child tables; these are declared because the
+# clean layer resolves that parent join and carries `recall_number` onto each
+# one (macros/openfda_child_rows.sql).
+#
+# **Coverage is the caveat that matters.** openFDA only attaches an `openfda`
+# block when it can match the recalled product to an SPL drug listing, and it
+# usually cannot: in a 5,000-record sample of US drug recalls, 18.1% carried
+# one. Worse, the shortfall is not uniform — 34.2% of Class III recalls had a
+# block against 15.6% of Class I. So the child tables under-represent exactly
+# the most severe recalls, and any count drawn from them is a count of
+# *matched* recalls, never of all of them. Downstream models carry the
+# unmatched rows and a `has_openfda_identity` flag rather than dropping them.
+#
+# **`_dlt_list_idx` is not a join key across members.** It is each value's
+# position in its own array, and the arrays are ragged: 36 of 38 records with
+# a block in a 200-record sample had members of differing lengths (one had 1
+# brand_name against 7 product_ndc values). Joining two child tables on
+# position would fabricate pairings.
 version: 2
 sources:
 - name: openfda
@@ -121,3 +138,269 @@ sources:
     identifier: DEVICE_ENFORCEMENT
     description: US medical device recall enforcement reports, same shape as drug_enforcement. Full replace each run, capped at 25,000 rows — see ohdp_ingestion.openfda.source.
     columns: *enforcement_columns
+
+  # --- drug_enforcement child tables (dlt's split of the nested
+  # `openfda` object; see the header note) ---------------------------------
+  - name: drug_enforcement__openfda__application_number
+    identifier: DRUG_ENFORCEMENT__OPENFDA__APPLICATION_NUMBER
+    description: >-
+      One row per `openfda.application_number` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        FDA application number the drug was approved under — an NDA, ANDA or BLA number (e.g. `ANDA040637`). The key into Drugs@FDA.
+    - &openfda_child_parent_id
+      name: _dlt_parent_id
+      description: >-
+        dlt's foreign key to the parent recall row — equal to
+        DRUG_ENFORCEMENT's `_dlt_id`. Resolved once in the clean layer
+        (macros/openfda_child_rows.sql) so nothing downstream has to know
+        this column exists.
+    - &openfda_child_list_idx
+      name: _dlt_list_idx
+      description: >-
+        The value's zero-based position in its own JSON array. Preserves
+        openFDA's ordering within this member, and means nothing across
+        members — see the header note on ragged arrays.
+  - name: drug_enforcement__openfda__brand_name
+    identifier: DRUG_ENFORCEMENT__OPENFDA__BRAND_NAME
+    description: >-
+      One row per `openfda.brand_name` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Marketed brand name(s) of the drug product, from its SPL listing. Distinct from the parent's free-text `product_description`, which is whatever the firm wrote on the recall notice.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__generic_name
+    identifier: DRUG_ENFORCEMENT__OPENFDA__GENERIC_NAME
+    description: >-
+      One row per `openfda.generic_name` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Generic (non-proprietary) name(s) of the drug product, from its SPL listing.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__is_original_packager
+    identifier: DRUG_ENFORCEMENT__OPENFDA__IS_ORIGINAL_PACKAGER
+    description: >-
+      One row per `openfda.is_original_packager` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Whether the labeler is the product's original packager. The one member whose `value` is a boolean rather than text.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__manufacturer_name
+    identifier: DRUG_ENFORCEMENT__OPENFDA__MANUFACTURER_NAME
+    description: >-
+      One row per `openfda.manufacturer_name` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Labeler/manufacturer name(s) from the SPL listing. Distinct from the parent's `recalling_firm`, which is whoever initiated the recall — often a repackager or distributor, not the manufacturer.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__nui
+    identifier: DRUG_ENFORCEMENT__OPENFDA__NUI
+    description: >-
+      One row per `openfda.nui` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        NDF-RT unique identifier(s) for the pharmacologic classes below. One NUI per `pharm_class_*` entry, so this table is the union of all four class tables' identifiers.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__original_packager_product_ndc
+    identifier: DRUG_ENFORCEMENT__OPENFDA__ORIGINAL_PACKAGER_PRODUCT_NDC
+    description: >-
+      One row per `openfda.original_packager_product_ndc` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Product NDC(s) of the original packager, present on repackaged products.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__package_ndc
+    identifier: DRUG_ENFORCEMENT__OPENFDA__PACKAGE_NDC
+    description: >-
+      One row per `openfda.package_ndc` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Package-level NDC code(s) — the 3-segment form identifying a specific package size. The longest of these arrays (up to 38 values on one recall in a 5,000-record sample).
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__pharm_class_cs
+    identifier: DRUG_ENFORCEMENT__OPENFDA__PHARM_CLASS_CS
+    description: >-
+      One row per `openfda.pharm_class_cs` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Chemical structure pharmacologic class(es), e.g. `Sulfonamides [CS]`. One of openFDA's four `pharm_class_*` facets.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__pharm_class_epc
+    identifier: DRUG_ENFORCEMENT__OPENFDA__PHARM_CLASS_EPC
+    description: >-
+      One row per `openfda.pharm_class_epc` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Established pharmacologic class(es), e.g. `Proton Pump Inhibitor [EPC]`. The most useful of the four for grouping recalls by drug class — it is the FDA's own therapeutic classification.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__pharm_class_moa
+    identifier: DRUG_ENFORCEMENT__OPENFDA__PHARM_CLASS_MOA
+    description: >-
+      One row per `openfda.pharm_class_moa` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Mechanism of action class(es), e.g. `Cyclooxygenase Inhibitors [MoA]`.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__pharm_class_pe
+    identifier: DRUG_ENFORCEMENT__OPENFDA__PHARM_CLASS_PE
+    description: >-
+      One row per `openfda.pharm_class_pe` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Physiologic effect class(es), e.g. `Decreased Prostaglandin Production [PE]`.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__product_ndc
+    identifier: DRUG_ENFORCEMENT__OPENFDA__PRODUCT_NDC
+    description: >-
+      One row per `openfda.product_ndc` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Product-level NDC code(s) — the 2-segment labeler/product form, without the package segment.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__product_type
+    identifier: DRUG_ENFORCEMENT__OPENFDA__PRODUCT_TYPE
+    description: >-
+      One row per `openfda.product_type` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        SPL product type, e.g. `HUMAN PRESCRIPTION DRUG` or `HUMAN OTC DRUG`. Not to be confused with the parent table's `product_type`, which is constant `Drugs` and distinguishes this endpoint from food/device enforcement.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__route
+    identifier: DRUG_ENFORCEMENT__OPENFDA__ROUTE
+    description: >-
+      One row per `openfda.route` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Route(s) of administration, e.g. `ORAL`, `INTRAVENOUS`, `TOPICAL`.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__rxcui
+    identifier: DRUG_ENFORCEMENT__OPENFDA__RXCUI
+    description: >-
+      One row per `openfda.rxcui` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        RxNorm concept unique identifier(s) for the product — the key into RxNorm's drug vocabulary.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__spl_id
+    identifier: DRUG_ENFORCEMENT__OPENFDA__SPL_ID
+    description: >-
+      One row per `openfda.spl_id` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Identifier(s) of the specific Structured Product Labeling document version this data was read from.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__spl_set_id
+    identifier: DRUG_ENFORCEMENT__OPENFDA__SPL_SET_ID
+    description: >-
+      One row per `openfda.spl_set_id` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Identifier(s) of the SPL *set* — stable across label versions, unlike `spl_id`. The one to join on when matching a product across time.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__substance_name
+    identifier: DRUG_ENFORCEMENT__OPENFDA__SUBSTANCE_NAME
+    description: >-
+      One row per `openfda.substance_name` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Active ingredient substance name(s), e.g. `IBUPROFEN`. The main axis for asking which drugs get recalled.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__unii
+    identifier: DRUG_ENFORCEMENT__OPENFDA__UNII
+    description: >-
+      One row per `openfda.unii` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        FDA Unique Ingredient Identifier(s) — the controlled-vocabulary code for each `substance_name`, and the stable key to join on where the name varies.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx
+  - name: drug_enforcement__openfda__upc
+    identifier: DRUG_ENFORCEMENT__OPENFDA__UPC
+    description: >-
+      One row per `openfda.upc` array entry on a drug enforcement report. Joins
+      DRUG_ENFORCEMENT on `_dlt_parent_id` = its `_dlt_id`; present for only the ~18% of
+      recalls openFDA could match to an SPL listing.
+    columns:
+    - name: value
+      description: >-
+        Universal Product Code(s) on the retail package, where the labeler supplies one.
+    - *openfda_child_parent_id
+    - *openfda_child_list_idx

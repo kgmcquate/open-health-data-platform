@@ -1,0 +1,329 @@
+# openFDA product safety: FDA recall enforcement reports for drugs, food and
+# medical devices. Dimensions and their descriptions come straight from dbt's
+# column docs (globals.py / cube-dbt) -- edit descriptions in
+# data/dbt/models/curated/product_safety/_curated_product_safety__models.yml,
+# not here. Measures are hand-written: dbt documents columns, it does not
+# declare aggregations.
+#
+# Three cubes. The recalls cube is at recall grain and
+# answers everything -- including a monthly trend, since Cube can roll it up
+# on recall_initiation_date. The trend cube is the same counts pre-aggregated
+# to product_type x classification x status x month, and exists for the same
+# reason its mart does: it is the shape a Streamlit dashboard reads straight
+# out of Snowflake (ADR-0015). Prefer the recalls cube whenever the question
+# slices by anything outside the trend's four columns -- firm, state,
+# distribution pattern, free text -- which the trend cube simply does not
+# carry. This is the same deliberate overlap child_welfare.yml has between its
+# funnel and trend cubes.
+#
+# The attributes cube is a different grain again -- one row per value of one
+# openFDA attribute of one recall -- and it is the only one that can group by
+# substance, pharmacologic class or NDC code. It carries a caveat the other
+# two do not: openFDA attaches an SPL drug match to only ~18% of US drug
+# recalls, and least often to the most severe ones (15.6% of Class I against
+# 34.2% of Class III). So every count in that cube counts *matched* recalls.
+# A share drawn from it needs its denominator from the recalls cube --
+# identified_recall_count and pct_with_openfda_identity exist there for
+# exactly that, and the two cubes must not be mixed into one ratio by hand.
+# Every measure below that is subject to this says so in its own description,
+# the same way financial.yml repeats its geography_level warning rather than
+# stating it once and hoping.
+#
+# The counting distinction that trips everyone up, stated once here and again
+# on every measure that depends on it: a row is one recalled *product*, and
+# `event_id` groups every product recalled in one *action*. On drug recalls
+# those differ by roughly 4x (16,888 products across 4,469 events). Neither is
+# the "right" count -- "how many things got pulled from shelves" and "how many
+# times did a firm act" are different questions -- so both are measures and
+# each says which it is.
+{% set recalls = dbt_model('product_safety__recalls') %}
+{% set trend = dbt_model('product_safety__recall_trend_monthly') %}
+{% set attributes = dbt_model('product_safety__drug_recall_attributes') %}
+
+{% set recalls_measures = [
+    'days_to_termination', 'days_open', 'substance_count', 'product_ndc_count',
+    'ingest_ts',
+] %}
+{% set attributes_measures = ['ingest_ts'] %}
+{% set trend_measures = [
+    'recall_count', 'event_count', 'firm_count', 'nationwide_recall_count',
+    'open_recall_count', 'avg_days_to_termination', 'ingest_ts',
+] %}
+
+cubes:
+  - {{ recalls.as_cube() }}
+
+    dimensions:
+      {{ recalls.as_dimensions(skip=recalls_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ recalls.sql_table }}'
+
+    # ADR-0024: full copy in Cube Store, re-aggregated there at query time --
+    # inherits refresh_key above unchanged.
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      - name: recall_count
+        type: count
+        description: "Recalled products matching the current filter -- one row is one product, not one recall action. See event_count."
+
+      - name: event_count
+        sql: '{CUBE}."event_id"'
+        type: count_distinct
+        description: {{ recalls.column('event_id').description }}
+
+      - name: firm_count
+        sql: '{CUBE}."recalling_firm"'
+        type: count_distinct
+        description: {{ recalls.column('recalling_firm').description ~
+          " Counted distinctly here, so the same company under two spellings counts twice." }}
+
+      - name: class_i_recall_count
+        type: count
+        filters:
+          - sql: '{CUBE}."classification_rank" = 1'
+        description: >-
+          Class I recalls -- FDA's most severe class, a reasonable probability
+          of serious harm or death. The count to lead with when severity
+          matters; recall_count treats a mislabelled carton and a
+          life-threatening contamination alike.
+
+      - name: open_recall_count
+        type: count
+        filters:
+          - sql: '{CUBE}."is_open"'
+        description: >-
+          Recalls with no termination date as of the last load. "Open" is only
+          as fresh as the ingestion's trailing 90-day re-merge window -- a
+          recall terminated longer ago than that keeps whatever status it last
+          had, so this over-counts slightly on older months.
+
+      - name: nationwide_recall_count
+        type: count
+        filters:
+          - sql: '{CUBE}."is_nationwide"'
+        description: "Recalls whose distribution pattern says nationwide -- the closest this data has to a measure of reach."
+
+      - name: pct_class_i
+        sql: 'SUM(CASE WHEN {CUBE}."classification_rank" = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)'
+        type: number
+        description: >-
+          Class I recalls as a share of all recalls in the current selection.
+          Computed from the summed counts so it stays correct at every grain,
+          the same move financial.yml's avg_cost_per_claim_usd makes. Rows
+          awaiting classification sit in the denominator, not the numerator.
+
+      - name: avg_days_to_termination
+        sql: '{CUBE}."days_to_termination"'
+        type: avg
+        description: {{ recalls.column('days_to_termination').description ~
+          " Open recalls contribute nothing, so recent months read faster than they will once their slowest recalls close." }}
+
+      - name: avg_days_open
+        sql: '{CUBE}."days_open"'
+        type: avg
+        description: {{ recalls.column('days_open').description }}
+
+      - name: states_covered
+        sql: '{CUBE}."firm_state"'
+        type: count_distinct
+        description: "Distinct states of the recalling firms in the current filter -- where the firms are, not where the products went."
+
+      - name: identified_recall_count
+        type: count
+        filters:
+          - sql: '{CUBE}."has_openfda_identity"'
+        description: >-
+          Recalls openFDA matched to an SPL drug listing, i.e. those that
+          appear in the attributes cube. THE DENOMINATOR for any share
+          computed from that cube -- it is ~18% of drug recalls and zero for
+          food and device, so a substance's recall count divided by
+          recall_count understates it several-fold.
+
+      - name: pct_with_openfda_identity
+        sql: 'SUM(CASE WHEN {CUBE}."has_openfda_identity" THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)'
+        type: number
+        description: >-
+          Share of the selected recalls that carry an openFDA drug match.
+          Filter product_type to `drug` before reading it -- food and device
+          recalls have no openFDA block at all and drag it toward zero.
+          Within drugs it still varies by severity, which is why it is a
+          measure rather than a constant to quote.
+
+      - name: avg_substance_count
+        sql: '{CUBE}."substance_count"'
+        type: avg
+        filters:
+          - sql: '{CUBE}."has_openfda_identity"'
+        description: >-
+          Mean number of distinct active ingredients per matched recall.
+          Filtered to matched recalls, since an unmatched one carries zero and
+          would otherwise be averaged in as a single-ingredient drug.
+
+      - name: latest_recall_initiation_date
+        sql: '{CUBE}."recall_initiation_date"'
+        type: max
+        description: "Most recent recall initiation date in the current selection."
+
+  - {{ trend.as_cube() }}
+
+    dimensions:
+      {{ trend.as_dimensions(skip=trend_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ trend.sql_table }}'
+
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      - name: recall_count
+        sql: '{CUBE}."recall_count"'
+        type: sum
+        description: {{ trend.column('recall_count').description }}
+
+      - name: nationwide_recall_count
+        sql: '{CUBE}."nationwide_recall_count"'
+        type: sum
+        description: {{ trend.column('nationwide_recall_count').description }}
+
+      - name: open_recall_count
+        sql: '{CUBE}."open_recall_count"'
+        type: sum
+        description: {{ trend.column('open_recall_count').description }}
+
+      # Deliberately SUM, not a MAX or an AVG: within one row these are
+      # already distinct counts, and there is no way to re-distinct them here
+      # from pre-aggregated totals. Summing is the only arithmetic available
+      # and it over-counts across rows, which is why the description says so
+      # and points at the recalls cube, where the same question has an exact
+      # answer.
+      - name: event_count_upper_bound
+        sql: '{CUBE}."event_count"'
+        type: sum
+        description: >-
+          Recall actions, summed across the selected rows -- an UPPER BOUND,
+          not an exact count. One event can span classifications, statuses and
+          months, and each of those rows counts it once. For an exact figure
+          use the recalls cube's event_count, which distincts over the raw
+          event ids.
+
+      - name: firm_count_upper_bound
+        sql: '{CUBE}."firm_count"'
+        type: sum
+        description: "Recalling firms, summed across the selected rows -- an upper bound for the same reason as event_count_upper_bound. The recalls cube's firm_count is exact."
+
+      - name: pct_nationwide
+        sql: 'SUM({CUBE}."nationwide_recall_count") / NULLIF(SUM({CUBE}."recall_count"), 0)'
+        type: number
+        description: "Nationwide recalls as a share of all recalls in the current selection, computed from the summed counts so it holds at every grain."
+
+      - name: pct_open
+        sql: 'SUM({CUBE}."open_recall_count") / NULLIF(SUM({CUBE}."recall_count"), 0)'
+        type: number
+        description: "Still-open recalls as a share of all recalls in the current selection. Subject to the same 90-day staleness caveat as the recalls cube's open_recall_count."
+
+      # Weighted by recall_count rather than a plain AVG over the column:
+      # each row's average already stands for a different number of recalls,
+      # so averaging the averages would weight a month with three recalls the
+      # same as one with three hundred. Same reasoning as financial.yml's
+      # avg_medicare_payment_per_capita_usd.
+      #
+      # It is weighted by recall_count, not by the count of *closed* recalls,
+      # which the mart does not carry -- so a row whose recalls are mostly
+      # still open pulls above its true weight. The bias is small next to the
+      # survivorship bias the underlying average already has, and both are
+      # named here rather than papered over.
+      - name: avg_days_to_termination
+        sql: >-
+          SUM({CUBE}."avg_days_to_termination" * {CUBE}."recall_count")
+          / NULLIF(SUM(CASE WHEN {CUBE}."avg_days_to_termination" IS NOT NULL THEN {CUBE}."recall_count" END), 0)
+        type: number
+        description: >-
+          Recall-weighted mean days from initiation to termination among
+          closed recalls. Survivor-biased downward for recent months, where
+          the slowest recalls have not closed yet -- and weighted by all
+          recalls in a row rather than only its closed ones, which the mart
+          does not count separately.
+
+      - name: latest_month
+        sql: '{CUBE}."recall_initiation_month"'
+        type: max
+        description: "Most recent recall-initiation month present in the current selection."
+
+  - {{ attributes.as_cube() }}
+
+    dimensions:
+      {{ attributes.as_dimensions(skip=attributes_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ attributes.sql_table }}'
+
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      # count_distinct over recall_number, never a plain count: one recall
+      # with four substances and seven NDC codes is eleven-plus rows here, so
+      # counting rows counts values, not recalls.
+      - name: recall_count
+        sql: '{CUBE}."recall_number"'
+        type: count_distinct
+        description: >-
+          Distinct recalls matching the current filter. MATCHED RECALLS ONLY
+          -- openFDA identifies the drug behind roughly 18% of recalls, so
+          this is a floor on how many recalls involved the selected substance
+          or class, never the true total. Pair it with the recalls cube's
+          identified_recall_count for a denominator.
+
+      - name: value_count
+        type: count
+        description: >-
+          Rows -- attribute values, not recalls. Useful for sizing the
+          selection; misleading as a recall count, since a recall contributes
+          one row per value of every attribute it has.
+
+      - name: distinct_value_count
+        sql: '{CUBE}."attribute_value"'
+        type: count_distinct
+        description: >-
+          Distinct values in the current filter. Only meaningful with
+          `attribute` filtered to one member -- otherwise it counts substance
+          names and NDC codes together.
+
+      - name: class_i_recall_count
+        sql: '{CUBE}."recall_number"'
+        type: count_distinct
+        filters:
+          - sql: '{CUBE}."classification_rank" = 1'
+        description: >-
+          Distinct Class I recalls -- the most severe -- matching the filter.
+          Doubly conservative: Class I recalls are matched to a drug listing
+          least often of any class, so this understates them more than
+          recall_count understates recalls overall.
+
+      - name: nationwide_recall_count
+        sql: '{CUBE}."recall_number"'
+        type: count_distinct
+        filters:
+          - sql: '{CUBE}."is_nationwide"'
+        description: "Distinct matched recalls whose distribution pattern says nationwide."
+
+      - name: firm_count
+        sql: '{CUBE}."recalling_firm"'
+        type: count_distinct
+        description: >-
+          Distinct recalling firms in the current filter. Free text, so the
+          same company under two spellings counts twice -- and it is the firm
+          that initiated the recall, not the manufacturer named in the SPL
+          match, which is available as an attribute value instead.
+
+      - name: latest_recall_initiation_date
+        sql: '{CUBE}."recall_initiation_date"'
+        type: max
+        description: "Most recent recall initiation date among the matched recalls in the current selection."

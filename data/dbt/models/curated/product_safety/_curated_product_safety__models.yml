@@ -1,0 +1,417 @@
+version: 2
+
+# openFDA product-safety marts: FDA recall enforcement reports for drugs,
+# food and medical devices. Dimensions and their descriptions are read from
+# the column docs below by cube-dbt -- semantic/cube/model/product_safety.yml
+# renders them, so this file is the source of truth for those descriptions,
+# not the Cube model.
+#
+# Two marts, deliberately: product_safety__recalls is the recall-grain detail
+# (what was recalled, by whom, why) and product_safety__recall_trend_monthly
+# is the pre-aggregated time series. Cube can derive the second from the
+# first, but a Streamlit dashboard querying Snowflake directly (ADR-0015)
+# cannot cheaply, and the trend is the most-asked question of this data.
+
+models:
+  - name: product_safety__recalls
+    description: >
+      FDA recall enforcement reports at recall grain -- one row per recalled
+      product (not per recall action; see event_id). Covers openFDA's drug,
+      food and device enforcement endpoints, US-distributed products only.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (product_type,
+          recall_number) hashed into one opaque column. It carries the grain
+          -- `unique` on it asserts exactly what
+          unique_combination_of_columns used to -- and is the primary key
+          Cube joins and pre-aggregates on, which is what keeps the
+          natural-key columns themselves public dimensions. See
+          macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: product_type
+        description: Which openFDA endpoint the recall came from.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [drug, food, device]
+        config:
+          meta:
+            grain: true
+      - name: recall_number
+        description: >-
+          FDA's identifier for this one recalled product, prefixed by the
+          issuing centre (`D-` drug, `F-` food, `Z-` device).
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: event_id
+        description: >-
+          FDA's identifier for the recall event. One event covers every
+          product recalled in one action, so it repeats across rows -- count
+          distinct on it for recall actions, count rows for recalled products.
+          On drug recalls the two differ by roughly 4x.
+        data_type: varchar
+      - name: status
+        description: >-
+          Where the recall stands as of the last load -- `Ongoing`,
+          `Completed` or `Terminated`. A current status, not a historical one:
+          only the ingestion's trailing 90-day re-merge window updates it, so
+          a recall older than that window keeps whatever status it last had.
+        data_type: varchar
+      - name: is_open
+        description: Whether the recall has no termination date, i.e. it is still running.
+        data_type: boolean
+      - name: classification
+        description: >-
+          FDA's health-hazard severity. `Class I` could cause serious harm or
+          death, `Class II` temporary or medically reversible harm,
+          `Class III` unlikely to cause harm but in violation of FDA law. Drug
+          rows also carry `Not Yet Classified`.
+        data_type: varchar
+      - name: classification_rank
+        description: >-
+          classification as 1/2/3, so severity sorts and filters numerically.
+          Null for `Not Yet Classified`, which is unknown severity rather than
+          a fourth, milder class -- average it and those rows drop out, which
+          is the intended behaviour.
+        data_type: integer
+      - name: product_description
+        description: Brief description of the recalled product, as the firm reported it.
+        data_type: varchar
+      - name: product_quantity
+        description: Amount of defective product subject to recall. Free text ("1,200 bottles"), not a parsed number -- never aggregate it.
+        data_type: varchar
+      - name: reason_for_recall
+        description: Free text describing how the product is defective. The field most recall analysis reads.
+        data_type: varchar
+      - name: code_info
+        description: Lot/serial/product numbers and sell-by dates identifying the affected units.
+        data_type: varchar
+      - name: distribution_pattern
+        description: >-
+          Free-text description of initial distribution, e.g. "Nationwide" or
+          "Distributors in 6 states: NY, VA, TX, GA, FL and MA". Onward
+          distribution by consignees may not be included.
+        data_type: varchar
+      - name: is_nationwide
+        description: >-
+          Whether distribution_pattern says nationwide -- the only reliably
+          machine-readable fact in that free-text field, and the closest thing
+          this data has to a recall's reach.
+        data_type: boolean
+      - name: voluntary_mandated
+        description: >-
+          Who initiated the recall. Almost always `Voluntary: Firm initiated`;
+          `FDA Mandated` means the firm was ordered to act under section
+          518(e) of the FD&C Act, the FSMA or similar authority.
+        data_type: varchar
+      - name: initial_firm_notification
+        description: How the firm first notified the public or its consignees -- `Letter`, `Press Release`, `E-Mail`, `Telephone`, `FAX` or `Other`.
+        data_type: varchar
+      - name: recalling_firm
+        description: >-
+          The firm that initiated the recall, or for an FDA-requested or
+          FDA-mandated recall, the firm primarily responsible for
+          manufacturing or marketing the product. Free text as the firm
+          reported it, so the same company can appear under several spellings.
+        data_type: varchar
+      - name: firm_city
+        description: City of the recalling firm.
+        data_type: varchar
+      - name: firm_state
+        description: >-
+          US state of the recalling firm. Where the firm is, not where the
+          product went -- a recall by a New Jersey manufacturer distributed
+          nationwide is one New Jersey row. Use is_nationwide or
+          distribution_pattern for reach.
+        data_type: varchar
+      - name: firm_postal_code
+        description: ZIP code of the recalling firm, usually ZIP+4.
+        data_type: varchar
+      - name: recall_initiation_date
+        description: Date the firm began notifying the public or its consignees. The date to put a recall on a time axis.
+        data_type: date
+      - name: recall_initiation_month
+        description: recall_initiation_date truncated to the first of its month.
+        data_type: date
+      - name: center_classification_date
+        description: Date the FDA centre assigned the classification.
+        data_type: date
+      - name: report_date
+        description: >-
+          Date FDA issued the enforcement report -- later than
+          recall_initiation_date, and the cursor the ingestion pages on.
+          recall_initiation_date is the one to trend on.
+        data_type: date
+      - name: termination_date
+        description: Date FDA determined the recall complete. Null means still running, not missing.
+        data_type: date
+      - name: days_to_termination
+        description: >-
+          Calendar days from initiation to termination. Null while the recall
+          is open, so it never changes once a recall closes -- average it to
+          answer how long closed recalls take.
+        data_type: bigint
+      - name: days_open
+        description: >-
+          days_to_termination for a closed recall, and days since initiation
+          for one still open. Moves every day for open recalls, unlike
+          days_to_termination -- use it for "how long has this been running",
+          not for a stable historical average.
+        data_type: bigint
+      - name: has_openfda_identity
+        description: >-
+          Whether openFDA matched this recall to an SPL drug listing, i.e.
+          whether the drug-identity columns below are populated and the recall
+          reaches product_safety__drug_recall_attributes. False for ~82% of
+          drug recalls and for every food and device recall. This is the
+          denominator flag -- any share computed from the attributes mart has
+          to be taken against the recalls counted here, not against the
+          attributes mart's own rows.
+        data_type: boolean
+      - name: substance_names
+        description: >-
+          Active ingredient names openFDA matched to this recall, sorted,
+          deduplicated and joined with ` | `. A display string -- it cannot be
+          grouped on, because a two-substance recall is its own distinct
+          value. Group on product_safety__drug_recall_attributes instead.
+        data_type: varchar
+      - name: brand_names
+        description: Brand names from the matched SPL listing, same delimited display form as substance_names.
+        data_type: varchar
+      - name: generic_names
+        description: Generic names from the matched SPL listing, same delimited display form as substance_names.
+        data_type: varchar
+      - name: manufacturer_names
+        description: >-
+          Labeler/manufacturer names from the matched SPL listing, same
+          delimited display form. Distinct from recalling_firm, which is
+          whoever initiated the recall and is often a repackager or
+          distributor rather than the manufacturer.
+        data_type: varchar
+      - name: pharm_class_epc_names
+        description: >-
+          Established pharmacologic classes from the matched SPL listing, same
+          delimited display form. The FDA's own therapeutic classification,
+          and the most useful of openFDA's four class facets for grouping.
+        data_type: varchar
+      - name: routes
+        description: Routes of administration from the matched SPL listing, same delimited display form.
+        data_type: varchar
+      - name: substance_count
+        description: >-
+          Distinct active ingredients openFDA matched to this recall. Zero
+          where has_openfda_identity is false, which is an unmatched recall
+          rather than a recall with no ingredients -- filter before averaging.
+        data_type: bigint
+      - name: product_ndc_count
+        description: >-
+          Distinct product NDC codes matched to this recall, a rough measure
+          of how many distinct presentations it swept up. Zero on unmatched
+          recalls, with the same caveat as substance_count.
+        data_type: bigint
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: product_safety__recall_trend_monthly
+    description: >
+      FDA recalls counted by the month they were initiated. One row per
+      product_type x classification x status x month.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (product_type,
+          recall_initiation_month, classification, status) hashed into one
+          opaque column. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: product_type
+        description: Which openFDA endpoint the recalls came from.
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [drug, food, device]
+        config:
+          meta:
+            grain: true
+      - name: recall_initiation_month
+        description: First day of the month the recalls were initiated in.
+        data_type: date
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: classification
+        description: FDA's health-hazard severity for the recalls in this row.
+        data_type: varchar
+        config:
+          meta:
+            grain: true
+      - name: classification_rank
+        description: classification as 1/2/3. Functionally determined by classification, carried for numeric sorting.
+        data_type: integer
+      - name: status
+        description: >-
+          Current status of the recalls in this row. A row reads "recalls
+          initiated in this month that are, as of the last load, in this
+          status" -- not "recalls that entered this status this month".
+        data_type: varchar
+        config:
+          meta:
+            grain: true
+      - name: recall_count
+        description: Recalled products. Sums freely across rows.
+        data_type: bigint
+      - name: event_count
+        description: >-
+          Distinct recall actions. Additive *within* a row only -- one event
+          can span classifications and months, so summing this across rows
+          over-counts. Use recall_count when you need a total.
+        data_type: bigint
+      - name: firm_count
+        description: >-
+          Distinct recalling firms, on the same within-row-only basis as
+          event_count, and subject to the same free-text spelling caveat as
+          recalling_firm.
+        data_type: bigint
+      - name: nationwide_recall_count
+        description: Of recall_count, those whose distribution pattern says nationwide.
+        data_type: bigint
+      - name: open_recall_count
+        description: Of recall_count, those with no termination date as of the last load.
+        data_type: bigint
+      - name: avg_days_to_termination
+        description: >-
+          Mean days from initiation to termination among the row's *closed*
+          recalls. Open recalls are excluded (their duration is null), so this
+          is survivor-biased downward for recent months, where the slowest
+          recalls have not closed yet.
+        data_type: double
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true
+
+  - name: product_safety__drug_recall_attributes
+    description: >
+      The drug behind each recall -- substances, pharmacologic classes, NDC
+      codes and the rest of openFDA's SPL match -- in long form, with the
+      recall's own context denormalised on. One row per recall_number x
+      attribute x value_index. Drug recalls only, and only the ~18% openFDA
+      could match to a drug listing.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: row_sk
+        description: >-
+          Surrogate key: this mart's natural key (recall_number, attribute,
+          value_index) hashed into one opaque column. See macros/row_sk.sql.
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: recall_number
+        description: >-
+          The recall this value belongs to. Repeats heavily -- a recall with
+          four substances and seven NDC codes is at least eleven rows -- so
+          count distinct on it, never count rows, when counting recalls.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: attribute
+        description: >-
+          Which openFDA member the value came from, e.g. `substance_name`,
+          `pharm_class_epc`, `product_ndc`. Filter this before aggregating --
+          the table stacks 21 different kinds of value in one column.
+        data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: value_index
+        description: >-
+          The value's position in its own array. Part of the grain so repeated
+          values within one attribute stay distinct. Not comparable across
+          attributes, whose arrays are ragged -- pairing brand_name position 0
+          with product_ndc position 0 invents a fact openFDA never stated.
+        data_type: bigint
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
+      - name: attribute_group
+        description: >-
+          The attribute's family -- drug_identity, pharmacologic_class,
+          product_code, product_form or packaging. This project's grouping,
+          not openFDA's, so that one filter selects all four
+          pharmacologic-class facets at once.
+        data_type: varchar
+      - name: attribute_value
+        description: The value itself, as text. What to group by once attribute is filtered.
+        data_type: varchar
+      - name: event_id
+        description: FDA's identifier for the recall event this recall belongs to.
+        data_type: varchar
+      - name: status
+        description: Current status of the recall, carried from product_safety__recalls.
+        data_type: varchar
+      - name: is_open
+        description: Whether the recall is still running.
+        data_type: boolean
+      - name: classification
+        description: FDA's health-hazard severity for the recall.
+        data_type: varchar
+      - name: classification_rank
+        description: classification as 1/2/3, null for `Not Yet Classified`.
+        data_type: integer
+      - name: recalling_firm
+        description: The firm that initiated the recall. Often a repackager or distributor rather than the manufacturer named in the SPL match.
+        data_type: varchar
+      - name: firm_state
+        description: US state of the recalling firm, not of the product's distribution.
+        data_type: varchar
+      - name: is_nationwide
+        description: Whether the recall's distribution pattern says nationwide.
+        data_type: boolean
+      - name: recall_initiation_date
+        description: Date the recall was initiated.
+        data_type: date
+      - name: recall_initiation_month
+        description: recall_initiation_date truncated to the first of its month.
+        data_type: date
+      - name: reason_for_recall
+        description: Free text describing how the product is defective.
+        data_type: varchar
+      - name: ingest_ts
+        description: >-
+          dlt load timestamp -- the freshness signal Cube's refresh_key reads.
+        data_type: timestamp
+        config:
+          meta:
+            cube:
+              refresh_key: true

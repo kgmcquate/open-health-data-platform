@@ -1,0 +1,204 @@
+# OpenAQ environmental health: monthly pollutant concentrations at US
+# government reference-grade air monitors, and the monitoring network behind
+# them. Dimensions and their descriptions come straight from dbt's column docs
+# (globals.py / cube-dbt) -- edit descriptions in
+# data/dbt/models/curated/environmental_health/_curated_environmental_health__models.yml,
+# not here. Measures are hand-written: dbt documents columns, it does not
+# declare aggregations.
+#
+# **Units differ by pollutant.** pm25 is µg/m3, o3 and no2 are ppm. A measure
+# that averages `avg_value` over a selection spanning two pollutants returns a
+# number with no unit, and unlike financial.yml's geography_level
+# double-counting there is no "filter first and it's fine" story -- the
+# mixture is wrong at every grain. So the headline measures here are
+# per-pollutant, each one filtered to its own parameter, and the generic
+# avg_value_native_units exists only for a caller that has already pinned
+# `parameter` down. That is the same
+# document-rather-than-enforce tradeoff the rest of this folder makes, applied
+# to the one place where the wrong answer is not merely inflated but
+# meaningless.
+#
+# Every per-pollutant measure also filters to is_complete_month -- at least
+# 75% of the month's expected hourly readings actually observed, EPA's own
+# completeness threshold. A monthly mean built from nine hours is not a
+# monthly mean, and the alternative to filtering is publishing it as one. The
+# unfiltered counterparts are still reachable: group by is_complete_month, or
+# read avg_value_native_units, which applies no completeness filter.
+#
+# What this is NOT: a census of US air quality. The ingestion walks at most
+# 400 locations and 800 sensors per country, government reference monitors
+# only, three pollutants -- see
+# data/src/ohdp_orchestration/defs/openaq/datasets/defs.yaml for why those
+# caps are load-bearing rather than incidental. Stations are taken in id
+# order, so it is a consistent panel month over month, which makes trends
+# trustworthy and levels unrepresentative of the country as a whole.
+{% set air_quality = dbt_model('environmental_health__air_quality_monthly') %}
+{% set sites = dbt_model('environmental_health__monitoring_sites') %}
+
+{% set air_quality_measures = [
+    'avg_value', 'median_value', 'min_value', 'max_value',
+    'p25_value', 'p75_value', 'p98_value', 'stddev_value',
+    'observed_hours', 'expected_hours', 'pct_complete', 'ingest_ts',
+] %}
+{% set sites_measures = ['parameter_count', 'ingest_ts'] %}
+
+cubes:
+  - {{ air_quality.as_cube() }}
+
+    dimensions:
+      {{ air_quality.as_dimensions(skip=air_quality_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ air_quality.sql_table }}'
+
+    # ADR-0024: full copy in Cube Store, re-aggregated there at query time --
+    # inherits refresh_key above unchanged.
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      # --- Per-pollutant concentrations -----------------------------------
+      # Each is an unweighted mean across the selected station-months: a
+      # "typical monitor" figure, not population-weighted exposure. OpenAQ
+      # publishes no population denominator to weight by, which is the same
+      # reason chronic_disease.yml's county averages stay unweighted.
+      - name: avg_pm25_ugm3
+        sql: '{CUBE}."avg_value"'
+        type: avg
+        filters:
+          - sql: '{CUBE}."parameter" = ''pm25'' AND {CUBE}."is_complete_month"'
+        description: >-
+          Mean PM2.5 concentration in µg/m3 across the selected
+          station-months, complete months only (>= 75% of expected hourly
+          readings). Unweighted across stations -- a typical-monitor figure,
+          not population-weighted exposure.
+
+      - name: avg_o3_ppm
+        sql: '{CUBE}."avg_value"'
+        type: avg
+        filters:
+          - sql: '{CUBE}."parameter" = ''o3'' AND {CUBE}."is_complete_month"'
+        description: "Mean ozone concentration in ppm across the selected station-months, complete months only. Same unweighted caveat as avg_pm25_ugm3."
+
+      - name: avg_no2_ppm
+        sql: '{CUBE}."avg_value"'
+        type: avg
+        filters:
+          - sql: '{CUBE}."parameter" = ''no2'' AND {CUBE}."is_complete_month"'
+        description: "Mean nitrogen dioxide concentration in ppm across the selected station-months, complete months only. Same unweighted caveat as avg_pm25_ugm3."
+
+      - name: avg_peak_pm25_ugm3
+        sql: '{CUBE}."p98_value"'
+        type: avg
+        filters:
+          - sql: '{CUBE}."parameter" = ''pm25'' AND {CUBE}."is_complete_month"'
+        description: >-
+          Mean of each station-month's 98th-percentile PM2.5 reading, µg/m3 --
+          the peak-exposure figure most air-quality standards are written
+          against, and the one that moves in a wildfire month while
+          avg_pm25_ugm3 barely does.
+
+      - name: max_pm25_ugm3
+        sql: '{CUBE}."max_value"'
+        type: max
+        filters:
+          - sql: '{CUBE}."parameter" = ''pm25'' AND {CUBE}."is_complete_month"'
+        description: "Highest single hourly PM2.5 reading, µg/m3, anywhere in the current selection. One bad hour at one station; avg_peak_pm25_ugm3 is the steadier peak measure."
+
+      - name: avg_value_native_units
+        sql: '{CUBE}."avg_value"'
+        type: avg
+        description: >-
+          Mean reading in whatever unit the row carries. ONLY MEANINGFUL WITH
+          `parameter` FILTERED OR GROUPED -- µg/m3 and ppm average together
+          into a number with no unit. No completeness filter either, unlike
+          the per-pollutant measures, so pair it with is_complete_month.
+
+      # --- Coverage and shape of the panel --------------------------------
+      - name: station_month_count
+        type: count
+        description: "Station-months in the current filter -- the number of rows behind any average above."
+
+      - name: complete_station_month_count
+        type: count
+        filters:
+          - sql: '{CUBE}."is_complete_month"'
+        description: "Of station_month_count, those with at least 75% of expected hourly readings -- the honest denominator for the per-pollutant measures."
+
+      - name: pct_months_complete
+        sql: 'SUM(CASE WHEN {CUBE}."is_complete_month" THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)'
+        type: number
+        description: "Share of the selected station-months that meet the 75% completeness threshold. How much of the selection the per-pollutant measures actually rest on."
+
+      - name: avg_observed_hours
+        sql: '{CUBE}."observed_hours"'
+        type: avg
+        description: {{ air_quality.column('observed_hours').description }}
+
+      - name: station_count
+        sql: '{CUBE}."location_id"'
+        type: count_distinct
+        description: "Distinct monitoring stations with readings in the current filter."
+
+      - name: sensor_count
+        sql: '{CUBE}."sensor_id"'
+        type: count_distinct
+        description: "Distinct sensors in the current filter. One sensor is one pollutant at one station, so this exceeds station_count wherever a station reports more than one pollutant."
+
+      - name: latest_month
+        sql: '{CUBE}."month_start"'
+        type: max
+        description: "Most recent month with readings in the current selection."
+
+  - {{ sites.as_cube() }}
+
+    dimensions:
+      {{ sites.as_dimensions(skip=sites_measures) }}
+
+    refresh_key:
+      sql: 'SELECT MAX("ingest_ts") FROM {{ sites.sql_table }}'
+
+    pre_aggregations:
+      - name: main
+        type: originalSql
+
+    measures:
+      # Site grain, so `count` is the headline measure -- the same shape
+      # treatment_access.yml has, and for the same reason: "how many monitors
+      # are there in X" is a count of rows, and the station attributes are
+      # dimensions to filter on.
+      - name: site_count
+        type: count
+        description: "Reference-grade monitoring stations matching the current filter, whether or not any of their readings were ingested."
+
+      - name: sites_with_measurements
+        type: count
+        filters:
+          - sql: '{CUBE}."has_measurements"'
+        description: >-
+          Stations with at least one ingested month of readings -- the honest
+          denominator behind any chart drawn from
+          environmental_health__air_quality_monthly. The gap to site_count is
+          the capped fan-out, not stations going dark.
+
+      - name: pct_sites_with_measurements
+        sql: 'SUM(CASE WHEN {CUBE}."has_measurements" THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)'
+        type: number
+        description: "Share of indexed reference monitors whose readings are actually ingested. A coverage figure for the pipeline, not for air quality."
+
+      - name: avg_parameters_per_site
+        sql: '{CUBE}."parameter_count"'
+        type: avg
+        description: {{ sites.column('parameter_count').description ~
+          " Averaged over every station in the selection, including those with no readings, which contribute zero." }}
+
+      - name: provider_count
+        sql: '{CUBE}."provider_name"'
+        type: count_distinct
+        description: "Distinct data providers (e.g. AirNow) behind the stations in the current filter."
+
+      - name: latest_month_with_readings
+        sql: '{CUBE}."last_month_with_readings"'
+        type: max
+        description: "Most recent month any station in the selection has ingested readings for."

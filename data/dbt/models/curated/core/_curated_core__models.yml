@@ -736,3 +736,235 @@ models:
           a statistical outlier against its historical trend. Kept as the raw
           text CMS publishes -- data-api/v1 gives every column back as a
           string with no documented enumeration to cast against.
+
+  - name: core__product_recall
+    description: >
+      FDA recall enforcement reports from openFDA's drug, food and device
+      endpoints, conformed to one row per recall_number (one recalled
+      product). Typed -- openFDA publishes every field, dates included, as
+      text -- with the derived severity, distribution and duration columns
+      every product_safety mart shares.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: product_type
+        description: Which openFDA endpoint the row came from. Set from a literal per source table, not carried through from the data.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [drug, food, device]
+      - name: recall_number
+        description: >-
+          openFDA's identifier for one recalled product, prefixed by the
+          issuing centre (`D-` drug, `F-` food, `Z-` device). Unique across
+          all three endpoints, so it is this model's key on its own.
+        data_tests: [unique, not_null]
+      - name: event_id
+        description: >-
+          openFDA's identifier for the recall *event*. One event covers every
+          product recalled in one action, so it repeats across rows -- count
+          distinct on it for recall actions, count rows for recalled products.
+      - name: status
+        description: >-
+          Where the recall stands as of the last load: `Ongoing`, `Completed`
+          or `Terminated`. A current status, not a historical one -- only the
+          trailing 90-day re-merge window updates it.
+      - name: classification
+        description: >-
+          FDA's health-hazard severity. `Class I` could cause serious harm or
+          death, `Class II` temporary or reversible harm, `Class III` unlikely
+          to cause harm but in violation of FDA law. Drug rows also carry
+          `Not Yet Classified`.
+      - name: classification_rank
+        description: >-
+          classification as 1/2/3 so severity sorts and filters numerically.
+          Null for `Not Yet Classified` -- unknown severity, not a fourth,
+          milder class.
+      - name: reason_for_recall
+        description: Free text describing how the product is defective. The field most recall analysis reads.
+      - name: distribution_pattern
+        description: >-
+          Free-text description of where the product was initially
+          distributed, e.g. "Nationwide" or "Distributors in 6 states: NY, VA,
+          TX, GA, FL and MA".
+      - name: is_nationwide
+        description: Whether distribution_pattern says nationwide. The only reliably machine-readable fact in that free-text field.
+      - name: voluntary_mandated
+        description: >-
+          Who initiated the recall -- almost always `Voluntary: Firm
+          initiated`; `FDA Mandated` means the firm was ordered to act.
+      - name: recalling_firm
+        description: The firm that initiated the recall, or is primarily responsible for the product where FDA requested or mandated it.
+      - name: firm_state
+        description: >-
+          US state of the recalling firm. Where the firm is, not where the
+          product went -- distribution_pattern/is_nationwide is the
+          distribution question.
+      - name: recall_initiation_date
+        description: Date the firm began notifying the public or its consignees. The date to put a recall on a time axis.
+      - name: recall_initiation_month
+        description: recall_initiation_date truncated to the first of its month.
+      - name: report_date
+        description: Date FDA issued the enforcement report -- the cursor the ingestion pages on, which is later than recall_initiation_date.
+      - name: termination_date
+        description: Date FDA determined the recall complete. Null means the recall is still running, not that the date is missing.
+      - name: is_open
+        description: Whether termination_date is null, i.e. the recall has not been terminated.
+      - name: days_to_termination
+        description: >-
+          Calendar days from initiation to termination. Null while the recall
+          is open -- deliberately fixed rather than measured against today, so
+          a completed recall's duration never changes.
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+
+  - name: core__air_monitoring_site
+    description: >
+      OpenAQ's monitoring-station dimension, one row per location id. A
+      superset of the stations with readings in core__air_quality_monthly:
+      the locations walk indexes every station worldwide, while the
+      measurement fan-out is capped and restricted to US reference monitors.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: location_id
+        description: OpenAQ's identifier for the station -- the `{id}` in `/v3/locations/{id}`.
+        data_tests: [unique, not_null]
+      - name: location_name
+        description: The station's name, as its provider reports it.
+      - name: is_mobile
+        description: >-
+          True for a mobile platform. latitude/longitude is then only the
+          first point measured, not a standing location.
+      - name: is_reference_monitor
+        description: >-
+          True for a government reference-grade monitor, false for a low-cost
+          sensor node. The monthly measurement ingestion only visits true.
+      - name: latitude
+        description: WGS84 latitude of the station.
+      - name: longitude
+        description: WGS84 longitude of the station.
+      - name: provider_name
+        description: Organization that facilitates sharing the data, e.g. AirNow.
+      - name: owner_name
+        description: Organization that operates the station, often not the provider.
+      - name: country_code
+        description: ISO 3166-1 alpha-2 country code.
+      - name: first_measurement_at_utc
+        description: Timestamp of the station's earliest measurement -- how far its history reaches back.
+      - name: last_measurement_at_utc
+        description: Timestamp of the station's most recent measurement.
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+
+  - name: core__air_quality_monthly
+    description: >
+      Monthly pollutant concentrations from OpenAQ's reference-monitor
+      network, typed and joined to the station that produced them. One row per
+      sensor x month -- equivalently station x pollutant x month. Units differ
+      by pollutant, so nothing here may be aggregated across `parameter`.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: sensor_id
+        description: >-
+          The sensor the rollup is for -- one sensor measures one parameter at
+          one station. Half of the natural key, with month_start.
+        data_tests: [not_null]
+      - name: location_id
+        description: The station the sensor belongs to. Joins core__air_monitoring_site.
+      - name: month_start
+        description: >-
+          First day of the month the row covers, derived from OpenAQ's
+          `period_label` ('2025-08') rather than from the period timestamps,
+          so it cannot disagree with the key the raw rows are deduped on.
+        data_tests: [not_null]
+      - name: parameter
+        description: Pollutant measured -- `pm25`, `o3` or `no2` in the current ingestion scope.
+      - name: parameter_units
+        description: >-
+          Units the values are in, µg/m3 or ppm. Never average or sum across
+          rows with different units.
+      - name: avg_value
+        description: The month's mean hourly reading, in parameter_units.
+      - name: median_value
+        description: Median hourly reading -- the robust counterpart to avg_value.
+      - name: p98_value
+        description: >-
+          98th percentile of the month's hourly readings, the usual
+          peak-exposure measure. Less sensitive to a single bad hour than
+          max_value.
+      - name: observed_hours
+        description: Hourly values actually reported in the month -- the denominator the average really rests on.
+      - name: expected_hours
+        description: Hourly values the month would have contained had the sensor reported continuously.
+      - name: pct_complete
+        description: observed_hours as a percentage of expected_hours.
+      - name: is_complete_month
+        description: >-
+          Whether pct_complete is at least 75%, EPA's completeness threshold
+          for treating a period average as valid. The default quality filter
+          downstream.
+      - name: has_data_flags
+        description: >-
+          Whether an OpenAQ location flag (a marked period of known-affected
+          data, e.g. maintenance) overlaps this month for this sensor.
+          Sparseness is pct_complete's job, not this one's.
+      - name: ingest_ts
+        description: dlt load timestamp for the row.
+
+  - name: core__drug_recall_attribute
+    description: >
+      openFDA's SPL drug-identity attributes for drug recalls, conformed to
+      one long table. One row per recall_number x attribute x value_index,
+      covering all 21 members of openFDA's nested `openfda` object. Present
+      for only the ~18% of drug recalls openFDA could match to a drug
+      listing, and that share falls as severity rises.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: product_type
+        description: >-
+          Fixed at `drug`. Food and device enforcement return no `openfda`
+          block, so there is nothing to conform for them; the column exists so
+          this table joins core__product_recall on its full composite key.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [drug]
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from the child table's
+          `_dlt_parent_id` back in the clean layer. Repeats across rows.
+        data_tests: [not_null]
+      - name: attribute_group
+        description: >-
+          Which family the attribute belongs to. This project's own grouping,
+          not openFDA's, so that one dimension can select all four
+          pharmacologic-class facets at once.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [drug_identity, pharmacologic_class, product_code, product_form, packaging]
+      - name: attribute
+        description: The openFDA member this value came from, e.g. `substance_name` or `pharm_class_epc`.
+        data_tests: [not_null]
+      - name: attribute_value
+        description: >-
+          The value itself, as text. Everything openFDA publishes here is text
+          except `is_original_packager`, which dlt typed boolean and which is
+          cast so one column can hold both.
+      - name: value_index
+        description: >-
+          The value's position in its own array. Preserves openFDA's ordering
+          within one attribute and means nothing across attributes, whose
+          arrays are ragged.
+      - name: ingest_ts
+        description: dlt load timestamp, carried from the parent recall row.

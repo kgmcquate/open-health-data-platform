@@ -1,0 +1,554 @@
+version: 2
+
+# macros/openfda_current_rows.sql over each RAW.openfda table. All three
+# enforcement endpoints return the same 24 fields (see
+# models/raw/_stg_openfda__sources.yml), so the three models here are the same
+# macro call against a different raw table.
+#
+# Unlike stg_cms, there *is* a dedupe key: openFDA's enforcement resources are
+# configured incremental with a 90-day re-fetch window, so raw holds a row per
+# (recall_number, load) and clean reduces that to the latest load per
+# recall_number -- which is also what makes a report's status change visible.
+# The `unique` test on recall_number below is that dedupe's guard rail.
+#
+# Every date openFDA publishes is an 8-character `YYYYMMDD` *string*, and
+# every other field is text too. Typing and business logic belong in `core`
+# (curated/core/core__product_recall.sql), not staged here.
+
+models:
+  - name: stg_openfda__drug_enforcement
+    description: >
+      US drug recall enforcement reports, one row per recalled product -- recall reason,
+      classification (I/II/III severity), status, distribution pattern and the recalling firm.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          openFDA's identifier for this one product recall (`D-` prefixed for drugs). The dedupe
+          key macros/openfda_current_rows.sql reduces on, so it is unique here by construction.
+        data_tests: [unique, not_null]
+
+  - name: stg_openfda__food_enforcement
+    description: >
+      US food recall enforcement reports, same 24 fields as drug_enforcement.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: As drug_enforcement's, `F-` prefixed.
+        data_tests: [unique, not_null]
+
+  - name: stg_openfda__device_enforcement
+    description: >
+      US medical device recall enforcement reports, same 24 fields as drug_enforcement.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: As drug_enforcement's, `Z-` prefixed.
+        data_tests: [unique, not_null]
+
+# --- drug_enforcement child tables ---------------------------------------
+# macros/openfda_child_rows.sql over each of the 21 tables dlt split
+# drug/enforcement's nested `openfda` object into. Each one resolves
+# `_dlt_parent_id` = DRUG_ENFORCEMENT's `_dlt_id` so `recall_number` -- the
+# business key -- is present on every table in this layer, and carries
+# `ingest_ts` across the same join, since dlt stamps `_dlt_load_id` on root
+# tables only.
+#
+# They are sparse on purpose: openFDA attaches an `openfda` block to only
+# ~18% of US drug recalls (the ones it can match to an SPL listing), and
+# skews toward the less severe -- 34.2% of Class III against 15.6% of
+# Class I in a 5,000-record sample. A recall absent from these tables is one
+# openFDA could not identify, not one with no substances.
+#
+# Model name -> table: stg_openfda__drug_enforcement__substance_name lands as
+# CLEAN.STG_OPENFDA.DRUG_ENFORCEMENT__SUBSTANCE_NAME (generate_alias_name.sql
+# strips the `stg_openfda__` prefix, which the namespace already carries).
+
+  - name: stg_openfda__drug_enforcement__application_number
+    description: >
+      FDA application number (NDA/ANDA/BLA) the drug was approved under. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: application_number
+        description: FDA application number (NDA/ANDA/BLA) the drug was approved under.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__brand_name
+    description: >
+      Marketed brand name from the product's SPL listing. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: brand_name
+        description: Marketed brand name from the product's SPL listing.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__generic_name
+    description: >
+      Generic (non-proprietary) name from the product's SPL listing. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: generic_name
+        description: Generic (non-proprietary) name from the product's SPL listing.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__is_original_packager
+    description: >
+      Whether the labeler is the product's original packager. The one child table whose value is boolean. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: is_original_packager
+        description: Whether the labeler is the product's original packager. The one child table whose value is boolean.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__manufacturer_name
+    description: >
+      Labeler/manufacturer name from the SPL listing -- not necessarily the recalling firm. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: manufacturer_name
+        description: Labeler/manufacturer name from the SPL listing -- not necessarily the recalling firm.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__nui
+    description: >
+      NDF-RT unique identifier for a pharmacologic class. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: nui
+        description: NDF-RT unique identifier for a pharmacologic class.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__original_packager_product_ndc
+    description: >
+      Product NDC of the original packager, on repackaged products. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: original_packager_product_ndc
+        description: Product NDC of the original packager, on repackaged products.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__package_ndc
+    description: >
+      Package-level NDC code (labeler-product-package). One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: package_ndc
+        description: Package-level NDC code (labeler-product-package).
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__pharm_class_cs
+    description: >
+      Chemical structure pharmacologic class, e.g. `Sulfonamides [CS]`. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: pharm_class_cs
+        description: Chemical structure pharmacologic class, e.g. `Sulfonamides [CS]`.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__pharm_class_epc
+    description: >
+      Established pharmacologic class, e.g. `Proton Pump Inhibitor [EPC]` -- the FDA's own therapeutic classification. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: pharm_class_epc
+        description: Established pharmacologic class, e.g. `Proton Pump Inhibitor [EPC]` -- the FDA's own therapeutic classification.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__pharm_class_moa
+    description: >
+      Mechanism of action class, e.g. `Cyclooxygenase Inhibitors [MoA]`. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: pharm_class_moa
+        description: Mechanism of action class, e.g. `Cyclooxygenase Inhibitors [MoA]`.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__pharm_class_pe
+    description: >
+      Physiologic effect class, e.g. `Decreased Prostaglandin Production [PE]`. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: pharm_class_pe
+        description: Physiologic effect class, e.g. `Decreased Prostaglandin Production [PE]`.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__product_ndc
+    description: >
+      Product-level NDC code (labeler-product, no package segment). One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: product_ndc
+        description: Product-level NDC code (labeler-product, no package segment).
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__product_type
+    description: >
+      SPL product type, e.g. `HUMAN PRESCRIPTION DRUG`. Unrelated to the parent's `product_type`, which is constant `Drugs`. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: product_type
+        description: SPL product type, e.g. `HUMAN PRESCRIPTION DRUG`. Unrelated to the parent's `product_type`, which is constant `Drugs`.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__route
+    description: >
+      Route of administration, e.g. `ORAL`. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: route
+        description: Route of administration, e.g. `ORAL`.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__rxcui
+    description: >
+      RxNorm concept unique identifier for the product. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: rxcui
+        description: RxNorm concept unique identifier for the product.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__spl_id
+    description: >
+      Identifier of the specific SPL document version. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: spl_id
+        description: Identifier of the specific SPL document version.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__spl_set_id
+    description: >
+      Identifier of the SPL set -- stable across label versions. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: spl_set_id
+        description: Identifier of the SPL set -- stable across label versions.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__substance_name
+    description: >
+      Active ingredient substance name, e.g. `IBUPROFEN`. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: substance_name
+        description: Active ingredient substance name, e.g. `IBUPROFEN`.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__unii
+    description: >
+      FDA Unique Ingredient Identifier -- the controlled-vocabulary code for a substance name. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: unii
+        description: FDA Unique Ingredient Identifier -- the controlled-vocabulary code for a substance name.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
+
+  - name: stg_openfda__drug_enforcement__upc
+    description: >
+      Universal Product Code on the retail package. One row per array entry per recall, keyed by recall_number.
+    config:
+      contract:
+        enforced: false
+    columns:
+      - name: recall_number
+        description: >-
+          The recall this value belongs to, resolved from `_dlt_parent_id` in
+          the clean layer. Repeats across rows -- a recall with four
+          substances is four rows here.
+        data_tests: [not_null]
+      - name: upc
+        description: Universal Product Code on the retail package.
+      - name: value_index
+        description: >-
+          The value's position in its own JSON array. Meaningless across child
+          tables -- the arrays are ragged, so position does not pair a
+          brand_name with a product_ndc.
+      - name: ingest_ts
+        description: dlt load timestamp, carried across from the parent row -- child tables carry no `_dlt_load_id` of their own.
