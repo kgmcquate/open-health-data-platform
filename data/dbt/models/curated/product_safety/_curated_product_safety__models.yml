@@ -44,15 +44,23 @@ models:
         config:
           meta:
             grain: true
-      - name: recall_number
+      - name: recall_key
         description: >-
-          FDA's identifier for this one recalled product, prefixed by the
-          issuing centre (`D-` drug, `F-` food, `Z-` device).
+          The recall's non-null identifier: its real recall number where FDA
+          has issued one, else `<product_type>-EVENT-<event_id>`. Half the
+          grain, and the column to join or count distinct on.
         data_type: varchar
         data_tests: [not_null]
         config:
           meta:
             grain: true
+      - name: recall_number
+        description: >-
+          FDA's identifier for this one recalled product, prefixed by the
+          issuing centre (`D-` drug, `F-` food, `Z-` device; food also carries
+          `H-`). NULL on a report FDA has not numbered yet, which is why
+          recall_key rather than this column carries the grain.
+        data_type: varchar
       - name: event_id
         description: >-
           FDA's identifier for the recall event. One event covers every
@@ -333,16 +341,22 @@ models:
           value_index) hashed into one opaque column. See macros/row_sk.sql.
         data_type: varchar
         data_tests: [unique, not_null]
-      - name: recall_number
+      - name: recall_key
         description: >-
-          The recall this value belongs to. Repeats heavily -- a recall with
-          four substances and seven NDC codes is at least eleven rows -- so
-          count distinct on it, never count rows, when counting recalls.
+          The recall this value belongs to, as product_safety__recalls keys
+          it. Repeats heavily -- a recall with four substances and seven NDC
+          codes is at least eleven rows -- so count distinct on it, never
+          count rows, when counting recalls.
         data_type: varchar
         data_tests: [not_null]
         config:
           meta:
             grain: true
+      - name: recall_number
+        description: >-
+          FDA's recall number, or NULL on a report it has not numbered yet.
+          Carried for display; recall_key is what to group and join on.
+        data_type: varchar
       - name: attribute
         description: >-
           Which openFDA member the value came from, e.g. `substance_name`,

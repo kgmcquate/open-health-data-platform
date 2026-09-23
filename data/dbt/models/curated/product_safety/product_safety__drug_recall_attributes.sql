@@ -3,7 +3,9 @@
 -- with enough of the recall's own context attached that a cube can slice
 -- recalls by drug identity without a join.
 --
--- Grain: recall_number x attribute x value_index.
+-- Grain: recall_key x attribute x value_index. recall_key rather than
+-- recall_number because FDA leaves the latter as a sentinel on reports it has
+-- not numbered yet -- see core__product_recall's header.
 --
 -- This is the table that answers "which substances get recalled, and how
 -- severely" -- product_safety__recalls carries the same values flattened to
@@ -28,6 +30,7 @@
 with mart as (
 
 select
+    a.recall_key,
     a.recall_number,
     a.attribute_group,
     a.attribute,
@@ -51,11 +54,11 @@ select
 from {{ ref('core__drug_recall_attribute') }} a
 inner join {{ ref('core__product_recall') }} r
     on a.product_type = r.product_type
-    and a.recall_number = r.recall_number
+    and a.recall_key = r.recall_key
 
 )
 
 select
-    {{ row_sk(['recall_number', 'attribute', 'value_index']) }} as row_sk,
+    {{ row_sk(['recall_key', 'attribute', 'value_index']) }} as row_sk,
     *
 from mart

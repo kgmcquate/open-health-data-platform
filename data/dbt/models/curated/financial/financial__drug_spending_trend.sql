@@ -4,7 +4,9 @@
 -- Grain: source_dataset x drug_key x year. drug_key is drug_code (Part B's
 -- HCPCS code) where the source has one, else brand_name|generic_name (Part D,
 -- Medicaid) -- see core__drug_spending.sql for why the three sources don't
--- share one natural drug identifier.
+-- share one natural drug identifier, and for why Part D and Medicaid arrive
+-- one row per drug per manufacturer and are reduced to CMS's own 'Overall'
+-- roll-up upstream so this grain holds and the dollar totals stay additive.
 --
 -- total_spending_usd is a real dollar total and sums across drugs; the
 -- avg_spending_per_* columns are per-unit/per-claim/per-beneficiary averages
@@ -22,7 +24,6 @@ select
     brand_name,
     generic_name,
     manufacturer_count,
-    manufacturer_name,
     year,
     total_spending_usd,
     total_dosage_units,

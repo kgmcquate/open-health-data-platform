@@ -10,11 +10,15 @@
 -- marts and cubes downstream expose per-pollutant measures rather than one
 -- "average reading" measure for exactly this reason.
 --
--- month_start is derived from `period_label` ('2025-08') rather than from
--- period__datetimefrom__utc: the label is the natural key the raw rows are
--- deduped on (macros/openaq_current_rows.sql), so keying the month off
--- anything else risks the two disagreeing at a month boundary in a station's
--- local time zone.
+-- month_start is derived from the period bounds, through
+-- macros/openaq_period_month.sql -- the same expression the raw rows are
+-- deduped on in stg_openaq__monthly_measurements, so the month here and the
+-- month the dedupe keys on cannot disagree. It is deliberately NOT derived
+-- from `period_label`: OpenAQ's `period.label` is the interval ("1 month"),
+-- not a year-month, and reading it as one nulled month_start on every row --
+-- which, with `where month_start is not null` downstream, left
+-- environmental_health__air_quality_monthly empty. The raw label column is
+-- not carried forward here for the same reason.
 --
 -- The coverage columns are the honest caveat on every average here. A
 -- month's mean is computed from however many hourly values the sensor
@@ -37,8 +41,7 @@
 select
     try_cast(m.sensor_id as bigint)                          as sensor_id,
     try_cast(m.location_id as bigint)                        as location_id,
-    m.period_label,
-    try_cast(m.period_label || '-01' as date)            as month_start,
+    {{ openaq_period_month('m.period__datetimefrom__utc', 'm.period__datetimeto__utc') }} as month_start,
     m.parameter__name                                    as parameter,
     m.parameter__units                                   as parameter_units,
 

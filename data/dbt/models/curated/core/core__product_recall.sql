@@ -27,6 +27,28 @@
 --     than measured against today: a mart that wants "days open so far"
 --     should compute it from recall_initiation_date itself.
 --
+-- **recall_number is not always a recall number.** FDA posts an enforcement
+-- report before it has assigned one, filling the field with `''` or the
+-- literal `'N/A'` until it does -- drug/enforcement carries one of each and
+-- food/enforcement carries one of each, all four recent and
+-- `Not Yet Classified`. Those sentinels are nulled here, because a null says
+-- "FDA has not numbered this yet" and an empty string says nothing, and
+-- because the same two sentinels appear on more than one endpoint, which is
+-- what made `recall_number` non-unique across the union even though it is
+-- unique within each endpoint (16,886 of 16,888 drug rows carry a real `D-`
+-- number; the other two are the sentinels).
+--
+-- `recall_key` is the non-null identifier everything downstream keys and
+-- joins on, the same move core__drug_spending makes with `drug_key` where its
+-- three sources disagree on how to identify a drug: the real recall number
+-- where FDA has issued one, else the product type and event id, which are
+-- populated on every row of every endpoint. An unnumbered report that later
+-- gains a real number gets a *new* recall_key rather than updating its old
+-- one -- the two cannot be linked, because nothing stable ties them
+-- together, so the history holds both. That is a property of the source, not
+-- something SQL can repair; count on recall_key and the double-count is
+-- bounded to reports still awaiting a number.
+--
 -- Kept as published: status, voluntary_mandated and
 -- initial_firm_notification carry `N/A` and empty strings alongside their
 -- real values, and outlier-flag-style normalisation is a mart decision -- the
@@ -49,7 +71,8 @@ with unioned as (
     {% for product_type, model in endpoints %}
     select
         '{{ product_type }}'                         as product_type,
-        recall_number,
+        -- See the header: '' and 'N/A' are "not numbered yet", not numbers.
+        nullif(nullif(recall_number, ''), 'N/A')     as recall_number,
         event_id,
         nullif(status, '')                           as status,
         nullif(classification, '')                   as classification,
@@ -81,6 +104,7 @@ with unioned as (
 
 select
     *,
+    coalesce(recall_number, product_type || '-EVENT-' || event_id) as recall_key,
     case classification
         when 'Class I' then 1
         when 'Class II' then 2

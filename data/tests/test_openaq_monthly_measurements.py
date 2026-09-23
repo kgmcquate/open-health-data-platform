@@ -87,10 +87,30 @@ def test_filters_sensors_by_parameter_and_injects_identifying_columns(
                 {"id": 21, "parameter": {"name": "o3"}},
             ],
             "/sensors/11/days/monthly": [
-                {"value": 8.2, "parameter": {"name": "pm25"}, "period": {"label": "2026-01"}},
+                {
+                    "value": 8.2,
+                    "parameter": {"name": "pm25"},
+                    "period": {
+                        "label": "1 month",
+                        "datetimeFrom": {
+                            "local": "2026-01-01T00:00:00-06:00",
+                            "utc": "2026-01-01T06:00:00Z",
+                        },
+                    },
+                },
             ],
             "/sensors/21/days/monthly": [
-                {"value": 0.03, "parameter": {"name": "o3"}, "period": {"label": "2026-01"}},
+                {
+                    "value": 0.03,
+                    "parameter": {"name": "o3"},
+                    "period": {
+                        "label": "1 month",
+                        "datetimeFrom": {
+                            "local": "2026-01-01T00:00:00-06:00",
+                            "utc": "2026-01-01T06:00:00Z",
+                        },
+                    },
+                },
             ],
         },
     )
@@ -106,6 +126,74 @@ def test_filters_sensors_by_parameter_and_injects_identifying_columns(
     assert by_sensor[21]["location_id"] == 2
     # windspeed sensor 12 never reached the monthly endpoint at all.
     assert 12 not in by_sensor
+
+
+def test_period_label_is_the_year_month_not_openaqs_interval_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """period_label is half the clean layer's dedupe key, so it has to vary.
+
+    OpenAQ's own `period.label` is the interval -- the literal "1 month" on
+    every row of the table -- so copying it through made (sensor_id,
+    period_label) the same key for every month a sensor reported, and the
+    clean layer kept one of them. The month has to come from the period's
+    start instead, in the station's own local time: the `.utc` variant of a
+    local January 1st sits in December for a station west of UTC.
+    """
+    _stub(
+        monkeypatch,
+        {
+            "/locations": [{"id": 1, "name": "Loc A"}],
+            "/locations/1/sensors": [{"id": 11, "parameter": {"name": "pm25"}}],
+            "/sensors/11/days/monthly": [
+                {
+                    "value": 8.2,
+                    "parameter": {"name": "pm25"},
+                    "period": {
+                        "label": "1 month",
+                        "datetimeFrom": {
+                            "local": "2026-01-01T00:00:00-06:00",
+                            "utc": "2026-01-01T06:00:00Z",
+                        },
+                    },
+                },
+                {
+                    "value": 9.1,
+                    "parameter": {"name": "pm25"},
+                    "period": {
+                        "label": "1 month",
+                        "datetimeFrom": {
+                            "local": "2026-02-01T00:00:00-06:00",
+                            "utc": "2026-02-01T06:00:00Z",
+                        },
+                    },
+                },
+            ],
+        },
+    )
+
+    rows = _rows(monkeypatch, countries=["US"], parameters=["pm25"])
+
+    assert [r["period_label"] for r in rows] == ["2026-01", "2026-02"]
+    # The key the clean layer dedupes on separates the two months.
+    assert len({(r["sensor_id"], r["period_label"]) for r in rows}) == 2
+
+
+def test_period_label_is_none_when_openaq_omits_the_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub(
+        monkeypatch,
+        {
+            "/locations": [{"id": 1, "name": "Loc A"}],
+            "/locations/1/sensors": [{"id": 11, "parameter": {"name": "pm25"}}],
+            "/sensors/11/days/monthly": [{"value": 8.2, "parameter": {"name": "pm25"}}],
+        },
+    )
+
+    rows = _rows(monkeypatch, countries=["US"], parameters=["pm25"])
+
+    assert [r["period_label"] for r in rows] == [None]
 
 
 def test_no_parameter_filter_keeps_every_sensor(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,7 +264,14 @@ def _many_locations(count: int) -> dict[str, Any]:
     for i in range(1, count + 1):
         routes[f"/locations/{i}/sensors"] = [{"id": 100 + i, "parameter": {"name": "pm25"}}]
         routes[f"/sensors/{100 + i}/days/monthly"] = [
-            {"value": 1.0, "parameter": {"name": "pm25"}, "period": {"label": "2026-01"}}
+            {
+                "value": 1.0,
+                "parameter": {"name": "pm25"},
+                "period": {
+                    "label": "1 month",
+                    "datetimeFrom": {"local": "2026-01-01T00:00:00-06:00"},
+                },
+            }
         ]
     return routes
 

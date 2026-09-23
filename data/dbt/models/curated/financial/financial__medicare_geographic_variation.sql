@@ -1,7 +1,13 @@
 -- Mart layer: Medicare spending and utilization by geography, the
 -- presentation table behind the financial cube's geographic-variation cube.
 --
--- Grain: geography level x geography x age group x year. CMS's source has
+-- Grain: geography level x geography (code AND name) x age group x year.
+-- The name is part of the key, not decoration: bene_geo_cd is blank on the
+-- National row and on the two catch-all State rows CMS publishes for
+-- residence it can't place in a state -- 'Territory' and 'ZZ' -- so those two
+-- collide on code alone (every measure on them is CMS's '*' suppression
+-- marker, i.e. null after the casts below, but they are still two distinct
+-- rows). CMS's source has
 -- ~230 measure columns (payment, standardized payment, utilization rate and
 -- per-user figures for every care setting down to ambulance and DME, plus 18
 -- age-banded preventable-hospitalization (PQI) rates); this mart keeps the
@@ -89,6 +95,6 @@ where bene_geo_lvl is not null
 )
 
 select
-    {{ row_sk(['geography_level', 'geography_code', 'age_group', 'year']) }} as row_sk,
+    {{ row_sk(['geography_level', 'geography_code', 'geography_name', 'age_group', 'year']) }} as row_sk,
     *
 from mart

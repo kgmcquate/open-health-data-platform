@@ -15,6 +15,20 @@
 -- publish a beneficiary count for it -- so those are null on
 -- medicaid_spending_by_drug rows, not zero.
 --
+-- Part D and Medicaid are published one row per drug per *manufacturer*, plus
+-- an 'Overall' roll-up row per drug -- so the wide source is not one row per
+-- drug the way Part B is, and every (brand_name, generic_name) pair has
+-- exactly one 'Overall' row. This model keeps only that roll-up: mixing it
+-- with its own parts would both break the grain above and make
+-- total_spending_usd double-count under any SUM (Cube sums it), and the parts
+-- do add up to it -- summed over Part D's 3,625 drugs, the manufacturer rows
+-- and the Overall rows agree to the cent. manufacturer_count (CMS's tot_mftr)
+-- carries how many manufacturers were rolled up; per-manufacturer detail stays
+-- in stg_cms__medicare_part_d_spending_by_drug /
+-- stg_cms__medicaid_spending_by_drug for anyone who needs it, and there is
+-- deliberately no manufacturer_name column here -- it would read 'Overall' on
+-- every row it is populated for.
+--
 -- outlier_flag is CMS's own text flag on the source data (average spending
 -- per dosage unit far from the drug's historical trend); kept as-is rather
 -- than cast to boolean since data-api/v1 gives every column back as a string
@@ -38,7 +52,6 @@ with part_d as (
         brnd_name                                            as brand_name,
         gnrc_name                                            as generic_name,
         try_cast(tot_mftr as int)                            as manufacturer_count,
-        mftr_name                                            as manufacturer_name,
         {{ year }}                                           as year,
         try_cast(tot_spndng_{{ year }} as double)             as total_spending_usd,
         try_cast(tot_dsg_unts_{{ year }} as double)           as total_dosage_units,
@@ -50,6 +63,7 @@ with part_d as (
         nullif(outlier_flag_{{ year }}, '')                  as outlier_flag,
         ingest_ts
     from {{ ref('stg_cms__medicare_part_d_spending_by_drug') }}
+    where mftr_name = 'Overall'
     {% if not loop.last %}union all{% endif %}
     {% endfor %}
 
@@ -62,7 +76,6 @@ with part_d as (
         brnd_name                                            as brand_name,
         gnrc_name                                            as generic_name,
         cast(null as int)                                    as manufacturer_count,
-        cast(null as varchar)                                as manufacturer_name,
         {{ year }}                                           as year,
         try_cast(tot_spndng_{{ year }} as double)             as total_spending_usd,
         try_cast(tot_dsg_unts_{{ year }} as double)           as total_dosage_units,
@@ -86,7 +99,6 @@ with part_d as (
         brnd_name                                            as brand_name,
         gnrc_name                                            as generic_name,
         try_cast(tot_mftr as int)                            as manufacturer_count,
-        mftr_name                                            as manufacturer_name,
         {{ year }}                                           as year,
         try_cast(tot_spndng_{{ year }} as double)             as total_spending_usd,
         try_cast(tot_dsg_unts_{{ year }} as double)           as total_dosage_units,
@@ -98,6 +110,7 @@ with part_d as (
         nullif(outlier_flag_{{ year }}, '')                  as outlier_flag,
         ingest_ts
     from {{ ref('stg_cms__medicaid_spending_by_drug') }}
+    where mftr_name = 'Overall'
     {% if not loop.last %}union all{% endif %}
     {% endfor %}
 

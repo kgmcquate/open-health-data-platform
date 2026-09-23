@@ -704,7 +704,9 @@ models:
     description: >
       One conformed long fact for CMS's three drug-spending datasets (Medicare
       Part D, Medicare Part B, Medicaid), unpivoted from wide (one column pair
-      per year) to long. One row per source x drug x year, 2020-2024.
+      per year) to long. One row per source x drug x year, 2020-2024 -- Part D
+      and Medicaid also publish a row per manufacturer, of which only CMS's
+      'Overall' roll-up per drug is kept here (see the model SQL).
     config:
       contract:
         enforced: false
@@ -755,12 +757,23 @@ models:
           - accepted_values:
               arguments:
                 values: [drug, food, device]
+      - name: recall_key
+        description: >-
+          This model's non-null identifier and the column every mart keys and
+          joins on: the real recall number where FDA has issued one, else
+          `<product_type>-EVENT-<event_id>`. Exists because recall_number is
+          not always a recall number -- see the model SQL's header.
+        data_tests: [unique, not_null]
       - name: recall_number
         description: >-
           openFDA's identifier for one recalled product, prefixed by the
-          issuing centre (`D-` drug, `F-` food, `Z-` device). Unique across
-          all three endpoints, so it is this model's key on its own.
-        data_tests: [unique, not_null]
+          issuing centre (`D-` drug, `F-` food, `Z-` device; food also carries
+          `H-`). NULL where FDA has not numbered the report yet -- the
+          source's `''`/`'N/A'` sentinels are nulled here, which is also what
+          makes the uniqueness below hold: those two sentinel values appear on
+          more than one endpoint, so the raw column is unique within an
+          endpoint but not across the union.
+        data_tests: [unique]
       - name: event_id
         description: >-
           openFDA's identifier for the recall *event*. One event covers every
@@ -879,9 +892,11 @@ models:
         description: The station the sensor belongs to. Joins core__air_monitoring_site.
       - name: month_start
         description: >-
-          First day of the month the row covers, derived from OpenAQ's
-          `period_label` ('2025-08') rather than from the period timestamps,
-          so it cannot disagree with the key the raw rows are deduped on.
+          First day of the month the row covers, derived from the period
+          timestamps by macros/openaq_period_month.sql -- the same expression
+          the raw rows are deduped on, so it cannot disagree with that key.
+          Not from OpenAQ's `period_label`, which is the interval ("1 month")
+          rather than a year-month.
         data_tests: [not_null]
       - name: parameter
         description: Pollutant measured -- `pm25`, `o3` or `no2` in the current ingestion scope.
@@ -938,11 +953,19 @@ models:
           - accepted_values:
               arguments:
                 values: [drug]
+      - name: recall_key
+        description: >-
+          The recall this value belongs to, as core__product_recall keys it --
+          the join column between the two. Built the same way there and here,
+          off the recall_number and event_id the clean child tables carry.
+        data_tests: [not_null]
       - name: recall_number
         description: >-
           The recall this value belongs to, resolved from the child table's
-          `_dlt_parent_id` back in the clean layer. Repeats across rows.
-        data_tests: [not_null]
+          `_dlt_parent_id` back in the clean layer. Repeats across rows, and
+          is NULL on a report FDA has not numbered yet -- join on recall_key.
+      - name: event_id
+        description: The recall event, carried from the parent row. The other half of recall_key's fallback.
       - name: attribute_group
         description: >-
           Which family the attribute belongs to. This project's own grouping,

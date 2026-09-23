@@ -8,12 +8,35 @@
     reports. dlt declares that resource `write_disposition="merge"`, but the
     raw layer is append-only history either way (ADR-0010 -- and see the note
     below on what the Horizon destination actually does with "merge"), so a
-    report caught by two runs' windows is two rows in RAW with the same
-    `recall_number`. Reducing to the latest `_dlt_load_id` per key is what
-    makes the clean table one row per recall again -- the same
-    `qualify row_number()` shape as macros/openaq_current_rows.sql, and for
-    the same reason: recency is "which load saw it last", there being no
-    API-side revision timestamp to order by first.
+    report caught by two runs' windows is two rows in RAW with the same key.
+    Reducing to the latest `_dlt_load_id` per key is what makes the clean
+    table one row per recall again -- the same `qualify row_number()` shape as
+    macros/openaq_current_rows.sql, and for the same reason: recency is
+    "which load saw it last", there being no API-side revision timestamp to
+    order by first.
+
+    **The key is (recall_number, event_id), not recall_number alone**, and
+    the second column is load-bearing rather than belt-and-braces. FDA posts
+    an enforcement report before it has assigned a recall number, and fills
+    the field with a sentinel until it does: as of this writing drug/
+    enforcement carries one row with `recall_number = ''` and one with
+    `'N/A'`, and food/enforcement carries one of each too (all four are
+    recent, `Not Yet Classified` reports). Partitioning on `recall_number`
+    alone would put every sentinel row in one partition and throw away all
+    but the newest -- silently dropping real, distinct recalls, and dropping
+    more of them the more unnumbered reports FDA has outstanding. `event_id`
+    is populated on 100% of rows on all three endpoints (16,888/16,888
+    drug, 28,970/28,970 food, 36,231/36,231 device) and differs between those
+    sentinel rows, so it separates them. For a row with a real recall number
+    it changes nothing: recall_number is already unique there, so event_id is
+    functionally determined by it.
+
+    Residual exposure, named rather than hidden: two *products* recalled
+    under one unnumbered event would share both columns and still collapse.
+    That needs FDA to post two unnumbered rows from one event, and the clean
+    layer cannot tell them apart -- there is no other stable identifier on
+    the row. core__product_recall's `recall_key` is where the sentinel stops
+    being treated as an identifier at all.
 
     That dedupe is also what makes a status change (`Ongoing` ->
     `Terminated`) visible: the newest load's copy of the report wins, and the
@@ -38,7 +61,7 @@
 
         {{ openfda_current_rows('drug_enforcement') }}
 #}
-{% macro openfda_current_rows(raw_table, dedupe_by=['recall_number']) -%}
+{% macro openfda_current_rows(raw_table, dedupe_by=['recall_number', 'event_id']) -%}
 select
     {%- if execute %}
     {%- set cols = adapter.get_columns_in_relation(source('openfda', raw_table)) %}

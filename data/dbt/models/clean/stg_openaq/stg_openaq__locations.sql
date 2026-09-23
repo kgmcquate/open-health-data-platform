@@ -1,3 +1,12 @@
--- Clean layer: RAW.OPENAQ.LOCATIONS is already a full-dataset replace each
--- run (no per-row cursor to dedupe on) -- see macros/openaq_current_rows.sql.
-{{ openaq_current_rows('locations') }}
+-- Clean layer: RAW.OPENAQ.LOCATIONS is a full-dataset replace each run (no
+-- per-row cursor to dedupe across loads on), but the locations walk can hand
+-- back the same station twice *within* one snapshot -- OpenAQ's /v3/locations
+-- pages are not a stable window, so a station can shift across a page
+-- boundary between requests and be read on both sides of it. Two ids arrive
+-- duplicated that way today (9585, 3665381); both copies are byte-identical
+-- apart from dlt's own `_dlt_id`, so keeping either is the same row.
+--
+-- `dedupe_by=['id']` is therefore about the in-snapshot duplicate, not about
+-- superseding an older load -- the `order by _dlt_load_id desc` inside the
+-- macro is constant across the tied rows and just picks one.
+{{ openaq_current_rows('locations', dedupe_by=['id']) }}

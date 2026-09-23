@@ -35,6 +35,12 @@
 -- Drug only. Food and device enforcement return no `openfda` block, so there
 -- is nothing to conform for them -- product_type is fixed at 'drug' here so
 -- the table still joins cleanly to core__product_recall's composite key.
+--
+-- recall_key is built the same way core__product_recall builds it, off the
+-- recall_number and event_id the clean child tables carry: the real recall
+-- number where FDA has issued one, else product type plus event id. It has
+-- to be recomputed rather than joined for, because the join to
+-- core__product_recall is itself on recall_key.
 {{ config(materialized="table") }}
 
 {% set attribute_groups = [
@@ -60,7 +66,12 @@ from (
     {% for group, attribute in members %}
     select
         'drug'                              as product_type,
-        recall_number,
+        nullif(nullif(recall_number, ''), 'N/A') as recall_number,
+        coalesce(
+            nullif(nullif(recall_number, ''), 'N/A'),
+            'drug-EVENT-' || event_id
+        )                                   as recall_key,
+        event_id,
         '{{ group }}'                       as attribute_group,
         '{{ attribute }}'                   as attribute,
         -- cast: every member is text except is_original_packager, which dlt

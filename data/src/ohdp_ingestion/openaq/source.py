@@ -34,8 +34,12 @@ instead re-fetches a trailing window (``lookback_months``) every run and
 lands it with ``write_disposition="append"`` — raw keeps every version of a
 revised month rather than overwriting it in place (ADR-0010), and the clean
 layer (``openaq_current_rows``) dedupes to the latest ``_dlt_load_id`` per
-``(sensor_id, period_label)``, the same pattern Socrata's incremental
-sources use (``socrata_current_rows``).
+sensor and month, the same pattern Socrata's incremental sources use
+(``socrata_current_rows``). The clean layer derives that month from the
+period bounds rather than from ``period_label`` -- see
+``data/dbt/macros/openaq_period_month.sql`` for why, and note that
+``period_label`` on rows already in RAW is OpenAQ's ``"1 month"`` rather
+than the year-month this module now stamps on.
 """
 
 from __future__ import annotations
@@ -157,6 +161,26 @@ def _get(
     resp = requests.get(url, params=params, headers=headers)
     resp.raise_for_status()
     return resp.json()
+
+
+def _period_year_month(period: dict[str, Any] | None) -> str | None:
+    """``"YYYY-MM"`` for an OpenAQ ``days/monthly`` row's ``period``.
+
+    Half the natural key of a monthly row, with ``sensor_id``. Deliberately
+    not ``period["label"]``: OpenAQ puts the *interval* there ("1 month"),
+    identical on every row of the table, so keying on it made every month a
+    sensor reported collide into one.
+
+    Taken from ``datetimeFrom.local``, whose date part is the station's own
+    month start ("2026-08-01T00:00:00-06:00" -> "2026-08"). The ``.utc``
+    variant is the same instant expressed in UTC and can land in the
+    neighbouring month for a station far enough from it, which is also why
+    the clean layer derives the month from the period midpoint rather than
+    trusting whatever this lands -- see
+    ``data/dbt/macros/openaq_period_month.sql``.
+    """
+    local = ((period or {}).get("datetimeFrom") or {}).get("local")
+    return local[:7] if isinstance(local, str) and len(local) >= 7 else None
 
 
 def _months_ago(months: int) -> str:
@@ -313,7 +337,12 @@ def openaq_monthly_measurements_source(
                                 row["location_name"] = location.get("name")
                                 row["country"] = country
                                 row["sensor_id"] = sensor_id
-                                row["period_label"] = (row.get("period") or {}).get("label")
+                                # NOT period.label: OpenAQ puts the interval
+                                # there ("1 month"), the same string on every
+                                # row, so using it as half the key collapsed a
+                                # sensor's whole history to one month. The
+                                # period's start is the month the row covers.
+                                row["period_label"] = _period_year_month(row.get("period"))
                                 batch.append(row)
                         except Exception as exc:
                             # Already past dlt's own 5xx/429 retries — see the

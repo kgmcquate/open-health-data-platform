@@ -272,7 +272,7 @@ cubes:
       # with four substances and seven NDC codes is eleven-plus rows here, so
       # counting rows counts values, not recalls.
       - name: recall_count
-        sql: '{CUBE}."recall_number"'
+        sql: '{CUBE}."recall_key"'
         type: count_distinct
         description: >-
           Distinct recalls matching the current filter. MATCHED RECALLS ONLY
@@ -297,7 +297,7 @@ cubes:
           names and NDC codes together.
 
       - name: class_i_recall_count
-        sql: '{CUBE}."recall_number"'
+        sql: '{CUBE}."recall_key"'
         type: count_distinct
         filters:
           - sql: '{CUBE}."classification_rank" = 1'
@@ -308,7 +308,7 @@ cubes:
           recall_count understates recalls overall.
 
       - name: nationwide_recall_count
-        sql: '{CUBE}."recall_number"'
+        sql: '{CUBE}."recall_key"'
         type: count_distinct
         filters:
           - sql: '{CUBE}."is_nationwide"'

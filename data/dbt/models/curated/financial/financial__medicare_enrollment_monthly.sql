@@ -6,6 +6,16 @@
 -- geography_level before summing beneficiary counts, or a national total
 -- ends up double- (or 3,000x-) counted against its own counties.
 --
+-- CMS publishes `MONTH` as a month *name* ('January'...'December') plus a
+-- thirteenth 'Year' row per geography -- not a number, so a bare cast to int
+-- nulls every row. It is parsed by name here, and the annual row is dropped:
+-- it is the mean of that geography's twelve month rows (checked against the
+-- source -- e.g. WA 2024 State, tot_benes 1,524,231 = the 12-month mean to
+-- the rounding), so it carries nothing the month rows don't, while leaving it
+-- in would put a row at a different grain in a table keyed by month. Average
+-- the twelve months to get it back; the raw 'Year' rows are still in
+-- stg_cms__medicare_monthly_enrollment.
+--
 -- Every *_beneficiaries column here is a headcount and sums across
 -- geographies (within one geography_level) and across the coverage
 -- breakdowns that partition total_beneficiaries (original_medicare +
@@ -27,7 +37,9 @@ select
     bene_county_desc                             as county_name,
     bene_fips_cd                                 as county_fips,
     try_cast(year as int)                        as year,
-    try_cast(month as int)                       as month,
+    -- '%B' is the full month name; try_strptime rather than strptime so an
+    -- unexpected label nulls the row's month instead of failing the build.
+    month(try_strptime(month, '%B'))             as month,
 
     -- Headline coverage
     try_cast(tot_benes as double)                 as total_beneficiaries,
@@ -59,6 +71,7 @@ select
     ingest_ts
 from {{ ref('stg_cms__medicare_monthly_enrollment') }}
 where bene_geo_lvl is not null
+  and month <> 'Year'
 
 )
 

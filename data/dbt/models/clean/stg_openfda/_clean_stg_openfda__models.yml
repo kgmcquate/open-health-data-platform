@@ -7,9 +7,15 @@ version: 2
 #
 # Unlike stg_cms, there *is* a dedupe key: openFDA's enforcement resources are
 # configured incremental with a 90-day re-fetch window, so raw holds a row per
-# (recall_number, load) and clean reduces that to the latest load per
-# recall_number -- which is also what makes a report's status change visible.
-# The `unique` test on recall_number below is that dedupe's guard rail.
+# (key, load) and clean reduces that to the latest load per key -- which is
+# also what makes a report's status change visible.
+#
+# The key is (recall_number, event_id), not recall_number alone. FDA posts a
+# report before assigning it a number and leaves `''` or `'N/A'` in the field
+# until it does, so deduping on recall_number would collapse every
+# not-yet-numbered recall into one row and discard the rest. See
+# macros/openfda_current_rows.sql. The composite test below is that dedupe's
+# guard rail; `unique` on recall_number alone would fail today.
 #
 # Every date openFDA publishes is an 8-character `YYYYMMDD` *string*, and
 # every other field is text too. Typing and business logic belong in `core`
@@ -23,12 +29,22 @@ models:
     config:
       contract:
         enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [recall_number, event_id]
     columns:
       - name: recall_number
         description: >-
-          openFDA's identifier for this one product recall (`D-` prefixed for drugs). The dedupe
-          key macros/openfda_current_rows.sql reduces on, so it is unique here by construction.
-        data_tests: [unique, not_null]
+          openFDA's identifier for this one product recall (`D-` prefixed for drugs),
+          or the sentinel `''`/`'N/A'` on a report FDA has not numbered yet. Unique
+          among real numbers; see the composite test on this model.
+        data_tests: [not_null]
+      - name: event_id
+        description: >-
+          FDA's identifier for the recall event. Half of this model's dedupe key --
+          it is what still identifies a report whose recall_number is a sentinel.
+        data_tests: [not_null]
 
   - name: stg_openfda__food_enforcement
     description: >
@@ -36,10 +52,20 @@ models:
     config:
       contract:
         enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [recall_number, event_id]
     columns:
       - name: recall_number
-        description: As drug_enforcement's, `F-` prefixed.
-        data_tests: [unique, not_null]
+        description: >-
+          As drug_enforcement's, `F-` prefixed (food also carries `H-` numbers).
+        data_tests: [not_null]
+      - name: event_id
+        description: >-
+          FDA's identifier for the recall event. Half of this model's dedupe key --
+          it is what still identifies a report whose recall_number is a sentinel.
+        data_tests: [not_null]
 
   - name: stg_openfda__device_enforcement
     description: >
@@ -47,10 +73,20 @@ models:
     config:
       contract:
         enforced: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [recall_number, event_id]
     columns:
       - name: recall_number
-        description: As drug_enforcement's, `Z-` prefixed.
-        data_tests: [unique, not_null]
+        description: >-
+          As drug_enforcement's, `Z-` prefixed.
+        data_tests: [not_null]
+      - name: event_id
+        description: >-
+          FDA's identifier for the recall event. Half of this model's dedupe key --
+          it is what still identifies a report whose recall_number is a sentinel.
+        data_tests: [not_null]
 
 # --- drug_enforcement child tables ---------------------------------------
 # macros/openfda_child_rows.sql over each of the 21 tables dlt split
@@ -85,6 +121,11 @@ models:
         data_tests: [not_null]
       - name: application_number
         description: FDA application number (NDA/ANDA/BLA) the drug was approved under.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -108,6 +149,11 @@ models:
         data_tests: [not_null]
       - name: brand_name
         description: Marketed brand name from the product's SPL listing.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -131,6 +177,11 @@ models:
         data_tests: [not_null]
       - name: generic_name
         description: Generic (non-proprietary) name from the product's SPL listing.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -154,6 +205,11 @@ models:
         data_tests: [not_null]
       - name: is_original_packager
         description: Whether the labeler is the product's original packager. The one child table whose value is boolean.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -177,6 +233,11 @@ models:
         data_tests: [not_null]
       - name: manufacturer_name
         description: Labeler/manufacturer name from the SPL listing -- not necessarily the recalling firm.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -200,6 +261,11 @@ models:
         data_tests: [not_null]
       - name: nui
         description: NDF-RT unique identifier for a pharmacologic class.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -223,6 +289,11 @@ models:
         data_tests: [not_null]
       - name: original_packager_product_ndc
         description: Product NDC of the original packager, on repackaged products.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -246,6 +317,11 @@ models:
         data_tests: [not_null]
       - name: package_ndc
         description: Package-level NDC code (labeler-product-package).
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -269,6 +345,11 @@ models:
         data_tests: [not_null]
       - name: pharm_class_cs
         description: Chemical structure pharmacologic class, e.g. `Sulfonamides [CS]`.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -292,6 +373,11 @@ models:
         data_tests: [not_null]
       - name: pharm_class_epc
         description: Established pharmacologic class, e.g. `Proton Pump Inhibitor [EPC]` -- the FDA's own therapeutic classification.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -315,6 +401,11 @@ models:
         data_tests: [not_null]
       - name: pharm_class_moa
         description: Mechanism of action class, e.g. `Cyclooxygenase Inhibitors [MoA]`.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -338,6 +429,11 @@ models:
         data_tests: [not_null]
       - name: pharm_class_pe
         description: Physiologic effect class, e.g. `Decreased Prostaglandin Production [PE]`.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -361,6 +457,11 @@ models:
         data_tests: [not_null]
       - name: product_ndc
         description: Product-level NDC code (labeler-product, no package segment).
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -384,6 +485,11 @@ models:
         data_tests: [not_null]
       - name: product_type
         description: SPL product type, e.g. `HUMAN PRESCRIPTION DRUG`. Unrelated to the parent's `product_type`, which is constant `Drugs`.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -407,6 +513,11 @@ models:
         data_tests: [not_null]
       - name: route
         description: Route of administration, e.g. `ORAL`.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -430,6 +541,11 @@ models:
         data_tests: [not_null]
       - name: rxcui
         description: RxNorm concept unique identifier for the product.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -453,6 +569,11 @@ models:
         data_tests: [not_null]
       - name: spl_id
         description: Identifier of the specific SPL document version.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -476,6 +597,11 @@ models:
         data_tests: [not_null]
       - name: spl_set_id
         description: Identifier of the SPL set -- stable across label versions.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -499,6 +625,11 @@ models:
         data_tests: [not_null]
       - name: substance_name
         description: Active ingredient substance name, e.g. `IBUPROFEN`.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -522,6 +653,11 @@ models:
         data_tests: [not_null]
       - name: unii
         description: FDA Unique Ingredient Identifier -- the controlled-vocabulary code for a substance name.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child
@@ -545,6 +681,11 @@ models:
         data_tests: [not_null]
       - name: upc
         description: Universal Product Code on the retail package.
+      - name: event_id
+        description: >-
+          The recall event, carried across the same parent join. With
+          recall_number it forms the parent's full business key, which matters
+          for reports FDA has not numbered yet.
       - name: value_index
         description: >-
           The value's position in its own JSON array. Meaningless across child

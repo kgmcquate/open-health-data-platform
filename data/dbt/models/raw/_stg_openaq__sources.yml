@@ -93,11 +93,13 @@ sources:
         config value). Stamped on by the fan-out.
     - name: sensor_id
       description: The sensor the rollup is for — one sensor measures one parameter at one station.
-        Half of the natural key, with `period_label`. Stamped on by the fan-out.
+        Half of the natural key, with the month. Stamped on by the fan-out.
     - name: period_label
-      description: The month this row covers, e.g. `2025-08`. A lifted copy of `period__label`, added
-        so the natural key is two flat columns — see the `primary_key` in
-        openaq_monthly_measurements_source and the dedupe in macros/openaq_current_rows.sql.
+      description: The month this row covers, e.g. `2025-08`, stamped on by the fan-out from
+        `period__datetimefrom__local`. NOT a copy of `period__label`, which is the interval
+        (`1 month`) rather than a year-month — rows loaded before that was fixed hold `1 month`
+        here, which is why the clean layer derives the month from the period bounds
+        (macros/openaq_period_month.sql) instead of reading this column.
     - name: coverage__expectedcount
       description: Hourly values the month should have contained if the sensor reported continuously.
     - name: coverage__expectedinterval
@@ -140,8 +142,8 @@ sources:
     - name: summary__sd
       description: Standard deviation of the month's hourly values.
     - name: period__label
-      description: OpenAQ's own label for the aggregation period, e.g. `2025-08`. `period_label` above
-        is the lifted copy used as a key.
+      description: OpenAQ's own label for the aggregation period — the interval, `1 month`, identical
+        on every row. Not a year-month, and not what `period_label` above holds.
     - name: period__interval
       description: Length of the aggregation period as a duration string.
     - name: period__datetimeto__utc

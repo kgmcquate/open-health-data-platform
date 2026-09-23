@@ -58,11 +58,13 @@ models:
         description: Drug's generic (non-proprietary) name.
         data_type: varchar
       - name: manufacturer_count
-        description: Number of manufacturers CMS aggregated into this row; populated for medicare_part_d and medicaid only.
+        description: >-
+          Number of manufacturers CMS rolled up into the row; populated for
+          medicare_part_d and medicaid only. Those two sources publish a row
+          per manufacturer as well, and only CMS's 'Overall' roll-up per drug
+          is carried through here -- see core__drug_spending.sql. Per-
+          manufacturer rows are still in the clean layer.
         data_type: integer
-      - name: manufacturer_name
-        description: Manufacturer name, or a multi-manufacturer label; populated for medicare_part_d and medicaid only.
-        data_type: varchar
       - name: year
         description: Calendar year of the spending figures.
         data_type: integer
@@ -117,7 +119,7 @@ models:
       - name: row_sk
         description: >-
           Surrogate key: this mart's natural key (geography_level,
-          geography_code, age_group, year) hashed into one opaque
+          geography_code, geography_name, age_group, year) hashed into one opaque
           column. It carries the grain -- `unique` on it asserts exactly
           what unique_combination_of_columns used to -- and is the
           primary key Cube joins and pre-aggregates on, which is what
@@ -133,10 +135,21 @@ models:
           meta:
             grain: true
       - name: geography_name
-        description: Geography name as CMS publishes it.
+        description: >-
+          Geography name as CMS publishes it. Part of the grain, not just a
+          label: geography_code is blank on the national row and on the two
+          catch-all State rows for residence CMS can't place in a state
+          ('Territory' and 'ZZ'), which the name is what separates.
         data_type: varchar
+        data_tests: [not_null]
+        config:
+          meta:
+            grain: true
       - name: geography_code
-        description: State postal code or county FIPS code; "National" sentinel for the national row.
+        description: >-
+          State postal code or county FIPS code. Blank (not null) on the
+          national row and on the 'Territory'/'ZZ' State rows -- see
+          geography_name.
         data_type: varchar
         data_tests: [not_null]
         config:
@@ -242,7 +255,11 @@ models:
           meta:
             grain: true
       - name: month
-        description: Calendar month (1-12) of the enrollment snapshot.
+        description: >-
+          Calendar month (1-12) of the enrollment snapshot, parsed from the
+          month name CMS publishes. CMS's thirteenth 'Year' row per geography
+          is not in this mart -- it is the mean of the twelve month rows, so
+          average them to get it back (see the model SQL).
         data_type: integer
         data_tests: [not_null]
         config:

@@ -17,7 +17,9 @@
     come across the join too.
 
     Dedupe rides on the same join. The parent CTE reduces to the latest load
-    per `recall_number` exactly as macros/openfda_current_rows.sql does, and
+    per (`recall_number`, `event_id`) exactly as
+    macros/openfda_current_rows.sql does -- see that macro for why the key is
+    composite -- and
     because each load writes a *fresh* set of child rows pointing at that
     load's parent `_dlt_id`, an inner join against the deduped parent drops
     the superseded load's children for free -- no second `qualify` here. If a
@@ -44,6 +46,12 @@
     aliased, so a child table's fixed three-column shape needs no
     `adapter.quote` loop the way cms_current_rows/openaq_current_rows do.
 
+    `event_id` comes across the join alongside `recall_number` because
+    together they are the parent's full business key: a recall FDA has not
+    numbered yet carries a sentinel in `recall_number`, and `event_id` is
+    what still identifies it. Carrying only `recall_number` would leave those
+    child rows keyed to a value that is not an identifier.
+
     `value` is aliased to the attribute's own name, so the clean table reads
     as what it holds:
 
@@ -55,10 +63,11 @@ with parent as (
     select
         _dlt_id,
         recall_number,
+        event_id,
         {{ dlt_load_id_as_ts() }} as ingest_ts
     from {{ source('openfda', parent_table) }}
     qualify row_number() over (
-        partition by recall_number
+        partition by recall_number, event_id
         order by _dlt_load_id desc
     ) = 1
 
@@ -67,6 +76,7 @@ with parent as (
 select
     -- Explicitly aliased, not bare: see the column-case note above.
     parent.recall_number   as recall_number,
+    parent.event_id        as event_id,
     child.value            as {{ attribute }},
     child._dlt_list_idx    as value_index,
     parent.ingest_ts

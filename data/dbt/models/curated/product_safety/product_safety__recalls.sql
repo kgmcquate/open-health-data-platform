@@ -1,10 +1,12 @@
 -- Mart layer: FDA recall enforcement reports at recall grain, the
 -- presentation table behind the product_safety cube.
 --
--- Grain: product_type x recall_number. recall_number is already globally
--- unique -- openFDA prefixes it with the issuing centre (`D-`/`F-`/`Z-`) --
--- but product_type rides along in the key so the grain still reads as what it
--- is, three unioned endpoints.
+-- Grain: product_type x recall_key. Not recall_number: FDA leaves that field
+-- as `''` or `'N/A'` on reports it has not numbered yet, and the same two
+-- sentinels turn up on more than one endpoint, so recall_number is unique
+-- within an endpoint but not across the union. recall_key is
+-- core__product_recall's non-null stand-in -- the real number where there is
+-- one, else the product type and event id. See that model's header.
 --
 -- Kept at recall grain rather than pre-aggregated, the same call
 -- access__treatment_sites makes: Cube rolls rows up to a monthly count, but
@@ -51,10 +53,10 @@
     ('route', 'routes'),
 ] %}
 
-with identity as (
+with openfda_identity as (
 
     select
-        recall_number,
+        recall_key,
         {% for attribute, alias in flattened %}
         -- `order by` inside the aggregate, not just `distinct`: without it
         -- DuckDB returns the values in whatever order it happened to group
@@ -74,6 +76,7 @@ with identity as (
 
 select
     r.product_type,
+    r.recall_key,
     r.recall_number,
     r.event_id,
     r.status,
@@ -106,18 +109,18 @@ select
     r.ingest_ts,
 
     -- openFDA's SPL match, flattened for display. See the header.
-    i.recall_number is not null                   as has_openfda_identity,
+    i.recall_key is not null                      as has_openfda_identity,
     {% for attribute, alias in flattened %}
     i.{{ alias }},
     {% endfor %}
     coalesce(i.substance_count, 0)                as substance_count,
     coalesce(i.product_ndc_count, 0)              as product_ndc_count
 from {{ ref('core__product_recall') }} r
-left join identity i on r.recall_number = i.recall_number
+left join openfda_identity i on r.recall_key = i.recall_key
 
 )
 
 select
-    {{ row_sk(['product_type', 'recall_number']) }} as row_sk,
+    {{ row_sk(['product_type', 'recall_key']) }} as row_sk,
     *
 from mart

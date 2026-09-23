@@ -1,11 +1,13 @@
 {#
     The clean-layer body every OpenAQ staging model shares.
 
-    `locations` needs no dedupe: it's itself a full replace every run
-    (ohdp_ingestion.openaq.source -- no per-row cursor, it's a snapshot of
-    currently-registered stations, not an appended change log), so RAW
-    already holds exactly the current snapshot -- identical reasoning to
-    macros/cms_current_rows.sql.
+    `locations` needs no *cross-load* dedupe: it's itself a full replace every
+    run (ohdp_ingestion.openaq.source -- no per-row cursor, it's a snapshot of
+    currently-registered stations, not an appended change log), so RAW already
+    holds exactly the current snapshot -- identical reasoning to
+    macros/cms_current_rows.sql. It still passes `dedupe_by=['id']`, because
+    the paged locations walk can return the same station twice inside one
+    snapshot; see that model for the detail.
 
     `monthly_measurements` does need one: it's appended over a trailing
     lookback window (ohdp_ingestion.openaq.source's `lookback_months`), so a
