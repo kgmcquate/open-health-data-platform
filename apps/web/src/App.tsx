@@ -10,6 +10,7 @@ const TopicDetail = lazy(() => import("./pages/TopicDetail"));
 const Dashboards = lazy(() => import("./pages/Dashboards"));
 const DashboardDetail = lazy(() => import("./pages/DashboardDetail"));
 const Chat = lazy(() => import("./pages/Chat"));
+const Privacy = lazy(() => import("./pages/Privacy"));
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="/dashboards" element={<Dashboards />} />
             <Route path="/dashboards/:name" element={<DashboardDetail />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route
               path="*"
               element={

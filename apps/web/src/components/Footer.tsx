@@ -16,6 +16,10 @@ export default function Footer() {
         <a className="link link-hover" href="/chat">Chat</a>
       </nav>
       <nav>
+        <h6 className="footer-title">Legal</h6>
+        <a className="link link-hover" href="/privacy">Privacy policy</a>
+      </nav>
+      <nav>
         <h6 className="footer-title">Built in the open</h6>
         <a className="link link-hover" href="http://localhost:8585" target="_blank" rel="noreferrer">
           OpenMetadata catalog

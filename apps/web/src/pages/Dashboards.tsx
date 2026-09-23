@@ -172,14 +172,19 @@ export function DashboardCard({
          * Cube query and YAML source, so the card carries only what the stored
          * page cannot know about itself: how it got here, which topics claim
          * it, and what this visitor may do to it. */}
+
+        <div className="mt-4">
+          <DashboardEmbed src={dashboardHtmlUrl(dashboard.name)} title={dashboard.title} />
+        </div>
+
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-2 flex-wrap">
             {dashboard.featured && <span className="badge badge-accent">featured</span>}
-            {dashboard.source === "chat" && (
+            {/* {dashboard.source === "chat" && (
               <span className="badge badge-ghost" title="Saved from a chat conversation">
                 from chat
               </span>
-            )}
+            )} */}
             {dashboard.topics.map((topic) => (
               <Link
                 key={topic}
@@ -206,10 +211,6 @@ export function DashboardCard({
           </div>
         </div>
 
-        <div className="mt-4">
-          <DashboardEmbed src={dashboardHtmlUrl(dashboard.name)} title={dashboard.title} />
-        </div>
-
         <p className="text-xs opacity-60">
           Data as of {renderedAgo(dashboard.last_rendered)}
           {dashboard.stale && " — refreshing for the next visitor"}
@@ -230,14 +231,6 @@ export default function Dashboards() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       <h1 className="text-4xl font-bold mb-2">Dashboards</h1>
-      <p className="opacity-70 mb-8 max-w-2xl">
-        Visualizations over the semantic layer — ours, and the ones the
-        assistant saved from a conversation. Every dashboard shows the exact
-        metric query behind it and says how fresh its numbers are; opening an
-        old one refreshes it for the next visitor. Vote them up or down: the
-        ones people find useful rise, and the ones they don't drop off this
-        page.
-      </p>
 
       {loading && <span className="loading loading-spinner loading-lg" />}
       {error && <div className="alert alert-error">{error}</div>}

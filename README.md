@@ -53,4 +53,7 @@ demoable; details in the architecture doc §8.
 
 ## License
 
-Not yet chosen. Do not assume a license until one is added here.
+[PolyForm Noncommercial 1.0.0](LICENSE.md) — source is visible and free to
+read, self-host, and modify for noncommercial purposes (including by
+nonprofits, schools, research, and public health/government bodies).
+Commercial use requires a separate license from the copyright holder.
