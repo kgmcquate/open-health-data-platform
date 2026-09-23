@@ -15,6 +15,17 @@
 # query, so it's a warning on every such measure's description instead, the
 # same tradeoff chronic_disease.yml documents rather than enforces for
 # single-year vs. pooled estimates.
+#
+# Those caveats are appended to the dbt description *inside* the Jinja
+# expression (`... .description ~ " ..."`), never around it in YAML. Cube's
+# Jinja engine JSON-escapes a plain str coming back from Python -- quotes
+# included (globals.py says the same about Model.sql_table) -- so
+# a template wrapped in YAML quotes -- description: "<template> caveat" --
+# renders as `description: ""Beneficiary count...` and js-yaml rejects it with
+# "bad indentation of a mapping entry". Concatenating first hands the engine
+# one string, which it quotes once, correctly. A `>-` block around the
+# template is just as wrong: it parses, but the literal quotes end up in the
+# description text.
 {% set drug_spending = dbt_model('financial__drug_spending_trend') %}
 {% set geo_variation = dbt_model('financial__medicare_geographic_variation') %}
 {% set enrollment = dbt_model('financial__medicare_enrollment_monthly') %}
@@ -71,10 +82,8 @@ cubes:
       - name: total_beneficiaries
         sql: '{CUBE}."total_beneficiaries"'
         type: sum
-        description: >-
-          {{ drug_spending.column('total_beneficiaries').description }} SUMs to
-          zero for a medicaid-only selection since the column is null on those
-          rows, not zero.
+        description: {{ drug_spending.column('total_beneficiaries').description ~
+          " SUMs to zero for a medicaid-only selection since the column is null on those rows, not zero." }}
 
       # Computed from summed dollars and summed counts, not averaged from the
       # per-drug avg_spending_per_* columns -- the same reasoning as
@@ -123,16 +132,13 @@ cubes:
       - name: total_medicare_spending_usd
         sql: '{CUBE}."total_medicare_payment_usd"'
         type: sum
-        description: >-
-          {{ geo_variation.column('total_medicare_payment_usd').description }}
-          Filter geography_level to one level (e.g. County) before using this
-          -- National, State and County rows for the same year all sum here
-          otherwise, several times over.
+        description: {{ geo_variation.column('total_medicare_payment_usd').description ~
+          " Filter geography_level to one level (e.g. County) before using this -- National, State and County rows for the same year all sum here otherwise, several times over." }}
 
       - name: total_beneficiaries
         sql: '{CUBE}."total_beneficiaries"'
         type: sum
-        description: "{{ geo_variation.column('total_beneficiaries').description }} Same geography_level caveat as total_medicare_spending_usd."
+        description: {{ geo_variation.column('total_beneficiaries').description ~ " Same geography_level caveat as total_medicare_spending_usd." }}
 
       # Population-weighted, unlike a plain AVG over
       # medicare_payment_per_capita_usd -- summed dollars over summed
@@ -196,25 +202,23 @@ cubes:
       - name: total_beneficiaries
         sql: '{CUBE}."total_beneficiaries"'
         type: sum
-        description: >-
-          {{ enrollment.column('total_beneficiaries').description }} Filter
-          geography_level to one level before summing -- County rows sum up to
-          their parent State and National rows in the same table.
+        description: {{ enrollment.column('total_beneficiaries').description ~
+          " Filter geography_level to one level before summing -- County rows sum up to their parent State and National rows in the same table." }}
 
       - name: total_dual_eligible_beneficiaries
         sql: '{CUBE}."dual_eligible_beneficiaries"'
         type: sum
-        description: "{{ enrollment.column('dual_eligible_beneficiaries').description }} Same geography_level caveat as total_beneficiaries."
+        description: {{ enrollment.column('dual_eligible_beneficiaries').description ~ " Same geography_level caveat as total_beneficiaries." }}
 
       - name: total_part_d_beneficiaries
         sql: '{CUBE}."part_d_beneficiaries"'
         type: sum
-        description: "{{ enrollment.column('part_d_beneficiaries').description }} Same geography_level caveat as total_beneficiaries."
+        description: {{ enrollment.column('part_d_beneficiaries').description ~ " Same geography_level caveat as total_beneficiaries." }}
 
       - name: total_part_d_full_lis_beneficiaries
         sql: '{CUBE}."part_d_full_lis_beneficiaries"'
         type: sum
-        description: "{{ enrollment.column('part_d_full_lis_beneficiaries').description }} Same geography_level caveat as total_beneficiaries."
+        description: {{ enrollment.column('part_d_full_lis_beneficiaries').description ~ " Same geography_level caveat as total_beneficiaries." }}
 
       # Computed from summed headcounts so it holds at any grain, the same
       # move as child_welfare.yml's substantiation_ratio.

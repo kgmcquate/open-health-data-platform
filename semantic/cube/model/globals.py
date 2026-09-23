@@ -74,7 +74,15 @@ Column.sql = property(lambda self: f'{{CUBE}}."{self._column_dict["name"]}"')
 # as_cube()/as_dimensions() already do via dump(). The yaml representer below
 # keeps as_cube()'s yaml.dump from serialising the SafeString as a
 # `!!python/object` tag, so `sql_table` still renders as the plain quoted name.
-_original_sql_table = Model.sql_table
+#
+# getattr-with-fallback rather than a plain `Model.sql_table`: Cube re-executes
+# this module in the same Python process whenever a model file changes (dev
+# mode's hot reload), and a second run would otherwise capture the *patched*
+# property as the "original" and call itself forever -- as_cube() fails with
+# "RecursionError: maximum recursion depth exceeded" in _sql_table_safe.
+# Stashing the true original on the class keeps the patch idempotent.
+_original_sql_table = getattr(Model, "_ohdp_original_sql_table", Model.sql_table)
+Model._ohdp_original_sql_table = _original_sql_table
 
 
 @property
