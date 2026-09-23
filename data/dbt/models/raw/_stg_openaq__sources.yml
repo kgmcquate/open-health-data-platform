@@ -1,6 +1,21 @@
 # Hand-maintained — OpenAQ has no multi-dataset catalog to scrape (see
 # ohdp_orchestration.defs.openaq's docstring), unlike
 # _stg_cdc__sources.yml/_stg_healthdata_gov__sources.yml/_stg_cms__sources.yml.
+#
+# Column names are dlt's, read off the live Iceberg tables: nested JSON objects
+# are flattened to `parent__child` (`__` per level) and every identifier is
+# upper-cased by ohdp_ingestion.sql_upper, so `coordinates.latitude` lands as
+# `COORDINATES__LATITUDE` and is spelled lower case here for the same reason
+# `name` is — Snowflake folds unquoted identifiers. Descriptions are from
+# OpenAQ's own resource docs (https://docs.openaq.org/resources/locations,
+# .../measurements); its OpenAPI spec carries no field-level text to generate
+# them from.
+#
+# Not declared here: the four child tables dlt splits `locations`' JSON *arrays*
+# into — LOCATIONS__BOUNDS, LOCATIONS__INSTRUMENTS, LOCATIONS__LICENSES,
+# LOCATIONS__SENSORS. They exist in RAW.OPENAQ and join back on `_dlt_parent_id`
+# = the parent's `_dlt_id`, but nothing models them yet, and no other source
+# declares its child tables either.
 version: 2
 sources:
 - name: openaq
@@ -11,6 +26,141 @@ sources:
   - name: locations
     identifier: LOCATIONS
     description: Every monitoring station OpenAQ currently indexes worldwide (coordinates, provider, instruments, parameters). Full replace each run — see ohdp_ingestion.openaq.source.
+    columns:
+    - name: id
+      description: OpenAQ's unique identifier for the station — the `{id}` in `/v3/locations/{id}`
+        and the key its sensors are discovered under.
+    - name: name
+      description: The station's name, as its provider reports it.
+    - name: timezone
+      description: IANA time zone the station sits in (e.g. `America/Denver`) — what the `__local`
+        datetimes elsewhere are expressed in.
+    - name: ismobile
+      description: True for a mobile platform rather than a fixed station. `coordinates__*` is then
+        only the first point measured, not a standing location.
+    - name: ismonitor
+      description: True for a government reference-grade monitor, false for a low-cost sensor node.
+        This is the flag `reference_monitors_only` filters on — see ohdp_ingestion.openaq.source for
+        why it is an API-call budget control, not just a quality preference.
+    - name: coordinates__latitude
+      description: WGS84 latitude of the station (first measured point if `ismobile`).
+    - name: coordinates__longitude
+      description: WGS84 longitude of the station (first measured point if `ismobile`).
+    - name: provider__id
+      description: Identifier of the provider — the organization that facilitates sharing the data
+        (`/v3/providers/{id}`), e.g. AirNow.
+    - name: provider__name
+      description: Name of that provider.
+    - name: owner__id
+      description: Identifier of the owner — the organization responsible for operating the station
+        (`/v3/owners/{id}`), which is often not the provider.
+    - name: owner__name
+      description: Name of that owner.
+    - name: country__id
+      description: OpenAQ's own identifier for the country (`/v3/countries/{id}`), not an ISO code.
+    - name: country__code
+      description: ISO 3166-1 alpha-2 country code, e.g. `US` — what `countries` in the monthly
+        measurements config filters on.
+    - name: country__name
+      description: Country name.
+    - name: datetimelast__utc
+      description: Timestamp of the most recent measurement from this station, UTC.
+    - name: datetimelast__local
+      description: The same instant in the station's own `timezone`.
+    - name: datetimefirst__utc
+      description: Timestamp of the earliest measurement from this station, UTC — how far its history
+        reaches back.
+    - name: datetimefirst__local
+      description: The same instant in the station's own `timezone`.
+    - name: locality
+      description: City or place name the station sits in, where the provider supplies one. Frequently
+        null.
   - name: monthly_measurements
     identifier: MONTHLY_MEASUREMENTS
     description: Monthly-average readings for the criteria pollutants at US government reference-grade monitors (min/max/avg/median/percentiles per sensor per month). Appended each run over a trailing lookback window (a revised month lands as a new row, not an overwrite) — see ohdp_ingestion.openaq.source.openaq_monthly_measurements_source and macros/openaq_current_rows.sql for the dedupe.
+    columns:
+    - name: value
+      description: The month's average (mean) reading, in `parameter__units`. Equal to `summary__avg`;
+        OpenAQ returns both.
+    - name: location_id
+      description: Station this sensor belongs to — joins `locations.id`. Stamped on by the fan-out,
+        not returned by `/days/monthly`.
+    - name: location_name
+      description: That station's name, carried down from the locations walk for readability. Stamped
+        on by the fan-out.
+    - name: country
+      description: The ISO 3166-1 alpha-2 code whose locations pull produced this row (the `countries`
+        config value). Stamped on by the fan-out.
+    - name: sensor_id
+      description: The sensor the rollup is for — one sensor measures one parameter at one station.
+        Half of the natural key, with `period_label`. Stamped on by the fan-out.
+    - name: period_label
+      description: The month this row covers, e.g. `2025-08`. A lifted copy of `period__label`, added
+        so the natural key is two flat columns — see the `primary_key` in
+        openaq_monthly_measurements_source and the dedupe in macros/openaq_current_rows.sql.
+    - name: coverage__expectedcount
+      description: Hourly values the month should have contained if the sensor reported continuously.
+    - name: coverage__expectedinterval
+      description: That expectation as a duration string, e.g. `744:00:00`.
+    - name: coverage__observedcount
+      description: Hourly values actually observed — the denominator behind how much of the month this
+        average really rests on.
+    - name: coverage__observedinterval
+      description: That observation as a duration string.
+    - name: coverage__percentcomplete
+      description: Share of `expectedcount` that `observedcount` actually came to, as a percentage.
+        Low values mean a sparse month; worth filtering on before trusting the average.
+    - name: coverage__percentcoverage
+      description: Percentage of the period's span covered by observations.
+    - name: coverage__datetimeto__utc
+      description: End of the window actually observed, UTC — not necessarily the end of the month.
+    - name: coverage__datetimeto__local
+      description: The same instant in the station's local time zone.
+    - name: coverage__datetimefrom__utc
+      description: Start of the window actually observed, UTC.
+    - name: coverage__datetimefrom__local
+      description: The same instant in the station's local time zone.
+    - name: summary__min
+      description: Lowest hourly value in the month.
+    - name: summary__q02
+      description: 2nd percentile of the month's hourly values.
+    - name: summary__q25
+      description: 25th percentile (lower quartile).
+    - name: summary__median
+      description: Median (50th percentile) — the robust counterpart to `value`, which is the mean.
+    - name: summary__q75
+      description: 75th percentile (upper quartile).
+    - name: summary__q98
+      description: 98th percentile — the usual stand-in for a peak-exposure measure, less sensitive to
+        a single bad hour than `summary__max`.
+    - name: summary__max
+      description: Highest hourly value in the month.
+    - name: summary__avg
+      description: Mean of the month's hourly values — the same number as `value`.
+    - name: summary__sd
+      description: Standard deviation of the month's hourly values.
+    - name: period__label
+      description: OpenAQ's own label for the aggregation period, e.g. `2025-08`. `period_label` above
+        is the lifted copy used as a key.
+    - name: period__interval
+      description: Length of the aggregation period as a duration string.
+    - name: period__datetimeto__utc
+      description: End of the nominal month, UTC — the period asked for, as opposed to the
+        `coverage__*` window actually observed within it.
+    - name: period__datetimeto__local
+      description: The same instant in the station's local time zone.
+    - name: period__datetimefrom__utc
+      description: Start of the nominal month, UTC.
+    - name: period__datetimefrom__local
+      description: The same instant in the station's local time zone.
+    - name: parameter__id
+      description: OpenAQ's identifier for the pollutant measured (`/v3/parameters/{id}`).
+    - name: parameter__name
+      description: Pollutant name, e.g. `pm25`, `o3`, `no2` — the values the `parameters` config
+        filters the fan-out on.
+    - name: parameter__units
+      description: Units the value is in, e.g. `µg/m³` or `ppm`. Varies by parameter, so never sum or
+        average across parameters without grouping on this.
+    - name: flaginfo__hasflags
+      description: True when at least one OpenAQ location flag (`/v3/locations/{id}/flags` — a marked
+        period of known-affected data, e.g. maintenance) overlaps this month for this sensor.

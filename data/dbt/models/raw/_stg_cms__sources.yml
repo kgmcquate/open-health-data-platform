@@ -9,16 +9,1086 @@ sources:
   - name: medicaid_spending_by_drug
     identifier: MEDICAID_SPENDING_BY_DRUG
     description: Medicaid Spending by Drug (Centers for Medicare & Medicaid Services). https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicaid-spending-by-drug
+    columns:
+    - name: brnd_name
+      description: The name of the drug filled. This includes both brand names (drugs that have a trademarked
+        name) and generic names (drugs that do not have a trademarked name). *Average spending per dosage
+        unit reflects multiple routes of administration of the drug (e.g., intravenous, subcutaneous)
+        which individually may have different unit pricing. Additional information regarding calculation
+        of spending per unit can be found in the methodology document. ^Drug identified as outlier; use
+        measures based on Average Spending per Dosage Unit with caution. See methodology document for
+        additional details.
+    - name: gnrc_name
+      description: A term referring to the chemical ingredient of a drug rather than the trademarked brand
+        name under which the drug is sold.
+    - name: tot_mftr
+      description: Number of manufacturers for each drug.
+    - name: mftr_name
+      description: Name of the manufacturer of the drug.
+    - name: tot_spndng_2020
+      description: Aggregate drug spending for the Medicaid program during the benefit year.
+    - name: tot_dsg_unts_2020
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2020
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: avg_spnd_per_dsg_unt_wghtd_2020
+      description: Medicaid drug spending divided by the number of dosage units, which is weighted by
+        the proportion of total claims.
+    - name: avg_spnd_per_clm_2020
+      description: Medicaid drug spending divided by the number of prescription fills.
+    - name: outlier_flag_2020
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2021
+      description: Aggregate drug spending for the Medicaid program during the benefit year.
+    - name: tot_dsg_unts_2021
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2021
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: avg_spnd_per_dsg_unt_wghtd_2021
+      description: Medicaid drug spending divided by the number of dosage units, which is weighted by
+        the proportion of total claims.
+    - name: avg_spnd_per_clm_2021
+      description: Medicaid drug spending divided by the number of prescription fills.
+    - name: outlier_flag_2021
+    - name: tot_spndng_2022
+      description: Aggregate drug spending for the Medicaid program during the benefit year.
+    - name: tot_dsg_unts_2022
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2022
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: avg_spnd_per_dsg_unt_wghtd_2022
+      description: Medicaid drug spending divided by the number of dosage units, which is weighted by
+        the proportion of total claims.
+    - name: avg_spnd_per_clm_2022
+      description: Medicaid drug spending divided by the number of prescription fills.
+    - name: outlier_flag_2022
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2023
+      description: Aggregate drug spending for the Medicaid program during the benefit year.
+    - name: tot_dsg_unts_2023
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2023
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: avg_spnd_per_dsg_unt_wghtd_2023
+      description: Medicaid drug spending divided by the number of dosage units, which is weighted by
+        the proportion of total claims.
+    - name: avg_spnd_per_clm_2023
+      description: Medicaid drug spending divided by the number of prescription fills.
+    - name: outlier_flag_2023
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2024
+      description: Aggregate drug spending for the Medicaid program during the benefit year.
+    - name: tot_dsg_unts_2024
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2024
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: avg_spnd_per_dsg_unt_wghtd_2024
+      description: Medicaid drug spending divided by the number of dosage units, which is weighted by
+        the proportion of total claims.
+    - name: avg_spnd_per_clm_2024
+      description: Medicaid drug spending divided by the number of prescription fills.
+    - name: outlier_flag_2024
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: chg_avg_spnd_per_dsg_unt_23_24
+      description: The percent change in average spending per dosage unit from the prior year.
+    - name: cagr_avg_spnd_per_dsg_unt_20_24
+      description: The constant average change in spending per dosage unit over the most recent five years
+        of data availability, calculated using the compound annual growth rate (CAGR).
   - name: medicare_geographic_variation_by_national_state_county
     identifier: MEDICARE_GEOGRAPHIC_VARIATION_BY_NATIONAL_STATE_COUNTY
     description: Medicare Geographic Variation - by National, State & County (Centers for Medicare & Medicaid
       Services). https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county
+    columns:
+    - name: year
+      description: Year
+    - name: bene_geo_lvl
+      description: National, State or County
+    - name: bene_geo_desc
+      description: Name of State or County
+    - name: bene_geo_cd
+      description: FIPS Code
+    - name: bene_age_lvl
+      description: All Beneficiaries, Beneficiaries Under 65, or Beneficiaries Over 65
+    - name: benes_total_cnt
+    - name: benes_wth_ptaptb_cnt
+      description: Count of Medicare beneficiaries who have both Part A and Part B coverage
+    - name: benes_om_cnt
+    - name: benes_ma_cnt
+      description: Count of beneficiaries who are enrolled in a Medicare Advantage (MA) program
+    - name: ma_prtcptn_rate
+      description: Percent of Part A and Part B beneficiaries who are in enrolled in a MA program
+    - name: bene_avg_age
+      description: Average age of Medicare fee-for-service beneficiaries
+    - name: bene_feml_pct
+      description: Percent of Medicare fee-for-service beneficiaries who are female
+    - name: bene_male_pct
+      description: Percent of Medicare fee-for-service beneficiaries who are male
+    - name: bene_race_wht_pct
+      description: Percent of Medicare fee-for-service beneficiaries who are non-Hispanic White
+    - name: bene_race_black_pct
+      description: Percent of Medicare fee-for-service beneficiaries who are African American
+    - name: bene_race_hspnc_pct
+      description: Percent of Medicare fee-for-service beneficiaries who are Hispanic
+    - name: bene_race_othr_pct
+      description: Percent of Medicare fee-for-service beneficiaries who are other race/ethnicity or whose
+        race/ethnicity is unknown
+    - name: bene_dual_pct
+      description: Percent of Medicare fee-for-service beneficiaries who are eligible for Medicaid for
+        at least one month in the year
+    - name: tot_mdcr_pymt_amt
+      description: Actual Medicare total costs
+    - name: tot_mdcr_stdzd_pymt_amt
+      description: Standardized Medicare total costs
+    - name: tot_mdcr_pymt_pc
+      description: Actual per capita Medicare costs
+    - name: tot_mdcr_stdzd_pymt_pc
+      description: Standardized per capita Medicare costs
+    - name: ip_mdcr_pymt_amt
+      description: Hospital inpatient (IP) actual Medicare costs
+    - name: ip_mdcr_pymt_pct
+      description: Hospital inpatient (IP) actual costs as a percent of total actual Medicare costs
+    - name: ip_mdcr_pymt_pc
+      description: Hospital inpatient (IP) actual per capita Medicare costs
+    - name: ip_mdcr_pymt_per_user
+      description: Hospital inpatient (IP) actual per user Medicare costs
+    - name: ip_mdcr_stdzd_pymt_amt
+      description: Hospital inpatient (IP) standardized Medicare costs
+    - name: ip_mdcr_stdzd_pymt_pct
+      description: Hospital inpatient (IP) standardized costs as a percent of total standardized Medicare
+        costs
+    - name: ip_mdcr_stdzd_pymt_pc
+      description: Hospital inpatient (IP) standardized per capita Medicare costs
+    - name: ip_mdcr_stdzd_pymt_per_user
+      description: Hospital inpatient (IP) standardized per user Medicare costs
+    - name: benes_ip_cvrd_stay_cnt
+      description: Number of beneficiaries using hospital inpatient (IP) services with at least one covered
+        stay
+    - name: benes_ip_pct
+      description: Percent of beneficiaries using hospital inpatient (IP) services with at least one covered
+        stay
+    - name: ip_cvrd_stays_per_1000_benes
+      description: Hospital inpatient (IP) covered admissions per 1000 Medicare beneficiaries
+    - name: ip_cvrd_days_per_1000_benes
+      description: Hospital inpatient (IP) covered days per 1000 Medicare beneficiaries
+    - name: acute_hosp_readmsn_cnt
+      description: Total count of inpatient readmissions within 30 days of an acute hospital stay during
+        the reference period
+    - name: acute_hosp_readmsn_pct
+      description: Percent of inpatient readmissions within 30 days of an acute hospital stay during then
+        reference period
+    - name: benes_er_visits_cnt
+      description: Total count of inpatient or hospital outpatient emergency department visits
+    - name: er_visits_per_1000_benes
+      description: Inpatient or hospital outpatient emergency department visits per 1000 beneficiaries
+    - name: benes_er_visits_pct
+      description: Percent of Beneficiaries with an ED Visit
+    - name: op_mdcr_pymt_amt
+      description: Hospital outpatient (OP) actual Medicare costs
+    - name: op_mdcr_pymt_pct
+      description: Hospital outpatient (OP) actual Medicare costs as a percent of total actual Medicare
+        costs
+    - name: op_mdcr_pymt_pc
+      description: Hospital outpatient (OP) actual per capita Medicare costs
+    - name: op_mdcr_pymt_per_user
+      description: Hospital outpatient (OP) actual per user Medicare costs
+    - name: op_mdcr_stdzd_pymt_amt
+      description: Hospital outpatient (OP) standardized Medicare costs
+    - name: op_mdcr_stdzd_pymt_pct
+      description: Hospital outpatient (OP) standardized Medicare costs as a percentage of total standardized
+        Medicare cost
+    - name: op_mdcr_stdzd_pymt_pc
+      description: Hospital outpatient (OP) standardized per capita Medicare costs
+    - name: op_mdcr_stdzd_pymt_per_user
+      description: Hospital outpatient (OP) standardized per user Medicare costs
+    - name: benes_op_cnt
+      description: Number of beneficiaries using hospital outpatient (OP) services
+    - name: benes_op_pct
+      description: Percent of beneficiaries using hospital outpatient (OP) services
+    - name: op_visits_per_1000_benes
+      description: Hospital outpatient (OP) visits per 1000 Medicare beneficiaries
+    - name: asc_mdcr_pymt_amt
+      description: Ambulatory Surgery Center (ASC) actual Medicare costs
+    - name: asc_mdcr_pymt_pct
+      description: Ambulatory Surgery Center (ASC) actual Medicare costs as a percent of total actual
+        Medicare costs
+    - name: asc_mdcr_pymt_pc
+      description: Ambulatory Surgery Center (ASC) actual per capita Medicare costs
+    - name: asc_mdcr_pymt_per_user
+      description: Ambulatory Surgery Center (ASC) actual per user Medicare costs
+    - name: asc_mdcr_stdzd_pymt_amt
+      description: Ambulatory Surgery Center (ASC) standardized Medicare costs
+    - name: asc_mdcr_stdzd_pymt_pct
+      description: Ambulatory Surgery Center (ASC) standardized Medicare costs as a percentage of total
+        standardized Medicare cost
+    - name: asc_mdcr_stdzd_pymt_pc
+      description: Ambulatory Surgery Center (ASC) standardized per capita Medicare costs
+    - name: asc_mdcr_stdzd_pymt_per_user
+      description: Ambulatory Surgery Center (ASC) standardized per user Medicare costs
+    - name: benes_asc_cnt
+      description: Number of beneficiaries using Ambulatory Surgery Center (ASC) services
+    - name: benes_asc_pct
+      description: Percent of beneficiaries using Ambulatory Surgery Center (ASC) services
+    - name: asc_evnts_per_1000_benes
+    - name: snf_mdcr_pymt_amt
+      description: Skilled nursing facility (SNF) actual Medicare costs
+    - name: snf_mdcr_pymt_pct
+      description: Skilled nursing facility (SNF) actual costs as a percent of total actual Medicare costs
+    - name: snf_mdcr_pymt_pc
+      description: Skilled nursing facility (SNF) actual per capita Medicare costs
+    - name: snf_mdcr_pymt_per_user
+      description: Skilled nursing facility (SNF) actual per user Medicare costs
+    - name: snf_mdcr_stdzd_pymt_amt
+      description: Skilled nursing facility (SNF) standardized Medicare costs
+    - name: snf_mdcr_stdzd_pymt_pct
+      description: Skilled nursing facility (SNF) standardized costs as a percent of total standardized
+        Medicare costs
+    - name: snf_mdcr_stdzd_pymt_pc
+      description: Skilled nursing facility (SNF) standardized per capita Medicare costs
+    - name: snf_mdcr_stdzd_pymt_per_user
+      description: Skilled nursing facility (SNF) standardized per user Medicare costs
+    - name: benes_snf_cnt
+      description: Number of beneficiaries using skilled nursing facility (SNF) services with at least
+        one covered stay
+    - name: benes_snf_pct
+      description: Percent of beneficiaries using skilled nursing facility (SNF) services with at least
+        one covered stay
+    - name: snf_cvrd_stays_per_1000_benes
+      description: Skilled nursing facility (SNF) covered stays per 1000 Medicare beneficiaries
+    - name: snf_cvrd_days_per_1000_benes
+      description: Skilled nursing facility (SNF) covered days per 1000 Medicare beneficiaries
+    - name: irf_mdcr_pymt_amt
+      description: Inpatient rehabilitation facility (IRF) actual Medicare costs
+    - name: irf_mdcr_pymt_pct
+      description: Inpatient rehabilitation facility (IRF) actual costs as a percent of total actual Medicare
+        costs
+    - name: irf_mdcr_pymt_pc
+      description: Inpatient rehabilitation facility (IRF) actual per capita Medicare costs
+    - name: irf_mdcr_pymt_per_user
+      description: Inpatient rehabilitation facility (IRF) actual per user Medicare costs
+    - name: irf_mdcr_stdzd_pymt_amt
+      description: Inpatient rehabilitation facility (IRF) standardized Medicare costs
+    - name: irf_mdcr_stdzd_pymt_pct
+      description: Inpatient rehabilitation facility (IRF) standardized costs as a percent of total standardized
+        Medicare costs
+    - name: irf_mdcr_stdzd_pymt_pc
+      description: Inpatient rehabilitation facility (IRF) standardized per capita Medicare costs
+    - name: irf_mdcr_stdzd_pymt_per_user
+      description: Inpatient rehabilitation facility (IRF) standardized per user Medicare costs
+    - name: benes_irf_cnt
+      description: Number of beneficiaries using Inpatient rehabilitation facility (IRF) services with
+        at least one covered stay
+    - name: benes_irf_pct
+      description: Percent of beneficiaries using Inpatient rehabilitation facility (IRF) services with
+        at least one covered stay
+    - name: irf_cvrd_stays_per_1000_benes
+      description: Inpatient rehabilitation facility (IRF) covered stays per 1000 Medicare beneficiaries
+    - name: irf_cvrd_days_per_1000_benes
+      description: Inpatient rehabilitation facility (IRF) covered days per 1000 Medicare beneficiaries
+    - name: ltch_mdcr_pymt_amt
+      description: Long term care hospital (LTCH) actual Medicare costs
+    - name: ltch_mdcr_pymt_pct
+      description: Long term care hospital (LTCH) actual costs as a percent of total actual Medicare costs
+    - name: ltch_mdcr_pymt_pc
+      description: Long term care hospital (LTCH) actual per capita Medicare costs
+    - name: ltch_mdcr_pymt_per_user
+      description: Long term care hospital (LTCH) actual per user Medicare costs
+    - name: ltch_mdcr_stdzd_pymt_amt
+      description: Long term care hospital (LTCH) standardized Medicare costs
+    - name: ltch_mdcr_stdzd_pymt_pct
+      description: Long term care hospital (LTCH) standardized costs as a percent of total standardized
+        Medicare costs
+    - name: ltch_mdcr_stdzd_pymt_pc
+      description: Long term care hospital (LTCH) standardized per capita Medicare costs
+    - name: ltch_mdcr_stdzd_pymt_per_user
+      description: Long term care hospital (LTCH) standardized per user Medicare costs
+    - name: benes_ltch_cnt
+      description: Number of beneficiaries using long term care hospital (LTCH) services with at least
+        one covered stay
+    - name: benes_ltch_pct
+      description: Percent of beneficiaries using long term care hospital (LTCH) services with at least
+        one covered stay
+    - name: ltch_cvrd_stays_per_1000_benes
+      description: Long term care hospital (LTCH) covered stays per 1000 Medicare beneficiaries
+    - name: ltch_cvrd_days_per_1000_benes
+      description: Long term care hospital (LTCH) covered days per 1000 Medicare beneficiaries
+    - name: hh_mdcr_pymt_amt
+      description: Home health (HH) actual Medicare costs
+    - name: hh_mdcr_pymt_pct
+      description: Home health (HH) actual costs as a percent of total actual Medicare costs
+    - name: hh_mdcr_pymt_pc
+      description: Home health (HH) actual per capita Medicare costs
+    - name: hh_mdcr_pymt_per_user
+      description: Home health (HH) actual per user Medicare costs
+    - name: hh_mdcr_stdzd_pymt_amt
+      description: Home health (HH) standardized Medicare costs
+    - name: hh_mdcr_stdzd_pymt_pct
+      description: Home health (HH) standardized costs as a percent of total standardized Medicare costs
+    - name: hh_mdcr_stdzd_pymt_pc
+      description: Home health (HH) standardized per capita Medicare costs
+    - name: hh_mdcr_stdzd_pymt_per_user
+      description: Home health (HH) standardized per user Medicare costs
+    - name: benes_hh_cnt
+      description: Number of beneficiaries using home health (HH) services
+    - name: benes_hh_pct
+      description: Percent of beneficiaries using home health (HH) services
+    - name: hh_episodes_per_1000_benes
+    - name: hh_visits_per_1000_benes
+      description: Home health (HH) visits per 1000 Medicare beneficiaries
+    - name: hospc_mdcr_pymt_amt
+      description: Hospice actual Medicare costs
+    - name: hospc_mdcr_pymt_pct
+      description: Hospice actual costs as a percent of total actual Medicare costs
+    - name: hospc_mdcr_pymt_pc
+      description: Hospice actual per capita Medicare costs
+    - name: hospc_mdcr_pymt_per_user
+      description: Hospice actual per user Medicare costs
+    - name: hospc_mdcr_stdzd_pymt_amt
+      description: Hospice standardized Medicare costs
+    - name: hospc_mdcr_stdzd_pymt_pct
+      description: Hospice standardized costs as a percent of total standardized Medicare costs
+    - name: hospc_mdcr_stdzd_pymt_pc
+      description: Hospice standardized per capita Medicare costs
+    - name: hospc_mdcr_stdzd_pymt_per_user
+      description: Hospice standardized per user Medicare costs
+    - name: benes_hospc_cnt
+      description: Number of beneficiaries using hospice services with at least one covered stay
+    - name: benes_hospc_pct
+      description: Percent of beneficiaries using hospice services with at least one covered stay
+    - name: hospc_cvrd_stays_per_1000_benes
+      description: Hospice covered stays per 1000 Medicare beneficiaries
+    - name: hospc_cvrd_days_per_1000_benes
+      description: Hospice covered days per 1000 Medicare beneficiaries
+    - name: em_mdcr_pymt_amt
+      description: Evaluation and management (E&M) actual Medicare costs
+    - name: em_mdcr_pymt_pct
+      description: Evaluation and management (E&M) actual Medicare costs as a percent of total actual
+        Medicare costs
+    - name: em_mdcr_pymt_pc
+      description: Evaluation and management (E&M) actual per capita Medicare costs
+    - name: em_mdcr_pymt_per_user
+      description: Evaluation and management (E&M) actual per user Medicare costs
+    - name: em_mdcr_stdzd_pymt_amt
+      description: Evaluation and management (E&M) standardized Medicare costs
+    - name: em_mdcr_stdzd_pymt_pct
+      description: Evaluation and management (E&M) standardized Medicare costs as a percentage of total
+        standardized Medicare cost
+    - name: em_mdcr_stdzd_pymt_pc
+      description: Evaluation and management (E&M) standardized per capita Medicare costs
+    - name: em_mdcr_stdzd_pymt_per_user
+      description: Evaluation and management (E&M) standardized per user Medicare costs
+    - name: benes_em_cnt
+      description: Number of beneficiaries using evaluation and management (E&M) services
+    - name: benes_em_pct
+      description: Percent of beneficiaries using evaluation and management (E&M) services
+    - name: em_evnts_per_1000_benes
+      description: Evaluation and management (E&M) events per 1000 Medicare beneficiaries
+    - name: prcdrs_mdcr_pymt_amt
+      description: Procedures actual Medicare costs
+    - name: prcdrs_mdcr_pymt_pct
+      description: Procedures actual Medicare costs as a percent of total actual Medicare costs
+    - name: prcdrs_mdcr_pymt_pc
+      description: Procedures actual per capita Medicare costs
+    - name: prcdrs_mdcr_pymt_per_user
+      description: Procedures actual per user Medicare costs
+    - name: prcdrs_mdcr_stdzd_pymt_amt
+      description: Procedures standardized Medicare costs
+    - name: prcdrs_mdcr_stdzd_pymt_pct
+      description: Procedures standardized Medicare costs as a percentage of total standardized Medicare
+        cost
+    - name: prcdrs_mdcr_stdzd_pymt_pc
+      description: Procedures standardized per capita Medicare costs
+    - name: prcdrs_mdcr_stdzd_pymt_per_user
+      description: Procedures standardized per user Medicare costs
+    - name: benes_prcdrs_cnt
+      description: Number of beneficiaries using procedure services
+    - name: benes_prcdrs_pct
+      description: Percent of beneficiaries using procedure services
+    - name: prcdr_evnts_per_1000_benes
+      description: Procedure events per 1000 Medicare beneficiaries
+    - name: tests_mdcr_pymt_amt
+      description: Tests actual Medicare cost
+    - name: tests_mdcr_pymt_pct
+      description: Tests actual Medicare costs as a percent of total actual Medicare costs
+    - name: tests_mdcr_pymt_pc
+      description: Tests actual per capita Medicare costs
+    - name: tests_mdcr_pymt_per_user
+      description: Tests actual per user Medicare costs
+    - name: tests_mdcr_stdzd_pymt_amt
+      description: Tests standardized Medicare costs
+    - name: tests_mdcr_stdzd_pymt_pct
+      description: Tests standardized Medicare costs as a percentage of total standardized Medicare cost
+    - name: tests_mdcr_stdzd_pymt_pc
+      description: Tests standardized per capita Medicare costs
+    - name: tests_mdcr_stdzd_pymt_per_user
+      description: Tests standardized per user Medicare costs
+    - name: benes_tests_cnt
+      description: Number of beneficiaries using test services
+    - name: benes_tests_pct
+      description: Percent of beneficiaries using test services
+    - name: tests_evnts_per_1000_benes
+    - name: imgng_mdcr_pymt_amt
+      description: Imaging actual Medicare costs
+    - name: imgng_mdcr_pymt_pct
+      description: Imaging actual Medicare costs as a percent of total actual Medicare costs
+    - name: imgng_mdcr_pymt_pc
+      description: Imaging actual per capita Medicare costs
+    - name: imgng_mdcr_pymt_per_user
+      description: Imaging actual per user Medicare costs
+    - name: imgng_mdcr_stdzd_pymt_amt
+      description: Imaging standardized Medicare costs
+    - name: imgng_mdcr_stdzd_pymt_pct
+      description: Imaging standardized Medicare costs as a percentage of total standardized Medicare
+        cost
+    - name: imgng_mdcr_stdzd_pymt_pc
+      description: Imaging standardized per capita Medicare costs
+    - name: imgng_mdcr_stdzd_pymt_per_user
+      description: Imaging standardized per user Medicare costs
+    - name: benes_imgng_cnt
+      description: Number of beneficiaries using imaging services
+    - name: benes_imgng_pct
+      description: Percent of beneficiaries using imaging services
+    - name: imgng_evnts_per_1000_benes
+      description: Imaging events per 1000 Medicare beneficiaries
+    - name: dme_mdcr_pymt_amt
+      description: Durable medical equipment (DME) actual Medicare costs
+    - name: dme_mdcr_pymt_pct
+      description: Durable medical equipment (DME) actual Medicare costs as a percent of total actual
+        Medicare costs
+    - name: dme_mdcr_pymt_pc
+      description: Durable medical equipment (DME) actual per capita Medicare costs
+    - name: dme_mdcr_pymt_per_user
+      description: Durable medical equipment (DME) actual per user Medicare costs
+    - name: dme_mdcr_stdzd_pymt_amt
+      description: Durable medical equipment (DME) standardized Medicare costs
+    - name: dme_mdcr_stdzd_pymt_pct
+      description: Durable medical equipment (DME) standardized Medicare costs as a percentage of total
+        standardized Medicare cost
+    - name: dme_mdcr_stdzd_pymt_pc
+      description: Durable medical equipment (DME) standardized per capita Medicare costs
+    - name: dme_mdcr_stdzd_pymt_per_user
+      description: Durable medical equipment (DME) standardized per user Medicare costs
+    - name: benes_dme_cnt
+      description: Number of beneficiaries using durable medical equipment (DME) services
+    - name: benes_dme_pct
+      description: Percent of beneficiaries using durable medical equipment (DME) services
+    - name: dme_evnts_per_1000_benes
+      description: Durable medical equipment (DME) events per 1000 Medicare beneficiaries
+    - name: op_dlys_mdcr_pymt_amt
+      description: Outpatient Dialysis Facility actual Medicare costs
+    - name: op_dlys_mdcr_pymt_pct
+      description: Outpatient Dialysis Facility actual Medicare costs as a percent of total actual Medicare
+        costs
+    - name: op_dlys_mdcr_pymt_pc
+      description: Outpatient Dialysis Facility actual per capita Medicare costs
+    - name: op_dlys_mdcr_pymt_per_user
+      description: Outpatient Dialysis Facility actual per user Medicare costs
+    - name: op_dlys_mdcr_stdzd_pymt_amt
+      description: Outpatient Dialysis Facility standardized Medicare costs
+    - name: op_dlys_mdcr_stdzd_pymt_pct
+      description: Outpatient Dialysis Facility standardized Medicare costs as a percentage of total standardized
+        Medicare cost
+    - name: op_dlys_mdcr_stdzd_pymt_pc
+      description: Outpatient Dialysis Facility standardized per capita Medicare costs
+    - name: op_dlys_mdcr_stdzd_pymt_per_user
+      description: Outpatient Dialysis Facility standardized per user Medicare costs
+    - name: benes_op_dlys_cnt
+      description: Number of beneficiaries using Outpatient Dialysis Facility services
+    - name: benes_op_dlys_pct
+      description: Percent of beneficiaries using Outpatient Dialysis Facility services
+    - name: op_dlys_visits_per_1000_benes
+    - name: fqhc_rhc_mdcr_pymt_amt
+      description: Federally qualified health center (FQHC) / rural health center (RHC) actual Medicare
+        costs
+    - name: fqhc_rhc_mdcr_pymt_pct
+      description: Federally qualified health center (FQHC) / rural health center (RHC) actual Medicare
+        costs as a percent of total actual Medicare costs
+    - name: fqhc_rhc_mdcr_pymt_pc
+      description: Federally qualified health center (FQHC) / rural health center (RHC) actual per capita
+        Medicare costs
+    - name: fqhc_rhc_mdcr_pymt_per_user
+      description: Federally qualified health center (FQHC) / rural health center (RHC) actual per user
+        Medicare costs
+    - name: fqhc_rhc_mdcr_stdzd_pymt_amt
+      description: Federally qualified health center (FQHC) / rural health center (RHC) standardized Medicare
+        costs
+    - name: fqhc_rhc_mdcr_stdzd_pymt_pct
+      description: Federally qualified health center (FQHC) / rural health center (RHC) standardized Medicare
+        costs as a percentage of total standardized Medicare cost
+    - name: fqhc_rhc_mdcr_stdzd_pymt_pc
+      description: Federally qualified health center (FQHC) / rural health center (RHC) standardized per
+        capita Medicare costs
+    - name: fqhc_rhc_mdcr_stdzd_pymt_pu
+      description: Federally qualified health center (FQHC) / rural health center (RHC) standardized per
+        user Medicare costs
+    - name: benes_fqhc_rhc_cnt
+      description: Number of beneficiaries using federally qualified health center (FQHC) / rural health
+        center (RHC) services
+    - name: benes_fqhc_rhc_pct
+      description: Percent of beneficiaries using federally qualified health center (FQHC) / rural health
+        center (RHC) services
+    - name: fqhc_rhc_visits_per_1000_benes
+      description: Federally qualified health center (FQHC) / rural health center (RHC)events per 1000
+        Medicare beneficiaries
+    - name: amblnc_mdcr_pymt_amt
+      description: Ambulance actual Medicare cost
+    - name: amblnc_mdcr_pymt_pct
+      description: Ambulance actual Medicare costs as a percent of total actual Medicare costs
+    - name: amblnc_mdcr_pymt_pc
+      description: Ambulance actual per capita Medicare costs
+    - name: amblnc_mdcr_pymt_per_user
+    - name: amblnc_mdcr_stdzd_pymt_amt
+      description: Ambulance standardized Medicare costs
+    - name: amblnc_mdcr_stdzd_pymt_pct
+      description: Ambulance standardized Medicare costs as a percentage of total standardized Medicare
+        cost
+    - name: amblnc_mdcr_stdzd_pymt_pc
+      description: Ambulance standardized per capita Medicare costs
+    - name: amblnc_mdcr_stdzd_pymt_per_user
+      description: Ambulance standardized per user Medicare costs
+    - name: benes_amblnc_cnt
+      description: Number of beneficiaries using Ambulance services
+    - name: benes_amblnc_pct
+      description: Percent of beneficiaries using Ambulance services
+    - name: amblnc_evnts_per_1000_benes
+      description: Ambulance Events Per 1000 Beneficiaries
+    - name: trtmnts_mdcr_pymt_amt
+    - name: trtmnts_mdcr_pymt_pct
+    - name: trtmnts_mdcr_pymt_pc
+    - name: trtmnts_mdcr_pymt_per_user
+    - name: trtmnts_mdcr_stdzd_pymt_amt
+    - name: trtmnts_mdcr_stdzd_pymt_pct
+    - name: trtmnts_mdcr_stdzd_pymt_pc
+    - name: trtmnts_mdcr_stdzd_pymt_per_user
+    - name: benes_trtmnts_cnt
+    - name: benes_trtmnts_pct
+    - name: trtmnts_evnts_per_1000_benes
+    - name: ptb_othr_srvcs_mdcr_pymt_amt
+      description: Other Services actual Medicare cost
+    - name: ptb_othr_srvcs_mdcr_stdzd_pymt
+      description: Other Services standardized Medicare costs
+    - name: tot_pbpmt_rdctn_amt
+      description: Total Population Based Payment Reduction Costs
+    - name: tot_pbpmt_rdctn_pcc
+      description: Total Population Based Payment Reduction Per Capita Costs
+    - name: pqi03_dbts_age_lt_65
+      description: 'Prevention Quality Indicator (PQI) 3: Hospital admissions for diabetes long term complications
+        for Medicare beneficiaries ages less than 65 per 100,000 beneficiaries'
+    - name: pqi03_dbts_age_65_74
+      description: 'Prevention Quality Indicator (PQI) 3: Hospital admissions for diabetes long term complications
+        for Medicare beneficiaries ages 65-74 per 100,000 beneficiaries'
+    - name: pqi03_dbts_age_ge_75
+      description: 'Prevention Quality Indicator (PQI) 3: Hospital admissions for diabetes long term complications
+        for Medicare beneficiaries ages 75 and older per 100,000 beneficiaries'
+    - name: pqi05_copd_asthma_age_40_64
+    - name: pqi05_copd_asthma_age_65_74
+      description: 'Prevention Quality Indicator (PQI) 5: Hospital admissions for chronic obstructive
+        pulmonary disease (COPD) or asthma for Medicare beneficiaries ages 65-74 per 100,000 beneficiaries'
+    - name: pqi05_copd_asthma_age_ge_75
+      description: 'Prevention Quality Indicator (PQI) 5: Hospital admissions for chronic obstructive
+        pulmonary disease (COPD) or asthma for Medicare beneficiaries ages 75 and older per 100,000 beneficiaries'
+    - name: pqi07_hyprtnsn_age_lt_65
+      description: 'Prevention Quality Indicator (PQI) 7: Hospital admissions for hypertension for Medicare
+        beneficiaries ages less than 65 per 100,000 beneficiaries'
+    - name: pqi07_hyprtnsn_age_65_74
+      description: 'Prevention Quality Indicator (PQI) 7: Hospital admissions for hypertension for Medicare
+        beneficiaries ages 65-74 per 100,000 beneficiaries'
+    - name: pqi07_hyprtnsn_age_ge_75
+      description: 'Prevention Quality Indicator (PQI) 7: Hospital admissions for hypertension for Medicare
+        beneficiaries ages 75 and older per 100,000 beneficiaries'
+    - name: pqi08_chf_age_lt_65
+      description: 'Prevention Quality Indicator (PQI) 8: Hospital admissions for congestive heart failure
+        (CHF) in Medicare beneficiaries ages less than 65 per 100,000 beneficiaries'
+    - name: pqi08_chf_age_65_74
+      description: 'Prevention Quality Indicator (PQI) 8: Hospital admissions for congestive heart failure
+        (CHF) in Medicare beneficiaries ages 65-74 per 100,000 beneficiaries'
+    - name: pqi08_chf_age_ge_75
+      description: 'Prevention Quality Indicator (PQI) 8: Congestive heart failure (CHF) for beneficiaries
+        ages 75 and older per 100,000 beneficiaries'
+    - name: pqi11_bctrl_pna_age_lt_65
+      description: 'Prevention Quality Indicator (PQI) 11: Hospital admissions for bacterial pneumonia
+        for Medicare beneficiaries ages less than 65 per 100,000 beneficiaries'
+    - name: pqi11_bctrl_pna_age_65_74
+      description: 'Prevention Quality Indicator (PQI) 11: Hospital admissions for bacterial pneumonia
+        for Medicare beneficiaries ages 65-74 per 100,000 beneficiaries'
+    - name: pqi11_bctrl_pna_age_ge_75
+      description: 'Prevention Quality Indicator (PQI) 11: Hospital admissions for bacterial pneumonia
+        for Medicare beneficiaries ages 75 and older per 100,000 beneficiaries'
+    - name: pqi12_uti_age_lt_65
+      description: 'Prevention Quality Indicator (PQI) 12: Hospital admissions for Urinary tract infections
+        (UTI) for Medicare beneficiaries ages less than 65 per 100,000 beneficiaries'
+    - name: pqi12_uti_age_65_74
+      description: 'Prevention Quality Indicator (PQI) 12: Hospital admissions for Urinary tract infections
+        (UTI) for Medicare beneficiaries ages 65-74 per 100,000 beneficiaries'
+    - name: pqi12_uti_age_ge_75
+      description: 'Prevention Quality Indicator (PQI) 12: Hospital admissions for urinary tract infections
+        (UTI) for Medicare beneficiaries ages 75 and older per 100,000 beneficiaries'
+    - name: pqi15_asthma_age_lt_40
+      description: 'Prevention Quality Indicator (PQI) 15: Hospital admission for asthma in younger adults
+        for Medicare beneficiaries ages less than 40 per 100,000 beneficiaries'
+    - name: pqi16_lwrxtrmty_amputn_age_lt_65
+      description: 'Prevention Quality Indicator (PQI) 16: Lower extremity amputation of Medicare beneficiaries
+        ages less than 65 per 100,000 beneficiaries'
+    - name: pqi16_lwrxtrmty_amputn_age_65_74
+      description: 'Prevention Quality Indicator (PQI) 16: Lower extremity amputation of Medicare beneficiaries
+        ages 65-74 per 100,000 beneficiaries'
+    - name: pqi16_lwrxtrmty_amputn_age_ge_75
+      description: 'Prevention Quality Indicator (PQI) 16: Hospital admissions for lower extremity amputation
+        for Medicare beneficiaries ages 75 and older per 100,000 beneficiaries'
   - name: medicare_monthly_enrollment
     identifier: MEDICARE_MONTHLY_ENROLLMENT
     description: Medicare Monthly Enrollment (Centers for Medicare & Medicaid Services). https://data.cms.gov/summary-statistics-on-beneficiary-enrollment/medicare-and-medicaid-reports/medicare-monthly-enrollment
+    columns:
+    - name: year
+      description: Indicates the calendar year of Medicare enrollment
+    - name: month
+      description: Indicates the month of Medicare enrollment
+    - name: bene_geo_lvl
+      description: Indicates geography level that the data in the row has been aggregated (e.g. National,
+        State, and County)
+    - name: bene_state_abrvtn
+      description: State abbreviation of beneficiary residence
+    - name: bene_state_desc
+      description: Area of beneficiary residence
+    - name: bene_county_desc
+      description: County of beneficiary residence
+    - name: bene_fips_cd
+      description: State/County FIPS code of beneficiary residence
+    - name: tot_benes
+      description: Count of all Medicare beneficiaries
+    - name: orgnl_mdcr_benes
+      description: Count of all Original Medicare beneficiaries
+    - name: ma_and_oth_benes
+      description: Count of all Medicare Advantage and Other Health Plan Beneficiaries
+    - name: aged_tot_benes
+      description: Count of Medicare aged beneficiaries
+    - name: aged_esrd_benes
+      description: Count of Medicare aged beneficiaries with End Stage Renal Disease
+    - name: aged_no_esrd_benes
+      description: Count of Medicare aged beneficiaries without End Stage Renal Disease
+    - name: dsbld_tot_benes
+      description: Count of Medicare disabled beneficiaries
+    - name: dsbld_esrd_and_esrd_only_benes
+      description: Count of Medicare disabled beneficiaries with End Stage Renal Disease and beneficiaries
+        with End Stage Renal Disease only
+    - name: dsbld_no_esrd_benes
+      description: Count of Medicare disabled beneficiaries without End Stage Renal Disease
+    - name: male_tot_benes
+      description: Count of male Medicare beneficiaries
+    - name: female_tot_benes
+      description: Count of female Medicare beneficiaries
+    - name: white_tot_benes
+      description: Count of Non-Hispanic white Medicare beneficiaries
+    - name: black_tot_benes
+      description: Count of non-Hispanic black or African American beneficiaries.
+    - name: api_tot_benes
+      description: Count of Asian or Pacific Islander Medicare beneficiaries
+    - name: hspnc_tot_benes
+      description: Count of Hispanic Medicare beneficiaries
+    - name: natind_tot_benes
+      description: Count of American Indian or Alaska Native Medicare beneficiaries
+    - name: othr_tot_benes
+      description: Count of Medicare beneficiaries with race not elsewhere classified
+    - name: age_lt_25_benes
+      description: Count of Medicare beneficiaries under the age of 25
+    - name: age_25_to_44_benes
+      description: Count of Medicare beneficiaries between the ages of 25 and 44
+    - name: age_45_to_64_benes
+      description: Count of Medicare beneficiaries between the ages of 45 and 64
+    - name: age_65_to_69_benes
+      description: Count of Medicare beneficiaries, between the ages of 65 and 69
+    - name: age_70_to_74_benes
+      description: Count of Medicare beneficiaries between the ages of 70 and 74
+    - name: age_75_to_79_benes
+      description: Count of Medicare beneficiaries between the ages of 75 and 79
+    - name: age_80_to_84_benes
+      description: Count of Medicare beneficiaries between the ages of 80 and 84
+    - name: age_85_to_89_benes
+      description: Count of Medicare beneficiaries between the ages of 85 and 89
+    - name: age_90_to_94_benes
+      description: Count of Medicare beneficiaries between the ages of 90 and 94
+    - name: age_gt_94_benes
+      description: Count of Medicare beneficiaries over the age of 94
+    - name: dual_tot_benes
+      description: Count of all beneficiaries qualified to receive Medicare and Medicaid benefits
+    - name: full_dual_tot_benes
+      description: Count of beneficiaries qualified to receive Medicare and full Medicaid benefits
+    - name: part_dual_tot_benes
+      description: Count of all beneficiaries qualified to receive Medicare and partial Medicaid benefits
+    - name: nodual_tot_benes
+      description: Count of beneficiaries qualified to receive Medicare only benefits
+    - name: qmb_only_benes
+      description: Count of Qualified Medicare Beneficiaries who are entitled to Medicare Part A, have
+        income up to 100 percent of the federal poverty level and resources that do not exceed three times
+        the limit for supplementary security income (SSI) eligibility with adjustements for inflaction
+        and are not otherwise eligible for full-benefit Medicaid coverage. Medicaid pays their Part A
+        premiums, if any, and Medicare Part B premiums.
+    - name: qmb_plus_benes
+      description: Count of Qualified Medicare Beneficiaries with full-benefit Medicaid that meet the
+        QMB-related eligibility requirements and the eligibility requirements for a separate categorical
+        Medicaid eligiblity group covered under the state plan. These individuals are entitled to all
+        benefits available to a QMB, as well as the full range of Medicaid benefits applicable to the
+        separate eligibility group for which they qualify.
+    - name: slmb_only_benes
+      description: Count of Specified Low-Income Medicare Beneficiaires without other Medicaid who are
+        entitled to Part A and have income between 100 and 120 percent of the federal poverty level, and
+        resources that do not exceed three times the limit for supplementary security income eligibility
+        with adjustments for inflation. Medicaid pays only the Medicare Part B premiums.
+    - name: slmb_plus_benes
+      description: Count of Specified Low-Income Medicare Beneficiaires with full-benefit Medicaid who
+        meet the SLMB-related eligibility requirements and the eligibility requirements for a separate
+        categorical Medicaid eligibility group covered under the state plan. In addition to coverage for
+        Medicare Part B premiums, these individuals receive full-benefit Medicaid coverage.
+    - name: qdwi_qi_benes
+      description: Qualified Disabled and Working Individuals are eligible for premium-free Part A by
+        virtue of qualifying for Social Security Disability Insurance (SSDI) benefits, but lose those
+        benefits and subsequently premium-free Medicare Part A, after returning to work. QDWIs have income
+        that does not exceed 200 percent of the federal poverty level, have resources that do not exceed
+        two times the SSI resource standard and are not otherwise eligible for Medicaid. Medicaid pays
+        Medicare Part A premiums only. Qualifying Individuals are entitled to Part A and have income of
+        at least 120 but less than 135 percent of the federal poverty level, resources that do not exceed
+        three times the limit for SSI eligiblity with adjustments for inflation and are not eligible for
+        any other eligiblity group under the state plan. QIs receive coverage for their Meidcare Part
+        B premiums, to the extent their state Medicaid programs have available slots.
+    - name: othr_full_dual_mdcd_benes
+      description: Other Full-Benefit Medicaid beneficiaries are entitled to Medicare Part A and/or entitled
+        to Part B, and qualify for full Medicaid benefits, but not the QMB or SLMB groups.
+    - name: a_b_tot_benes
+      description: Count of Medicare beneficiaries enrolled in Hospital Insurance (or Part A) and Supplementary
+        Medical Insurance (or Part B)
+    - name: a_b_orgnl_mdcr_benes
+      description: Count of Original Medicare beneficiaries enrolled in Hospital Insurance (or Part A)
+        and Supplementary Medical Insurance (or Part B)
+    - name: a_b_ma_and_oth_benes
+      description: Count of Medicare Advantage and Other Health Plan Beneficiaries enrolled in Hospital
+        Insurance (or Part A) and Supplementary Medical Insurance (or Part B)
+    - name: a_tot_benes
+      description: Count of Medicare beneficiaries enrolled in Hospital Insurance (or Part A)
+    - name: a_orgnl_mdcr_benes
+      description: Count of Original Medicare beneficiaries enrolled in Hospital Insurance (or Part A)
+    - name: a_ma_and_oth_benes
+      description: Count of Medicare Advantage and Other Health Plan Beneficiaries enrolled in Hospital
+        Insurance (or Part A)
+    - name: b_tot_benes
+      description: Count of Medicare beneficiaries enrolled in Supplementary Medical Insurance (or Part
+        B)
+    - name: b_orgnl_mdcr_benes
+      description: Count of Original Medicare beneficiaries enrolled in Supplementary Medical Insurance
+        (or Part B)
+    - name: b_ma_and_oth_benes
+      description: Count of Medicare Advantage and Other Health Plan Beneficiaries enrolled in Supplementary
+        Medical Insurance (or Part B)
+    - name: prscrptn_drug_tot_benes
+      description: Count of all Medicare Prescription Drug (or Part D) beneficiaries
+    - name: prscrptn_drug_pdp_benes
+      description: Count of Medicare Prescription Drug (or Part D) beneficiaries enrolled in a Prescription
+        Drug Plan
+    - name: prscrptn_drug_mapd_benes
+      description: Count of Medicare Prescription Drug (or Part D) beneficiaries enrolled in a Medicare
+        Advantage Prescription Drug plan
+    - name: prscrptn_drug_deemed_eligible_full_lis_benes
+    - name: prscrptn_drug_full_lis_benes
+      description: Count of Medicare beneficiaries with limited income and resources who do not fall into
+        one of the deemed subsidy groups and are enrolled for full subsidy. These beneficiaries successfully
+        applied for low-income subsidy.
+    - name: prscrptn_drug_partial_lis_benes
+      description: Count of Medicare beneficiaries with limited income and resources who do not fall into
+        one of the deemed subsidy groups and are enrolled for partial subsidy. These beneficiaries successfully
+        applied for low-income subsidy.
+    - name: prscrptn_drug_no_lis_benes
   - name: medicare_part_b_spending_by_drug
     identifier: MEDICARE_PART_B_SPENDING_BY_DRUG
     description: Medicare Part B Spending by Drug (Centers for Medicare & Medicaid Services). https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-part-b-spending-by-drug
+    columns:
+    - name: hcpcs_cd
+      description: Healthcare Common Procedure Coding System (HCPCS) code used to identify the drug furnished
+        by the provider.
+    - name: hcpcs_desc
+      description: Description of the HCPCS code for the drug furnished by the provider.
+    - name: brnd_name
+      description: "Name of the drug furnished by the provider. This includes both brand names (drugs\
+        \ that have a trademarked name) and generic names (drugs that do not have a trademarked name).\
+        \ ' * ' Indicates multiple brand and/or generic names for a specific HCPCS code. See \u201CMedicare\
+        \ Part B Spending by Drug-Manufacturer and Drug Use Information\u201D supporting document for\
+        \ additional names. ' ** ' Indicates brand/generic names unavailable. Name reflects the HCPCS\
+        \ short description."
+    - name: gnrc_name
+      description: "A term referring to the chemical ingredient of a drug rather than the trademarked\
+        \ brand name under which the drug is sold. ' * ' Indicates multiple brand and/or generic names\
+        \ for a specific HCPCS code. See \u201CMedicare Part B Spending by Drug-Manufacturer and Drug\
+        \ Use Information\u201D supporting document for additional names. ' ** ' Indicates brand/generic\
+        \ names unavailable. Name reflects the HCPCS short description."
+    - name: tot_spndng_2020
+      description: Aggregate drug spending for the Part B program during 2020.
+    - name: tot_dsg_unts_2020
+      description: The sum of the dosage units of medication dispensed in 2020 (e.g. number of tablets,
+        grams, milliliters or other units). For Part B, the quantity of a drug in a dosage unit is the
+        same as the quantity of the drug in a HCPCS billing unit.
+    - name: tot_clms_2020
+      description: Number of claims for each drug in 2020.
+    - name: tot_benes_2020
+      description: Number of Medicare Part B fee-for-service beneficiaries utilizing the drug during 2020.
+    - name: avg_spndng_per_dsg_unt_2020
+      description: Part B drug spending in 2020 divided by the number of dosage units in 2020.
+    - name: avg_spndng_per_clm_2020
+      description: Part B drug spending in 2020 divided by the number of claims in 2020.
+    - name: avg_spndng_per_bene_2020
+      description: Total Part B drug costs in 2020 divided by the number of unique beneficiaries utilizing
+        the drug during 2020.
+    - name: outlier_flag_2020
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2021
+      description: Aggregate drug spending for the Part B program during 2021.
+    - name: tot_dsg_unts_2021
+      description: The sum of the dosage units of medication dispensed in 2021 (e.g. number of tablets,
+        grams, milliliters or other units). For Part B, the quantity of a drug in a dosage unit is the
+        same as the quantity of the drug in a HCPCS billing unit.
+    - name: tot_clms_2021
+      description: Number of claims for each drug in 2021.
+    - name: tot_benes_2021
+      description: Number of Medicare Part B fee-for-service beneficiaries utilizing the drug during 2021.
+    - name: avg_spndng_per_dsg_unt_2021
+      description: Part B drug spending in 2021 divided by the number of dosage units in 2021.
+    - name: avg_spndng_per_clm_2021
+      description: Part B drug spending in 2021 divided by the number of claims in 2021.
+    - name: avg_spndng_per_bene_2021
+      description: Total Part B drug costs in 2021 divided by the number of unique beneficiaries utilizing
+        the drug during 2021.
+    - name: outlier_flag_2021
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2022
+      description: Aggregate drug spending for the Part B program during 2022.
+    - name: tot_dsg_unts_2022
+      description: The sum of the dosage units of medication dispensed in 2022 (e.g. number of tablets,
+        grams, milliliters or other units). For Part B, the quantity of a drug in a dosage unit is the
+        same as the quantity of the drug in a HCPCS billing unit.
+    - name: tot_clms_2022
+      description: Number of claims for each drug in 2022.
+    - name: tot_benes_2022
+      description: Number of Medicare Part B fee-for-service beneficiaries utilizing the drug during 2022.
+    - name: avg_spndng_per_dsg_unt_2022
+      description: Part B drug spending in 2022 divided by the number of dosage units in 2022.
+    - name: avg_spndng_per_clm_2022
+      description: Part B drug spending in 2022 divided by the number of claims in 2022.
+    - name: avg_spndng_per_bene_2022
+      description: Total Part B drug costs in 2022 divided by the number of unique beneficiaries utilizing
+        the drug during 2022.
+    - name: outlier_flag_2022
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2023
+      description: Aggregate drug spending for the Part B program during 2023.
+    - name: tot_dsg_unts_2023
+      description: The sum of the dosage units of medication dispensed in 2023 (e.g. number of tablets,
+        grams, milliliters or other units). For Part B, the quantity of a drug in a dosage unit is the
+        same as the quantity of the drug in a HCPCS billing unit.
+    - name: tot_clms_2023
+      description: Number of claims for each drug in 2023.
+    - name: tot_benes_2023
+      description: Number of Medicare Part B fee-for-service beneficiaries utilizing the drug during 2023.
+    - name: avg_spndng_per_dsg_unt_2023
+      description: Part B drug spending in 2023 divided by the number of dosage units in 2023.
+    - name: avg_spndng_per_clm_2023
+      description: Part B drug spending in 2023 divided by the number of claims in 2023.
+    - name: avg_spndng_per_bene_2023
+      description: Total Part B drug costs in 2023 divided by the number of unique beneficiaries utilizing
+        the drug during 2023.
+    - name: outlier_flag_2023
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2024
+      description: Aggregate drug spending for the Part B program during 2024.
+    - name: tot_dsg_unts_2024
+      description: The sum of the dosage units of medication dispensed in 2024 (e.g. number of tablets,
+        grams, milliliters or other units). For Part B, the quantity of a drug in a dosage unit is the
+        same as the quantity of the drug in a HCPCS billing unit.
+    - name: tot_clms_2024
+      description: Number of claims for each drug in 2024.
+    - name: tot_benes_2024
+      description: Number of Medicare Part B fee-for-service beneficiaries utilizing the drug during 2024.
+    - name: avg_spndng_per_dsg_unt_2024
+      description: Part B drug spending in 2024 divided by the number of dosage units in 2024.
+    - name: avg_spndng_per_clm_2024
+      description: Part B drug spending in 2024 divided by the number of claims in 2024.
+    - name: avg_spndng_per_bene_2024
+      description: Total Part B drug costs in 2024 divided by the number of unique beneficiaries utilizing
+        the drug during 2024.
+    - name: outlier_flag_2024
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: avg_dy24_asp_price
+      description: The average of the quarterly payment amount listed on the ASP Drug Pricing files for
+        the most recent year, including the 6 percent or other applicable add-on.
+    - name: chg_avg_spndng_per_dsg_unt_23_24
+      description: The percent change in average spending per dosage unit from the prior year.
+    - name: cagr_avg_spnd_per_dsg_unt_20_24
+      description: The constant average change in spending per unit over the most recent five years of
+        data availability, calculated using the compound annual growth rate (CAGR).
   - name: medicare_part_d_spending_by_drug
     identifier: MEDICARE_PART_D_SPENDING_BY_DRUG
     description: Medicare Part D Spending by Drug (Centers for Medicare & Medicaid Services). https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-part-d-spending-by-drug
+    columns:
+    - name: brnd_name
+      description: The name of the drug filled. This includes both brand names (drugs that have a trademarked
+        name) and generic names (drugs that do not have a trademarked name). ' * ' indicates that the
+        average spending per dosage unit reflects multiple routes of administration of the drug (e.g.,
+        intravenous, subcutaneous) which individually may have different unit pricing. Additional information
+        regarding calculation of spending per unit can be found in the methodology document.
+    - name: gnrc_name
+      description: A term referring to the chemical ingredient of a drug rather than the trademarked brand
+        name under which the drug is sold.
+    - name: tot_mftr
+      description: Number of manufacturers for each drug.
+    - name: mftr_name
+      description: Name of the manufacturer of the drug.
+    - name: tot_spndng_2020
+      description: Aggregate drug spending for the Medicare Part D program during the benefit year.
+    - name: tot_dsg_unts_2020
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2020
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: tot_benes_2020
+      description: Number of Part D beneficiaries utilizing the drug during the benefit year.
+    - name: avg_spnd_per_dsg_unt_wghtd_2020
+      description: Medicare Part D drug spending divided by the number of dosage units, which is weighted
+        by the proportion of total claims.
+    - name: avg_spnd_per_clm_2020
+      description: Part D drug spending divided by the number of prescription fills.
+    - name: avg_spnd_per_bene_2020
+      description: Total Part D drug spending divided by the number of unique beneficiaries utilizing
+        the drug during the benefit year.
+    - name: outlier_flag_2020
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2021
+      description: Aggregate drug spending for the Medicare Part D program during the benefit year.
+    - name: tot_dsg_unts_2021
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2021
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: tot_benes_2021
+      description: Number of Part D beneficiaries utilizing the drug during the benefit year.
+    - name: avg_spnd_per_dsg_unt_wghtd_2021
+      description: Medicare Part D drug spending divided by the number of dosage units, which is weighted
+        by the proportion of total claims.
+    - name: avg_spnd_per_clm_2021
+      description: Part D drug spending divided by the number of prescription fills.
+    - name: avg_spnd_per_bene_2021
+      description: Total Part D drug spending divided by the number of unique beneficiaries utilizing
+        the drug during the benefit year.
+    - name: outlier_flag_2021
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2022
+      description: Aggregate drug spending for the Medicare Part D program during the benefit year.
+    - name: tot_dsg_unts_2022
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2022
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: tot_benes_2022
+      description: Number of Part D beneficiaries utilizing the drug during the benefit year.
+    - name: avg_spnd_per_dsg_unt_wghtd_2022
+      description: Medicare Part D drug spending divided by the number of dosage units, which is weighted
+        by the proportion of total claims.
+    - name: avg_spnd_per_clm_2022
+      description: Part D drug spending divided by the number of prescription fills.
+    - name: avg_spnd_per_bene_2022
+      description: Total Part D drug spending divided by the number of unique beneficiaries utilizing
+        the drug during the benefit year.
+    - name: outlier_flag_2022
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2023
+      description: Aggregate drug spending for the Medicare Part D program during the benefit year.
+    - name: tot_dsg_unts_2023
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2023
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: tot_benes_2023
+      description: Number of Part D beneficiaries utilizing the drug during the benefit year.
+    - name: avg_spnd_per_dsg_unt_wghtd_2023
+      description: Medicare Part D drug spending divided by the number of dosage units, which is weighted
+        by the proportion of total claims.
+    - name: avg_spnd_per_clm_2023
+      description: Part D drug spending divided by the number of prescription fills.
+    - name: avg_spnd_per_bene_2023
+      description: Total Part D drug spending divided by the number of unique beneficiaries utilizing
+        the drug during the benefit year.
+    - name: outlier_flag_2023
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: tot_spndng_2024
+      description: Aggregate drug spending for the Medicare Part D program during the benefit year.
+    - name: tot_dsg_unts_2024
+      description: The sum of the dosage units of medication dispensed across the calendar year (e.g.
+        number of tablets, grams, milliliters or other units). Unit refers to the drug unit in the lowest
+        dispensable amount.
+    - name: tot_clms_2024
+      description: Number of prescription fills for each drug. Includes original prescriptions and refills.
+    - name: tot_benes_2024
+      description: Number of Part D beneficiaries utilizing the drug during the benefit year.
+    - name: avg_spnd_per_dsg_unt_wghtd_2024
+      description: Medicare Part D drug spending divided by the number of dosage units, which is weighted
+        by the proportion of total claims.
+    - name: avg_spnd_per_clm_2024
+      description: Part D drug spending divided by the number of prescription fills.
+    - name: avg_spnd_per_bene_2024
+      description: Total Part D drug spending divided by the number of unique beneficiaries utilizing
+        the drug during the benefit year.
+    - name: outlier_flag_2024
+      description: "Yearly outlier flag variable, which is set to \u201C1\u201D when a drug\u2019s Average\
+        \ Spending per Dosage Unit is substantially impacted by outlier records in a given year. These\
+        \ potentially anomalous drugs are identified as outliers so that users can exercise caution when\
+        \ interpreting results. See the methodology document for additional details."
+    - name: chg_avg_spnd_per_dsg_unt_23_24
+      description: The percent change in average spending per dosage unit from the prior year.
+    - name: cagr_avg_spnd_per_dsg_unt_20_24

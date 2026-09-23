@@ -48,6 +48,8 @@ from dagster import (
     AssetSpec,
     Definitions,
     MetadataValue,
+    TableColumn,
+    TableSchema,
 )
 from dagster.components import Component, ComponentLoadContext, Resolvable
 from dagster_dlt import DagsterDltResource, DagsterDltTranslator, dlt_assets
@@ -138,6 +140,22 @@ class CMSDataset(Component, DatasetConfig, Resolvable):
         return self._lakehouse_raw_key(self.raw_table)
 
     # --- specs -------------------------------------------------------------
+    def _advertised_schema(self) -> TableSchema | None:
+        """What CMS says the latest distribution holds — same treatment
+        ``ohdp_orchestration.components.socrata`` gives a Socrata catalog's
+        columns. Empty for the handful of datasets whose only documentation is
+        a PDF (see ``ohdp_ingestion.cms.catalog``)."""
+        if not self.columns:
+            return None
+        return TableSchema(
+            columns=[
+                TableColumn(
+                    name=c.name, type=c.type or "unknown", description=c.description or None
+                )
+                for c in self.columns
+            ]
+        )
+
     def _catalog_spec(self) -> AssetSpec:
         metadata: dict[str, object] = {
             "cms_dataset_id": self.id,
@@ -153,6 +171,9 @@ class CMSDataset(Component, DatasetConfig, Resolvable):
         }
         if self.source_url:
             metadata["dagster/uri"] = MetadataValue.url(self.source_url)
+        schema = self._advertised_schema()
+        if schema is not None:
+            metadata["dagster/column_schema"] = schema
 
         return AssetSpec(
             key=self.catalog_key,
@@ -169,6 +190,10 @@ class CMSDataset(Component, DatasetConfig, Resolvable):
             "cms_dataset_id": self.id,
             "write_disposition": "replace",
         }
+        schema = self._advertised_schema()
+        if schema is not None:
+            metadata["dagster/column_schema"] = schema
+
         return AssetSpec(
             key=self.table_key,
             deps=[self.catalog_key],

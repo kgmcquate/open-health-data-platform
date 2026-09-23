@@ -116,10 +116,21 @@ dropping dlt's bookkeeping columns and fixing column case.
 - No app token, no auth at all — CMS's `data-api/v1` is fully open (confirmed
   against its own API docs at https://data.cms.gov/api-docs).
 - Every column arrives as text (CMS's API serializes every field as a JSON
-  string, numbers included, the same as Socrata's SODA API) — there's no
-  per-column type schema in the catalog to hint dlt's normalizer with the way
-  `ColumnSpec`/`_SOCRATA_TO_DLT_TYPE` do for Socrata sources, so typing is
-  entirely `core`'s job once a curated mart exists.
-- `row_count` on each instance is informational only (from the dataset's
-  `data-viewer/stats` endpoint at scrape time) — never used to drive
-  ingestion, only to help pick what to enable and set a sane `row_limit`.
+  string, numbers included, the same as Socrata's SODA API). Each instance
+  does carry a `columns` list, but unlike Socrata's it is documentation, not
+  a typing hint: nothing feeds it to dlt's normalizer the way
+  `_SOCRATA_TO_DLT_TYPE` does, because the types in it describe CMS's
+  published CSV rather than what lands in `RAW`. Typing stays `core`'s job
+  once a curated mart exists.
+- **Where `columns` comes from.** `data.json` has no schema, so the scraper
+  reads two more CMS surfaces (see `ohdp_ingestion.cms.catalog`): each
+  dataset's `data-viewer` meta block gives the column names and CSV types,
+  and its **data dictionary page** — a Drupal node under
+  `data.cms.gov/jsonapi`, found from the catalog's `describedBy` or, failing
+  that, by title — gives the descriptions. 105 of the 131 series have such a
+  page; the rest document themselves in a PDF or XLSX only and get names
+  without descriptions. Pass `--no-column-docs` to skip the dictionary pass,
+  or `--no-details` to skip columns and row counts entirely.
+- `row_count` on each instance is informational only (from the same
+  `data-viewer` meta block at scrape time) — never used to drive ingestion,
+  only to help pick what to enable and set a sane `row_limit`.

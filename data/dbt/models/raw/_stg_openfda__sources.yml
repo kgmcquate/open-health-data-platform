@@ -1,6 +1,28 @@
 # Hand-maintained — openFDA has no multi-dataset catalog to scrape (see
 # ohdp_orchestration.defs.openfda's docstring), unlike
 # _stg_cdc__sources.yml/_stg_healthdata_gov__sources.yml/_stg_cms__sources.yml.
+#
+# All three enforcement endpoints return the same 24 fields, so the column list
+# is written once and aliased (`&enforcement_columns` / `*enforcement_columns`)
+# rather than kept in triplicate. Names were read off the live Iceberg tables;
+# descriptions come from openFDA's own field reference
+# (https://open.fda.gov/fields/{drug,food,device}enforcement.yaml) except where
+# noted below, since seven of its entries are blank and two are wrong:
+#
+#   * `postal_code` is returned by all three endpoints but absent from the
+#     reference; `product_code` is in the reference but never returned here.
+#   * the reference gives `recall_number` and `event_id` the same text. They
+#     differ: `recall_number` is unique per row (verified — 16,888/16,888 drug,
+#     25,000/25,000 food and device), `event_id` is shared by every product
+#     recalled in one event (4,469 events across those 16,888 drug rows).
+#
+# Not declared here: the 21 child tables dlt splits drug/enforcement's nested
+# `openfda` object into (DRUG_ENFORCEMENT__OPENFDA__SUBSTANCE_NAME,
+# ...__PRODUCT_NDC, ...__PHARM_CLASS_EPC and so on — every one of its members is
+# a JSON array). They exist in RAW.OPENFDA and join back on `_dlt_parent_id` =
+# the parent's `_dlt_id`. Food and device enforcement return no `openfda` block
+# at all. Nothing models them yet, and no other source declares its child
+# tables either.
 version: 2
 sources:
 - name: openfda
@@ -11,9 +33,91 @@ sources:
   - name: drug_enforcement
     identifier: DRUG_ENFORCEMENT
     description: US drug recall enforcement reports (reason, classification, status, distribution pattern, recalling firm). Full replace each run, capped at 25,000 rows — see ohdp_ingestion.openfda.source.
+    columns: &enforcement_columns
+    - name: recall_number
+      description: FDA's identifier for this one product recall, prefixed by the centre that issued
+        it — `D-` drug, `F-` food, `Z-` device (e.g. `D-0115-2026`). Unique per row, and the key this
+        table is merged on each run (the `primary_key` in defs.yaml).
+    - name: event_id
+      description: FDA's identifier for the recall *event*. One event routinely covers many products,
+        so this repeats across rows — group on it to count recall actions rather than recalled
+        products.
+    - name: status
+      description: Where the recall stands. Observed values are `Ongoing`, `Completed` and
+        `Terminated` — note openFDA's own field reference documents the first as `On-Going`, which
+        matches nothing in the data. A status can change after publication, which is why the last 90
+        days are re-fetched and re-merged every run (`incremental_lag_days`).
+    - name: classification
+      description: FDA's health-hazard severity for the recall. `Class I` — could cause serious harm
+        or death; `Class II` — temporary or medically reversible harm; `Class III` — unlikely to cause
+        harm but violates FDA law. Drug rows also carry `Not Yet Classified`, which the field
+        reference does not list.
+    - name: product_type
+      description: The kind of product recalled. Constant within each table — `Drugs`, `Food` and
+        `Devices` respectively — so it is only useful once the three are unioned.
+    - name: product_description
+      description: Brief description of the product being recalled.
+    - name: product_quantity
+      description: The amount of defective product subject to recall. Free text, not a parsed number
+        (e.g. "1,200 bottles").
+    - name: code_info
+      description: All lot and/or serial numbers, product numbers, packer or manufacturer numbers,
+        sell-or-use-by dates etc. appearing on the product or its labeling.
+    - name: more_code_info
+      description: Overflow for `code_info` when the list is too long for one field. Usually empty.
+        Undocumented by openFDA.
+    - name: reason_for_recall
+      description: How the product is defective and violates the FD&C Act or related statutes — the
+        free-text field most recall analysis keys off.
+    - name: distribution_pattern
+      description: >-
+        General area of initial distribution, e.g. "Distributors in 6 states: NY, VA, TX, GA, FL and
+        MA". "Nationwide" means the fifty states or a significant portion. Onward distribution by
+        consignees may not be included.
+    - name: voluntary_mandated
+      description: >-
+        Who initiated the recall. Almost always `Voluntary: Firm initiated`; `FDA Mandated` means the
+        firm was ordered to act under section 518(e) of the FD&C Act, the FSMA or similar authority.
+        Also carries `N/A` and the empty string.
+    - name: initial_firm_notification
+      description: How the firm first notified the public or its consignees — `Letter`, `Press
+        Release`, `E-Mail`, `Telephone`, `FAX`, `Other`, `N/A` or empty.
+    - name: recalling_firm
+      description: The firm that initiated the recall, or for an FDA-requested or FDA-mandated recall,
+        the firm primarily responsible for manufacturing and/or marketing the product.
+    - name: address_1
+      description: Street address of the recalling firm. Undocumented by openFDA.
+    - name: address_2
+      description: Second address line of the recalling firm, where there is one. Undocumented by
+        openFDA.
+    - name: city
+      description: The city in which the recalling firm is located.
+    - name: state
+      description: The US state in which the recalling firm is located.
+    - name: postal_code
+      description: ZIP code of the recalling firm, usually ZIP+4 (e.g. `61614-5828`). Always
+        populated, and absent from openFDA's field reference entirely.
+    - name: country
+      description: >-
+        The country in which the recalling firm is located. The ingestion filters on
+        `country:"United States"`, so this is effectively constant.
+    - name: recall_initiation_date
+      description: Date the firm first began notifying the public or its consignees. Stored as an
+        8-character `YYYYMMDD` string, not a date — every date column here is (`core` should cast).
+    - name: center_classification_date
+      description: Date the FDA centre assigned the `classification`. `YYYYMMDD` string. Undocumented
+        by openFDA.
+    - name: report_date
+      description: Date FDA issued the enforcement report. `YYYYMMDD` string, and the cursor rows are
+        paged ascending by (`incremental_cursor` in defs.yaml).
+    - name: termination_date
+      description: Date FDA determined the recall complete. `YYYYMMDD` string, null while the recall
+        is still `Ongoing` — so null here is a live recall, not missing data. Undocumented by openFDA.
   - name: food_enforcement
     identifier: FOOD_ENFORCEMENT
     description: US food recall enforcement reports, same shape as drug_enforcement. Full replace each run, capped at 25,000 rows — see ohdp_ingestion.openfda.source.
+    columns: *enforcement_columns
   - name: device_enforcement
     identifier: DEVICE_ENFORCEMENT
     description: US medical device recall enforcement reports, same shape as drug_enforcement. Full replace each run, capped at 25,000 rows — see ohdp_ingestion.openfda.source.
+    columns: *enforcement_columns

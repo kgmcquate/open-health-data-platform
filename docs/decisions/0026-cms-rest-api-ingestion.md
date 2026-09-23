@@ -114,3 +114,15 @@ module both sources build on.**
   as a string, and unlike Socrata's catalog there's no per-column type
   schema to hint dlt's normalizer with (no `ColumnSpec` equivalent) — typing
   is deferred entirely to `core`, whenever the curated mart is built.
+
+  > **Amended.** The second half of that — "no per-column schema" — was only
+  > true of `data.json`. Two other CMS surfaces do carry one: each dataset's
+  > `data-viewer` meta block (column names and the backing CSV's types, plus
+  > `total_rows`, so it replaces the `data-viewer/stats` call rather than
+  > adding to it) and, for most series, a data dictionary page reachable
+  > through `data.cms.gov/jsonapi`, which is where the column *descriptions*
+  > live. `ohdp_ingestion.cms.config.ColumnSpec` now records both, and
+  > `scrape_cms.py` writes them into the dbt sources file and each component
+  > instance. Typing is still `core`'s job: the recorded types describe the
+  > published CSV, not what dlt writes, and nothing hints the normalizer with
+  > them.

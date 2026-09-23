@@ -30,8 +30,8 @@ domain, so the base/subclass split ADR-0018 needed for multiple Socrata
 domains has nothing to buy here).
 """
 
-from ohdp_ingestion.cms.catalog import CatalogDataset, iter_catalog
-from ohdp_ingestion.cms.config import CADENCES, Cadence, DatasetConfig
+from ohdp_ingestion.cms.catalog import CatalogColumn, CatalogDataset, iter_catalog
+from ohdp_ingestion.cms.config import CADENCES, Cadence, ColumnSpec, DatasetConfig
 from ohdp_ingestion.cms.source import CMS_API_BASE_URL, cms_source
 from ohdp_ingestion.iceberg_destination import build_pipeline
 
@@ -39,7 +39,9 @@ __all__ = [
     "CADENCES",
     "CMS_API_BASE_URL",
     "Cadence",
+    "CatalogColumn",
     "CatalogDataset",
+    "ColumnSpec",
     "DatasetConfig",
     "build_pipeline",
     "cms_source",

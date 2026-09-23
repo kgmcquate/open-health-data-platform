@@ -79,6 +79,7 @@ def _dump_dataset(cfg: DatasetConfig) -> str:
         "row_count": cfg.row_count,
         "keywords": cfg.keywords,
         "description": cfg.description,
+        "columns": [c.model_dump() for c in cfg.columns],
     }
     return yaml.safe_dump(
         {"type": _COMPONENT_TYPE, "attributes": attributes},
@@ -111,6 +112,16 @@ def _write_dbt_sources(configs: list[DatasetConfig]) -> None:
                         "name": c.raw_table,
                         "identifier": c.raw_table.upper(),
                         "description": f"{c.name} ({c.publisher}). {c.source_url}",
+                        # Names always (they are what models select on);
+                        # a `description` key only where CMS's data dictionary
+                        # actually defines the column. Lower case for the same
+                        # reason `name` is — Snowflake folds unquoted
+                        # identifiers, and dlt wrote them upper case.
+                        "columns": [
+                            {"name": col.name.lower()}
+                            | ({"description": col.description} if col.description else {})
+                            for col in c.columns
+                        ],
                     }
                     for c in sorted(enabled, key=lambda c: c.raw_table)
                 ],
@@ -133,9 +144,14 @@ def main() -> None:
     ap.add_argument("--top-n", type=int, default=5, help="enable this many datasets, by row count")
     ap.add_argument("--row-limit", type=int, default=1_000_000, help="row cap in every config")
     ap.add_argument(
-        "--no-row-counts",
+        "--no-details",
         action="store_true",
-        help="skip the per-dataset stats call (faster, but every row_count is 0)",
+        help="skip the per-dataset data-viewer call (faster, but no row counts and no columns)",
+    )
+    ap.add_argument(
+        "--no-column-docs",
+        action="store_true",
+        help="keep column names and types but skip the data dictionary lookup that describes them",
     )
     args = ap.parse_args()
 
@@ -145,7 +161,11 @@ def main() -> None:
 
     seen: dict[str, DatasetConfig] = {}
     scanned = 0
-    for dataset in iter_catalog(with_row_counts=not args.no_row_counts, limit=args.limit):
+    for dataset in iter_catalog(
+        with_details=not args.no_details,
+        with_column_docs=not args.no_column_docs,
+        limit=args.limit,
+    ):
         scanned += 1
         seen[dataset.id] = DatasetConfig.from_catalog(dataset, row_limit=args.row_limit)
 
@@ -179,6 +199,9 @@ def main() -> None:
     print(f"data.cms.gov: scanned {scanned} catalog entries with a live API distribution")
     print(f"wrote {len(documents)} dataset components to {out_file.relative_to(_REPO)}")
     print(f"enabled {enabled_total}: {dict(sorted(by_cadence.items()))}")
+    described = sum(1 for c in seen.values() if any(col.description for col in c.columns))
+    columns_total = sum(len(c.columns) for c in seen.values())
+    print(f"columns: {columns_total} scraped; {described} datasets have a data dictionary")
     print(f"dbt sources -> {_DBT_SOURCES.relative_to(_REPO)}")
 
 
