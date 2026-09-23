@@ -26,6 +26,7 @@ from hub_api import issues
 from hub_api.main import app
 from ohdp_agent.cube import CubeError
 from ohdp_agent.dashboard import (
+    DEFAULT_DATA_PATH,
     ChartData,
     DashboardSpec,
     bind_data,
@@ -439,6 +440,82 @@ def test_the_vega_lite_transforms_a_chart_actually_uses_are_accepted() -> None:
         "encoding": {"y": {"field": "doubled", "type": "quantitative"}},
     }
     bind_data(vega, ROWS, list(ROWS[0]))
+
+
+def _choropleth(data_path: str | None = None) -> dict[str, object]:
+    """A choropleth spec: geometry as the top-level `data.url`, rows joined in
+    by a `lookup` whose `from.data` is the `{"values": []}` placeholder."""
+    spec: dict[str, object] = {
+        **SPEC,
+        "vega": {
+            "data": {
+                "url": "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json",
+                "format": {"type": "topojson", "feature": "states"},
+            },
+            "transform": [
+                {
+                    "lookup": "properties.name",
+                    "from": {
+                        "data": {"values": []},
+                        "key": "ed_visits.week_end",
+                        "fields": ["ed_visits.avg_percent"],
+                    },
+                    "as": ["pct"],
+                }
+            ],
+            "projection": {"type": "albersUsa"},
+            "mark": "geoshape",
+            "encoding": {"color": {"field": "pct", "type": "quantitative"}},
+        },
+    }
+    if data_path is not None:
+        spec["data_path"] = data_path
+    return spec
+
+
+def test_rows_are_never_bound_onto_the_basemap_geometry() -> None:
+    """A choropleth that forgot `data_path` used to render 200 and then throw in
+    the reader's browser: rows written beside the geometry's `url` make
+    Vega-Lite read the block as inline data and apply its `topojson` format to
+    the Cube rows (`Cannot read properties of undefined (reading 'states')`).
+    The failure is client-side, so nothing but this check ever sees it — and the
+    message has to name the path that would have worked."""
+    spec = DashboardSpec.model_validate(_choropleth())
+    assert spec.data_path == DEFAULT_DATA_PATH
+    with pytest.raises(ValueError, match="basemap geometry") as excinfo:
+        bind_data(spec.vega, ROWS, list(ROWS[0]), spec.data_path)
+    assert "'$.transform[0].from.data.values'" in str(excinfo.value)
+
+
+def test_an_unbound_row_placeholder_fails_rather_than_drawing_empty() -> None:
+    """The other half of the same mistake: rows bound somewhere real, but not at
+    the placeholder the `lookup` joins from. That join runs against `[]` — valid
+    Vega-Lite, a map with every value missing, and no error anywhere."""
+    vega = {
+        "transform": [
+            {
+                "lookup": "ed_visits.week_end",
+                "from": {
+                    "data": {"values": []},
+                    "key": "ed_visits.week_end",
+                    "fields": ["ed_visits.avg_percent"],
+                },
+            }
+        ],
+        "mark": "bar",
+        "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+    }
+    with pytest.raises(ValueError, match="row placeholder") as excinfo:
+        bind_data(vega, ROWS, list(ROWS[0]), DEFAULT_DATA_PATH)
+    assert "'$.transform[0].from.data.values'" in str(excinfo.value)
+
+
+def test_a_choropleth_with_the_right_data_path_still_binds() -> None:
+    """The checks above must not cost the spec that was written correctly."""
+    spec = DashboardSpec.model_validate(_choropleth("$.transform[0].from.data.values"))
+    bound = bind_data(spec.vega, ROWS, list(ROWS[0]), spec.data_path)
+    assert "values" not in bound["data"]
+    assert bound["transform"][0]["from"]["data"] == {"values": ROWS}
 
 
 def test_a_data_path_that_leads_nowhere_fails_with_the_reason() -> None:

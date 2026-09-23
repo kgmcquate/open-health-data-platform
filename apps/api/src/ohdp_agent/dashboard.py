@@ -453,6 +453,97 @@ _TAIL_RE = re.compile(
 )
 
 
+def _split_data_path(data_path: str) -> re.Match[str]:
+    """Peel a `data_path` into its holder path plus final selector.
+
+    One place parses the tail, because two callers need the split: the
+    injection below, and the placeholder check that runs before it.
+    """
+    match = _TAIL_RE.match(data_path)
+    if match is None:
+        raise ValueError(f"`data_path` {data_path!r} must end in a key or index")
+    return match
+
+
+def _row_placeholders(node: Any, path: str = "$") -> list[tuple[str, dict[str, Any]]]:
+    """Every empty `{"values": []}` row placeholder in the spec, with its path.
+
+    The path is returned as a `data_path` a model can paste back — `$`, then
+    each key as `.key` and each list position as `[i]`, which is the spelling
+    `_TAIL_RE` and `jsonpath_ng` both read. `_assert_data_path_binds_rows`
+    uses these to say where the rows *should* have gone, and identifies the
+    blocks themselves (by object identity) to say which ones stayed empty.
+    """
+    found: list[tuple[str, dict[str, Any]]] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            child = f"{path}.{key}"
+            if key == "data" and value == {"values": []}:
+                found.append((f"{child}.values", value))
+            else:
+                found.extend(_row_placeholders(value, child))
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            found.extend(_row_placeholders(item, f"{path}[{index}]"))
+    return found
+
+
+def _assert_data_path_binds_rows(spec: dict[str, Any], data_path: str) -> None:
+    """Reject a `data_path` that puts the rows anywhere but at the rows' spot.
+
+    `VegaSpec` already guarantees that every `data` block in the spec is one of
+    two things — a remote `{"url": ..., "format": ...}` geometry reference, or
+    the empty `{"values": []}` placeholder — so this only has to check that
+    `data_path` picked the second kind. Both ways of getting it wrong are
+    invisible on this side of the wire and fatal on the other, which is why
+    they are caught here rather than left to the browser (the same reasoning as
+    `_assert_vega_lite_transforms`):
+
+      - **Rows onto the basemap.** A choropleth that leaves `data_path` at its
+        default `$.data.values` writes the Cube rows in beside the geometry's
+        `url`. Vega-Lite reads a block carrying `values` as inline data, so it
+        applies `format: {"type": "topojson", "feature": ...}` to an array of
+        Cube rows and `topojsonFeature` throws on the missing `objects` —
+        `TypeError: Cannot read properties of undefined (reading 'states')`,
+        in the reader's browser, from a tool call that answered 200.
+
+      - **A placeholder left empty.** The rows then bind somewhere else and the
+        `lookup` joins against `[]`, which is valid Vega-Lite: the map draws,
+        every joined value is missing, and nothing anywhere reports it.
+
+    The suggested path in each message is the placeholder's own, so a failed
+    render comes back as a one-line correction rather than a puzzle.
+    """
+    parent_path = _split_data_path(data_path).group("parent") or "$"
+    targets = [match.value for match in parse_jsonpath(parent_path).find(spec)]
+    placeholders = _row_placeholders(spec)
+
+    geometry = next((t for t in targets if isinstance(t, dict) and "url" in t), None)
+    if geometry is not None:
+        suggestion = placeholders[0][0] if placeholders else "$.transform[0].from.data.values"
+        raise ValueError(
+            f"`data_path` {data_path!r} would bind the query's rows onto the "
+            f"basemap geometry at {geometry['url']!r}. Rows written beside a "
+            "`url` make Vega-Lite read that block as inline data and apply its "
+            "`topojson` format to the Cube rows, which throws in the browser "
+            "and draws nothing. Leave the geometry `data` alone and point "
+            "`data_path` at the row placeholder the `lookup` transform joins "
+            f"from, i.e. {suggestion!r}"
+        )
+
+    unbound = [path for path, block in placeholders if not any(block is t for t in targets)]
+    if unbound:
+        listed = ", ".join(repr(path) for path in unbound)
+        raise ValueError(
+            f"`data_path` {data_path!r} does not bind the empty "
+            '`{"values": []}` row placeholder this spec carries at '
+            f"{listed}. That placeholder would stay empty, so a `lookup` "
+            "reading it joins against no rows — the chart draws with every "
+            f"joined value missing and no error. Set `data_path` to "
+            f"{unbound[0]!r}"
+        )
+
+
 def _inject_values(spec: Any, data_path: str, rows: list[dict[str, Any]]) -> None:
     """Attach `rows` at `data_path` inside `spec`, in place.
 
@@ -462,9 +553,7 @@ def _inject_values(spec: Any, data_path: str, rows: list[dict[str, Any]]) -> Non
     (a missing `data` at the end of the parent path is created); the final
     key, always `values` by convention, may be absent.
     """
-    match = _TAIL_RE.match(data_path)
-    if match is None:
-        raise ValueError(f"`data_path` {data_path!r} must end in a key or index")
+    match = _split_data_path(data_path)
     parent_path = match.group("parent") or "$"
     last_key = match.group("key") or match.group("dot")
     last_idx = match.group("idx")
@@ -511,9 +600,18 @@ def bind_data(
     Field references are escaped first (see `_escape_field_reference`), and a
     single-view spec gets `width: container`/`autosize: fit` when it did not set
     its own, so a bare `{mark, encoding}` matches the compiled-output rendering.
+
+    A `data_path` that names the wrong block raises before anything is bound
+    (`_assert_data_path_binds_rows`): rows over a basemap `url`, or a
+    placeholder left empty, are failures only the browser would otherwise see.
     """
     vl_spec = deepcopy(spec)
     _assert_vega_lite_transforms(vl_spec)
+    # Before `_escape_fields`, not after: a `data_path` pointing at the wrong
+    # block is the more fundamental mistake, and a spec that has both that and a
+    # column typo should be told about the path first — fixing the path is what
+    # moves the columns into the source the `lookup` actually reads.
+    _assert_data_path_binds_rows(vl_spec, data_path)
     _escape_fields(vl_spec, columns)
     bound = {**_unit_defaults(vl_spec), **vl_spec, "$schema": _VL_SCHEMA}
     _inject_values(bound, data_path, rows)

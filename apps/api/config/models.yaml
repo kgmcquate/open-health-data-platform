@@ -112,7 +112,10 @@ models:
     a choropleth may use for its basemap geometry. The query's rows are bound into
     the spec at `data_path` — a JSONPath, `$.data.values` by default. For a
     choropleth, where the top-level `data` is the geometry URL, set `data_path` to
-    the lookup source instead, e.g. `$.transform[0].from.data.values`. On that
+    the lookup source instead, e.g. `$.transform[0].from.data.values`. On a
+    choropleth `data_path` is not optional: left at its default, the rows are
+    written on top of the basemap geometry, and the tool comes back with an
+    error naming the path to use instead. On that
     `lookup` transform, always give `from.fields` — the exact column name(s), as
     returned by the query, that you want joined onto the map — and never omit it:
     without `fields`, Vega-Lite attaches the whole matched row as one nested
