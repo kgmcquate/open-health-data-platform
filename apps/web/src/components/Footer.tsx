@@ -10,21 +10,15 @@ export default function Footer() {
         </p>
       </aside>
       <nav>
-        <h6 className="footer-title">Platform</h6>
-        <a className="link link-hover" href="/topics">Topics</a>
-        <a className="link link-hover" href="/dashboards">Dashboards</a>
-        <a className="link link-hover" href="/chat">Chat</a>
-      </nav>
-      <nav>
         <h6 className="footer-title">Legal</h6>
         <a className="link link-hover" href="/privacy">Privacy policy</a>
       </nav>
       <nav>
         <h6 className="footer-title">Built in the open</h6>
-        <a className="link link-hover" href="http://localhost:8585" target="_blank" rel="noreferrer">
+        <a className="link link-hover" href="https://catalog.open-health-data-platform.org" target="_blank" rel="noreferrer">
           OpenMetadata catalog
         </a>
-        <a className="link link-hover" href="http://localhost:3000" target="_blank" rel="noreferrer">
+        <a className="link link-hover" href="https://dagster.open-health-data-platform.org" target="_blank" rel="noreferrer">
           Dagster pipelines
         </a>
       </nav>
