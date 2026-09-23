@@ -49,6 +49,15 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
         return {"rows": ROWS, "row_count": 1, "truncated": False, "applied_limit": 1000}
 
     monkeypatch.setattr("ohdp_agent.cube.CubeClient.run_metric_query", fake_query)
+
+    # Out of scope for this file (see test_dashboard_catalog.py) — neutralized
+    # so these tests aren't exercising a real network call to OpenMetadata.
+    async def fake_publish(self: object, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "ohdp_agent.dashboard_catalog.DashboardCatalogClient.publish_dashboard", fake_publish
+    )
     try:
         yield TestClient(app)
     finally:

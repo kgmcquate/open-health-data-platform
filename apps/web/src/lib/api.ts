@@ -117,6 +117,8 @@ export const fetchTopic = (name: string) =>
 
 export const fetchDashboards = (topic?: string) =>
   getJson<Dashboard[]>(topic ? `/api/dashboards?topic=${encodeURIComponent(topic)}` : "/api/dashboards");
+export const fetchDashboard = (name: string) =>
+  getJson<Dashboard>(`/api/dashboards/${encodeURIComponent(name)}`);
 export const fetchLiterature = (topic?: string) =>
   getJson<LiteratureItem[]>(topic ? `/api/literature?topic=${encodeURIComponent(topic)}` : "/api/literature");
 

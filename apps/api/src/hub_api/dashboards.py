@@ -75,6 +75,7 @@ from hub_api import library
 from hub_api.issues import Reporter, get_reporter
 from ohdp_agent.cube import CubeClient, CubeError
 from ohdp_agent.dashboard import NAME_RE, ChartData, DashboardSpec, render_html
+from ohdp_agent.dashboard_catalog import CatalogWriteError, DashboardCatalogClient
 from ohdp_agent.domains import DomainsClient, DomainsError
 from ohdp_shared import get_logger, settings
 
@@ -102,6 +103,12 @@ _NAMES_IN_ERROR = 40
 # (`ohdp_agent.domains`). A save must not hang on a slow catalog — topics are
 # an enrichment, and a dashboard with none still saves and still renders.
 _TOPICS_TIMEOUT_SECONDS = 20.0
+
+# Publishing to the catalog is a service upsert, a dashboard upsert, and one
+# table lookup + lineage edge per cube — more round trips than resolving
+# topics, so it gets its own, slightly longer, cap. Same reasoning as above:
+# an enrichment, never allowed to hang or fail the save.
+_CATALOG_TIMEOUT_SECONDS = 30.0
 
 dashboards_router = APIRouter()
 
@@ -189,6 +196,34 @@ async def _topics_for(spec: DashboardSpec) -> list[str]:
     except (DomainsError, TimeoutError) as exc:
         log.warning("dashboard_topics_unresolved", name=spec.name, error=str(exc))
         return []
+
+
+async def _publish_to_catalog(spec: DashboardSpec, topics: list[str]) -> None:
+    """File this dashboard into OpenMetadata as a Dashboard entity, with
+    lineage from the curated tables its query touches (`ohdp_agent.
+    dashboard_catalog`).
+
+    Best-effort, exactly like `_topics_for`: an unconfigured or unreachable
+    catalog means the dashboard is not published there, not a failed save.
+    The library row is the source of truth either way — this is purely an
+    OpenMetadata-side mirror of it.
+    """
+    if not settings.openmetadata_jwt:
+        return
+    client = DashboardCatalogClient(settings.openmetadata_url, settings.openmetadata_jwt)
+    url = f"{settings.hub_base_url.rstrip('/')}/dashboards/{spec.name}"
+    try:
+        async with asyncio.timeout(_CATALOG_TIMEOUT_SECONDS):
+            await client.publish_dashboard(
+                name=spec.name,
+                title=spec.title,
+                description=spec.description or "",
+                url=url,
+                table_names=library.cubes_in_query(spec.query),
+                domains=topics,
+            )
+    except (CatalogWriteError, TimeoutError) as exc:
+        log.warning("dashboard_catalog_unpublished", name=spec.name, error=str(exc))
 
 
 def _client() -> CubeClient:
@@ -394,6 +429,7 @@ async def save_dashboard_tool(
     html = _render(spec, data)
 
     topics = await _topics_for(spec)
+    await _publish_to_catalog(spec, topics)
 
     # `engine` is synchronous SQLAlchemy inside an async route — off the loop,
     # since this handler is already `async` for the Cube call above and must

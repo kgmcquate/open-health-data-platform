@@ -372,6 +372,52 @@ def test_an_unknown_dashboard_has_no_page(client: TestClient) -> None:
     assert client.get("/api/dashboards/nope/html").status_code == 404
 
 
+# --- one dashboard's own page ------------------------------------------------
+
+
+def test_a_saved_dashboard_has_its_own_metadata_route(client: TestClient, cube: None) -> None:
+    """The single-dashboard page's read: the same shape a listing entry has,
+    for exactly the one name asked for."""
+    _save(client)
+
+    entry = client.get("/api/dashboards/ed-visits").json()
+
+    assert entry["name"] == "ed-visits"
+    assert entry["title"] == SPEC["title"]
+    assert entry["query"] == SPEC["query"]
+    assert "vega" not in entry
+    assert "spec" not in entry
+    assert "saved_by" not in entry
+
+
+def test_an_unknown_dashboards_metadata_route_is_404(client: TestClient) -> None:
+    assert client.get("/api/dashboards/nope").status_code == 404
+
+
+def test_a_hidden_dashboard_still_has_a_metadata_route(
+    client: TestClient, engine: Engine, cube: None
+) -> None:
+    """Hiding is a display rule on the listing, not a delete — a direct link
+    to a downvoted dashboard should keep working."""
+    _save(client)
+    for voter in ("a@x.test", "b@x.test"):
+        library.vote(engine, name="ed-visits", voter_email=voter, value=-1)
+
+    entry = client.get("/api/dashboards/ed-visits").json()
+
+    assert entry["hidden"] is True
+    assert client.get("/api/dashboards").json() == []
+
+
+def test_the_metadata_route_shows_this_viewers_own_vote(signed_in: TestClient, cube: None) -> None:
+    _save(signed_in)
+    signed_in.post("/api/dashboards/ed-visits/vote", json={"value": 1})
+
+    entry = signed_in.get("/api/dashboards/ed-visits").json()
+
+    assert entry["my_vote"] == 1
+
+
 # --- votes -----------------------------------------------------------------
 
 

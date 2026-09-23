@@ -191,7 +191,17 @@ export function DashboardCard({
             ))}
           </div>
           <div className="flex flex-col items-end gap-1">
-            <Votes dashboard={dashboard} />
+            <div className="flex items-center gap-1">
+              <Link
+                to={`/dashboards/${encodeURIComponent(dashboard.name)}`}
+                className="btn btn-ghost btn-xs"
+                title="Permalink to this dashboard"
+                aria-label="Open this dashboard's own page"
+              >
+                🔗
+              </Link>
+              <Votes dashboard={dashboard} />
+            </div>
             <DeleteDashboard dashboard={dashboard} onDeleted={onDeleted} />
           </div>
         </div>

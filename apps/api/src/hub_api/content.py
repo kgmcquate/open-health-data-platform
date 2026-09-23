@@ -182,6 +182,25 @@ def list_dashboards(
     return library.public_rows(engine, topic=topic, viewer_email=viewer_email)
 
 
+@router.get("/dashboards/{name}")
+def get_dashboard(
+    request: Request,
+    name: str,
+    viewer_email: Annotated[str | None, Depends(get_optional_user_email)] = None,
+) -> dict[str, Any]:
+    """One dashboard's metadata, shaped exactly like a `list_dashboards` entry
+    — the single-dashboard page's read. A hidden dashboard is still returned
+    here (see `library.public_row_by_name`); the page decides what to do with
+    `hidden` rather than getting a 404 for a dashboard that still exists."""
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        raise HTTPException(503, "Database is not available.")
+    entry = library.public_row_by_name(engine, name, viewer_email=viewer_email)
+    if entry is None:
+        raise HTTPException(404, "No such dashboard.")
+    return entry
+
+
 @router.get(
     "/dashboards/{name}/html",
     response_class=HTMLResponse,

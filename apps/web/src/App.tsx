@@ -8,6 +8,7 @@ import Topics from "./pages/Topics";
 // Heavy dependencies (assistant-ui, vega-embed) stay out of the main bundle.
 const TopicDetail = lazy(() => import("./pages/TopicDetail"));
 const Dashboards = lazy(() => import("./pages/Dashboards"));
+const DashboardDetail = lazy(() => import("./pages/DashboardDetail"));
 const Chat = lazy(() => import("./pages/Chat"));
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/topics" element={<Topics />} />
             <Route path="/topics/:name" element={<TopicDetail />} />
             <Route path="/dashboards" element={<Dashboards />} />
+            <Route path="/dashboards/:name" element={<DashboardDetail />} />
             <Route path="/chat" element={<Chat />} />
             <Route
               path="*"

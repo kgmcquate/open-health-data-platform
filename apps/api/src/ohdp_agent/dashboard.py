@@ -886,12 +886,8 @@ def render_html(spec: DashboardSpec, data: ChartData) -> str:
     </header>
 {panel_html}
     <footer>
-      <p class="disclaimer">Population-level public health data from the Open Health
-      Data Platform semantic layer. Not clinical decision support and not medical advice.</p>
       <details>
         <summary>Dashboard source · <code>{_esc(spec.name)}.yaml</code></summary>
-        <p class="note">The spec this page renders, as YAML — the Cube queries and
-        the Vega-Lite, never the rows.</p>
         <pre class="source">{_esc(spec.to_yaml())}</pre>
       </details>
     </footer>

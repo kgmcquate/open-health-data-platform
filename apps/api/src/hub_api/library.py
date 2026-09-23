@@ -268,6 +268,26 @@ def public_rows(
     return listed
 
 
+def public_row_by_name(
+    engine: Engine, name: str, *, viewer_email: str | None = None
+) -> dict[str, Any] | None:
+    """One dashboard, shaped like a `public_rows` entry — the single-dashboard
+    page's read. Unlike `public_rows`, a hidden dashboard is still returned
+    rather than filtered out: a direct link should keep working, and the
+    `hidden` field already lets the page say a dashboard was voted down
+    instead of 404ing on it."""
+    with engine.connect() as connection:
+        row = connection.execute(select(dashboards).where(dashboards.c.name == name)).first()
+        if row is None:
+            return None
+        votes = _my_votes(connection, [int(row.id)], viewer_email)
+
+    entry = _summary(row)
+    entry["query"] = dict(row.spec).get("query", {})
+    entry["my_vote"] = votes.get(int(row.id), 0)
+    return entry
+
+
 def by_name(engine: Engine, name: str) -> dict[str, Any] | None:
     """One dashboard, with its full spec — the agent's read and the render
     path's read. Hidden dashboards are returned: hiding is a display rule for
