@@ -34,9 +34,9 @@ so the only signal left on the agent side that the result is a page to render
 is the HTML body itself. An MCP tool has no way to ask for an embed.
 
 The model writes its Vega-Lite, but never the data. It sends a
-`DashboardSpec` — a title, one Cube query, and a `vega` spec — and this
+`DashboardSpec` — a title, one Cube query, and a `vega_lite` spec — and this
 module runs the query and binds the rows (`ohdp_agent.dashboard`). Literal
-`data` values anywhere in a `vega` spec are rejected before they can reach a
+`data` values anywhere in a `vega_lite` spec are rejected before they can reach a
 browser; a `data` block survives only as a remote `url` reference (e.g. a
 choropleth's basemap geometry).
 Two consequences worth stating plainly:
@@ -66,6 +66,7 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, ValidationError
@@ -250,6 +251,14 @@ async def _run_query(spec: DashboardSpec) -> ChartData:
             "The semantic layer did not answer in time. Try a shorter date "
             "range or a coarser granularity.",
         ) from exc
+    except httpx.HTTPError as exc:
+        # Cube is down, or not there at all. Distinct from `CubeError`, which
+        # means Cube answered and said no: nothing about the spec is wrong here
+        # and there is nothing to correct, so it must not come back as a 400 an
+        # author (or the model) would read as "fix your query". Without this it
+        # was an unhandled 500 with no reason in it.
+        log.warning("cube_unreachable", error=str(exc))
+        raise HTTPException(502, "The semantic layer could not be reached.") from exc
 
     return ChartData(
         rows=result["rows"],
@@ -261,7 +270,7 @@ async def _run_query(spec: DashboardSpec) -> ChartData:
 def _embed(spec: DashboardSpec, data: ChartData) -> HTMLResponse:
     """Render the embed, or fail the render with the reason.
 
-    `render_html` raises `ValueError` when the `vega` spec names a column the
+    `render_html` raises `ValueError` when the `vega_lite` spec names a column the
     query did not return. That must not become a 200 embed: the `ohdp-tools`
     wrapper only passes the HTML body back to the agent, so a spec/column
     mismatch would otherwise look like success to the model and it would never
@@ -282,6 +291,31 @@ def _render(spec: DashboardSpec, data: ChartData) -> str:
         return render_html(spec, data)
     except ValueError as exc:
         raise HTTPException(422, f"This chart could not be drawn: {exc}") from exc
+
+
+async def render_from_spec(spec: DashboardSpec) -> tuple[str, ChartData]:
+    """Run a spec's query and draw its page, or raise the reason as an HTTP error.
+
+    The two steps every caller needs together and nobody needs apart: the chat
+    tools below, and the builder's preview and publish routes
+    (`hub_api.builder`), which is why this is a named function here rather than
+    two calls repeated in four places. `ChartData` comes back with the page
+    because a caller usually wants to say how many rows it drew.
+    """
+    data = await _run_query(spec)
+    return _render(spec, data), data
+
+
+async def file_in_catalog(spec: DashboardSpec) -> list[str]:
+    """Resolve this dashboard's topics and mirror it into OpenMetadata.
+
+    Both halves are best-effort (`_topics_for`, `_publish_to_catalog`): the
+    returned topics are empty when the catalog is unconfigured or unreachable,
+    and a save must never fail because a dashboard could not be filed.
+    """
+    topics = await _topics_for(spec)
+    await _publish_to_catalog(spec, topics)
+    return topics
 
 
 @dashboards_router.post(
@@ -322,7 +356,7 @@ async def render_dashboard_tool(
     and describe the data first, then draw it.
 
     The spec carries a `query` in exactly the form `run_metric_query` takes,
-    plus a `vega` Vega-Lite spec describing how to draw that query's rows. The
+    plus a `vega_lite` Vega-Lite spec describing how to draw that query's rows. The
     spec may use anything Vega-Lite supports — `mark`, `encoding`, `transform`,
     `layer`, `params` — but must not carry literal `data` values: rows are
     bound from `query` by the server. The exceptions are a `data` block that
@@ -422,14 +456,13 @@ async def save_dashboard_tool(
     # right now. This is one extra Cube query per save, against pre-aggregated
     # cubes (ADR-0024), and it is what stops the library filling with charts
     # that fail the first time someone opens them.
-    data = await _run_query(spec)
+    #
     # The render is kept, not discarded: it is the page the public Dashboards
     # route serves, so validating the spec and producing what visitors see are
     # the same piece of work (`hub_api.library`'s docstring on stored renders).
-    html = _render(spec, data)
+    html, _data = await render_from_spec(spec)
 
-    topics = await _topics_for(spec)
-    await _publish_to_catalog(spec, topics)
+    topics = await file_in_catalog(spec)
 
     # `engine` is synchronous SQLAlchemy inside an async route — off the loop,
     # since this handler is already `async` for the Cube call above and must
@@ -443,6 +476,15 @@ async def save_dashboard_tool(
             409,
             f"The dashboard library is full ({exc} saved). Save over an existing "
             "dashboard by reusing its name, or ask the user which one to remove.",
+        ) from exc
+    except library.LibraryOwned as exc:
+        # A person published that name from the builder, and overwriting it is
+        # theirs to do (`hub_api.library.save`). Nothing to retry except the
+        # name, so the message says exactly that.
+        raise HTTPException(
+            409,
+            f"{exc} is a dashboard a user published themselves, so it cannot be "
+            "saved over from here. Pick a different name.",
         ) from exc
 
     log.info(

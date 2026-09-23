@@ -48,9 +48,7 @@ export interface TopicDetail {
  * cannot go stale, a rendered picture of it can. `query` is here because the
  * card shows it; it is what the numbers are traceable to.
  *
- * `source` is "chat" for a dashboard the assistant saved and "curated" for one
- * of ours. Neither is trusted more than the other — both are the same
- * validated spec — it is there so a reader knows where a chart came from. */
+ * `source` says who published it — see the field's own comment below. */
 export interface Dashboard {
   id: number;
   /** The kebab-case key it was saved under — also its URL. */
@@ -60,7 +58,11 @@ export interface Dashboard {
   caption: string | null;
   topics: string[];
   featured: boolean;
-  source: "chat" | "curated";
+  /** "chat" (the agent saved it), "user" (someone published it from the
+   * builder) or "curated" (ours). None is trusted more than another — all
+   * three are the same validated spec — it is there so a reader knows where a
+   * chart came from. */
+  source: "chat" | "curated" | "user";
   query: Record<string, unknown>;
   upvotes: number;
   downvotes: number;
@@ -84,6 +86,100 @@ export interface Dashboard {
 export const dashboardHtmlUrl = (name: string) =>
   `/api/dashboards/${encodeURIComponent(name)}/html`;
 
+/** --- the dashboard builder (`hub_api.builder`) ---------------------------
+ *
+ * Everything below needs a signed-in session: the preview runs a Cube query the
+ * caller composed, and drafts and published lists are scoped server-side to the
+ * session's own email — this app never sends an author identity.
+ *
+ * The unit is YAML text, not a parsed object. A `DashboardSpec` is written and
+ * committed as YAML (`ohdp_agent.dashboard`), every rendered card shows its own
+ * YAML source, and a draft is stored as typed — so the editor can round-trip a
+ * published chart's source without this app needing a YAML parser at all. The
+ * server parses, validates, runs and renders; what comes back is a page.
+ */
+
+/** A draft: private, this author's, and not necessarily valid. `name`/`title`
+ * are read out of the YAML by the server when it parses, and empty when it does
+ * not. */
+export interface DashboardDraft {
+  id: number;
+  name: string;
+  title: string;
+  spec_yaml: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** A drawn-but-unsaved dashboard. `html` is a whole document for a sandboxed
+ * iframe's `srcDoc` — never inserted into this app's own DOM. The row counts
+ * are here because the picture cannot show that it was truncated. */
+export interface DashboardPreview {
+  name: string;
+  title: string;
+  html: string;
+  row_count: number;
+  truncated: boolean;
+}
+
+export interface PublishResult {
+  name: string;
+  title: string;
+  /** False when this replaced the author's own dashboard of the same name. */
+  created: boolean;
+  topics: string[];
+  url: string;
+}
+
+/** One cube's members, as the field-reference panel lists them — the same
+ * `/meta` the chat agent's `list_metrics` reads, so what you can write in a
+ * spec is exactly what the agent can ask for. */
+export interface CubeRef {
+  name: string;
+  title: string;
+  description: string;
+  measures: { name: string; title: string; description: string; agg_type: string }[];
+  dimensions: { name: string; title: string; description: string; type: string }[];
+}
+
+/** Draw a spec without saving it. Rejections are 4xx with a readable `detail`
+ * — a YAML syntax error, a field path pydantic rejected, or the semantic
+ * layer's own message about a member that does not exist — so the editor shows
+ * the server's reason rather than inventing one. */
+export const previewDashboard = (specYaml: string) =>
+  sendJson<DashboardPreview>("/api/builder/preview", "POST", { spec_yaml: specYaml });
+
+export const fetchDrafts = () => getJson<DashboardDraft[]>("/api/builder/drafts");
+export const createDraft = (specYaml: string) =>
+  sendJson<DashboardDraft>("/api/builder/drafts", "POST", { spec_yaml: specYaml });
+export const updateDraft = (id: number, specYaml: string) =>
+  sendJson<DashboardDraft>(`/api/builder/drafts/${id}`, "PUT", { spec_yaml: specYaml });
+export const deleteDraft = (id: number) =>
+  sendJson<{ ok: true }>(`/api/builder/drafts/${id}`, "DELETE");
+
+/** Publish to the **public** library, under the spec's own `name`. Overwrites
+ * your own dashboard of that name (keeping its votes); 409 for a name someone
+ * else — or the chat agent — published. */
+export const publishDashboard = (specYaml: string) =>
+  sendJson<PublishResult>("/api/builder/publish", "POST", { spec_yaml: specYaml });
+
+/** An author's own published dashboard: a public entry plus the source of it.
+ *
+ * `spec_yaml` is what makes correcting one possible — the spec goes back into
+ * the editor and is published again under the same name, replacing the row and
+ * keeping its votes. It is `null` only for a stored spec this deployment can no
+ * longer revalidate, and absent entirely from the public listing. */
+export interface MyDashboard extends Dashboard {
+  spec_yaml: string | null;
+}
+
+/** The dashboards this session's user published, including any voted below the
+ * hide threshold: they have dropped off the public page, and their author is
+ * who can republish them fixed. */
+export const fetchMyDashboards = () => getJson<MyDashboard[]>("/api/builder/published");
+
+export const fetchCubes = () => getJson<CubeRef[]>("/api/semantic/cubes");
+
 export interface LiteratureItem {
   id: number;
   title: string;
@@ -97,9 +193,27 @@ export interface LiteratureItem {
   trending: boolean;
 }
 
+/** The error a failed request should throw.
+ *
+ * FastAPI puts the reason in `detail`, and for some routes that reason is the
+ * whole point of the response: the builder's 422 names the YAML line or the
+ * spec field to fix, and its 400 carries the semantic layer's own message about
+ * a member that does not exist. Showing "failed: 422" instead would mean the
+ * page knows why and refuses to say. Falls back to the status for a response
+ * with no JSON body (a proxy error page, a 502 from the ingress). */
+async function failure(path: string, response: Response): Promise<Error> {
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === "string" && body.detail) return new Error(body.detail);
+  } catch {
+    // Not JSON. The status line is all there is.
+  }
+  return new Error(`${path} failed: ${response.status}`);
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin" });
-  if (!response.ok) throw new Error(`${path} failed: ${response.status}`);
+  if (!response.ok) throw await failure(path, response);
   return (await response.json()) as T;
 }
 
@@ -205,7 +319,7 @@ export interface ThreadDetail extends ThreadSummary {
 
 async function sendJson<T>(
   path: string,
-  method: "POST" | "PATCH" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown,
 ): Promise<T> {
   const response = await fetch(path, {
@@ -214,7 +328,7 @@ async function sendJson<T>(
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${method} ${path} failed: ${response.status}`);
+  if (!response.ok) throw await failure(`${method} ${path}`, response);
   return (await response.json()) as T;
 }
 

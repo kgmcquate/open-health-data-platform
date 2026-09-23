@@ -4,7 +4,7 @@ This is docs/chatbot.md §5's "validated chart spec" path. One property drives
 every decision in here:
 
   - **The model writes the Vega-Lite, but never the data.** A `DashboardSpec` carries a
-    `CubeQuery` and a `vega` spec — anything Vega-Lite accepts (`mark`,
+    `CubeQuery` and a `vega_lite` spec — anything Vega-Lite accepts (`mark`,
     `encoding`, `transform`, `layer`, `params`, ...). The one thing it may not
     author is literal data: a `data` block is allowed only as a remote `url`
     reference (a choropleth's basemap geometry), and literal `values` are
@@ -68,7 +68,7 @@ ColumnKey = Annotated[str, Field(pattern=COLUMN_RE.pattern, max_length=192)]
 
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
-# Where in a `vega` spec the Cube rows land, as a JSONPath:
+# Where in a `vega_lite` spec the Cube rows land, as a JSONPath:
 # `$.transform[0].from.data.values` for a choropleth whose geography is a
 # top-level `data.url`. The default is the top-level `$.data.values`.
 DEFAULT_DATA_PATH = "$.data.values"
@@ -107,7 +107,7 @@ def _assert_data_is_url_only(data: Any) -> None:
         if data == {"values": []}:
             return
     raise ValueError(
-        "a panel's `vega` spec must not carry literal `data` values — a "
+        "a panel's `vega_lite` spec must not carry literal `data` values — a "
         "`data` block is allowed only as a remote reference of the form "
         '`{"url": "...", "format": ...}` (e.g. a choropleth basemap) or an '
         'empty placeholder `{"values": []}` for the rows `data_path` will '
@@ -134,7 +134,7 @@ def _assert_no_data(node: Any) -> None:
 
 
 def _no_data(spec: dict[str, Any]) -> dict[str, Any]:
-    """`AfterValidator` for `VegaSpec`: allow everything but literal `data`."""
+    """`AfterValidator` for `VegaLiteSpec`: allow everything but literal `data`."""
     _assert_no_data(spec)
     return spec
 
@@ -202,7 +202,7 @@ def _assert_vega_lite_transforms(node: Any) -> None:
 # `transform`, `layer`, `params`, `resolve` — and a `data` block only as a
 # remote `url` reference (see above). Rows are still attached by `bind_data`
 # from the panel's query.
-VegaSpec = Annotated[dict[str, Any], AfterValidator(_no_data)]
+VegaLiteSpec = Annotated[dict[str, Any], AfterValidator(_no_data)]
 
 
 class DashboardSpec(_Strict):
@@ -212,9 +212,9 @@ class DashboardSpec(_Strict):
     title: str = Field(min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=800)
     query: CubeQuery
-    # The agent's Vega-Lite spec, minus its data (see `VegaSpec`).
-    vega: VegaSpec
-    # Where `bind_data` attaches the query's rows, as a JSONPath into `vega` —
+    # The agent's Vega-Lite spec, minus its data (see `VegaLiteSpec`).
+    vega_lite: VegaLiteSpec
+    # Where `bind_data` attaches the query's rows, as a JSONPath into `vega_lite` —
     # `$.transform[0].from.data.values` for a choropleth whose geography is a
     # top-level `data.url`. The default is the top-level `$.data.values`.
     data_path: Annotated[str, AfterValidator(_valid_data_path)] = DEFAULT_DATA_PATH
@@ -381,7 +381,7 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
     *that* remote source — a GeoJSON/TopoJSON feature's `id`/`properties.*`,
     never a Cube column — so resolving or requiring them against `columns`
     would be wrong in exactly the way `properties.*` was wrong in `encoding`.
-    `VegaSpec`'s validator already guarantees `from.data` is either that exact
+    `VegaLiteSpec`'s validator already guarantees `from.data` is either that exact
     `{"url": ..., "format": ...}` shape or the `{"values": []}` placeholder, so
     the two are told apart the same way here.
     """
@@ -542,7 +542,7 @@ def _row_placeholders(node: Any, path: str = "$") -> list[tuple[str, dict[str, A
 def _assert_data_path_binds_rows(spec: dict[str, Any], data_path: str) -> None:
     """Reject a `data_path` that puts the rows anywhere but at the rows' spot.
 
-    `VegaSpec` already guarantees that every `data` block in the spec is one of
+    `VegaLiteSpec` already guarantees that every `data` block in the spec is one of
     two things — a remote `{"url": ..., "format": ...}` geometry reference, or
     the empty `{"values": []}` placeholder — so this only has to check that
     `data_path` picked the second kind. Both ways of getting it wrong are
@@ -629,14 +629,14 @@ def _inject_values(spec: Any, data_path: str, rows: list[dict[str, Any]]) -> Non
 
 
 def bind_data(
-    spec: VegaSpec,
+    spec: VegaLiteSpec,
     rows: list[dict[str, Any]],
     columns: list[str],
     data_path: str = DEFAULT_DATA_PATH,
 ) -> dict[str, Any]:
     """Bind the Cube rows into an authorable Vega-Lite spec.
 
-    The agent's `vega` spec may carry a remote `data.url` reference (rejected
+    The agent's `vega_lite` spec may carry a remote `data.url` reference (rejected
     at parse time unless it is exactly that), but never `values`; this is the
     only place rows are attached, always as `data.values` — never a dataset
     name — so the numbers still come only from the Cube query. The default
@@ -892,7 +892,7 @@ def render_html(spec: DashboardSpec, data: ChartData) -> str:
     columns = columns_of(data.rows)
     rows = data.rows[:RENDER_ROW_CAP]
 
-    vega_spec = bind_data(spec.vega, rows, columns, spec.data_path)
+    vega_spec = bind_data(spec.vega_lite, rows, columns, spec.data_path)
     chart_html = '<div class="chart" id="chart"></div>'
 
     footnote = f"{data.row_count:,} rows"

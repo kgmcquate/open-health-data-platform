@@ -31,6 +31,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from hub_api import db
 from hub_api.auth import router as auth_router
+from hub_api.builder import router as builder_router
 from hub_api.chat import router as chat_router
 from hub_api.content import ensure_columns_and_indexes
 from hub_api.content import router as content_router
@@ -118,6 +119,13 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(content_router)
+# The builder's own routes (`hub_api.builder`): preview, drafts, publish, and
+# the semantic-layer reference the editor's field panel reads. On the hub's own
+# app rather than the `/tools` sub-app below, because these are the browser's
+# routes and must NOT become tools the chat model can call — the model already
+# has `render_dashboard`/`save_dashboard`, and a second way in would be one
+# more surface carrying a user's session.
+app.include_router(builder_router)
 
 # Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
 # its own routes. That narrow spec is what the chat model's "ohdp-tools"

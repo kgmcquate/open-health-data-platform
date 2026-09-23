@@ -25,6 +25,13 @@ const HIGHLIGHTS = [
     to: "/chat",
     cta: "Ask a question",
   },
+  // {
+  //   icon: "🛠️",
+  //   title: "Build your own",
+  //   body: "Write a dashboard spec — one metric query plus a Vega-Lite chart — and watch it render as you type. Keep it as a draft, or publish it to the library for everyone.",
+  //   to: "/dashboards/new",
+  //   cta: "Open the builder",
+  // },
   {
     icon: "📚",
     title: "Literature, trend-watched",
@@ -33,6 +40,23 @@ const HIGHLIGHTS = [
     cta: "Find a topic's papers",
   },
 ];
+
+/** What a dashboard spec looks like, for the builder pitch below. Deliberately
+ * the whole thing rather than an excerpt: "it is this short" is the point, and a
+ * spec of this shape is exactly what `/dashboards/new` renders and publishes. */
+const SPEC_SNIPPET = `name: flu-ed-visits-by-week
+title: Flu ED visit share, by week
+query:
+  measures:
+    - ed_visits.avg_percent
+  time_dimensions:
+    - dimension: ed_visits.week_end
+      granularity: week
+vega:
+  mark: line
+  encoding:
+    x: { field: ed_visits.week_end, type: temporal }
+    y: { field: ed_visits.avg_percent, type: quantitative }`;
 
 export default function Home() {
   const topics = useFetch(fetchTopics);
@@ -85,6 +109,45 @@ export default function Home() {
             </div>
           </div>
         ))}
+      </section>
+
+      {/* "Create your own dashboard": the third way a chart gets onto this
+       * platform, after ours and the chatbot's. The snippet is real — a spec
+       * of exactly this shape is what the builder posts, renders and can
+       * publish (`hub_api.builder`) — because the whole pitch is that a
+       * dashboard here is short, readable and reproducible. */}
+      <section className="max-w-6xl mx-auto px-4 pb-12">
+        <div className="card bg-base-200 shadow-sm">
+          <div className="card-body gap-6 lg:grid lg:grid-cols-2 lg:items-center">
+            <div>
+              <h2 className="card-title text-2xl">
+                <span className="text-2xl">🛠️</span> Create your own dashboard
+              </h2>
+              <p className="opacity-80 mt-2">
+                A dashboard here is a <span className="font-semibold">question, not a picture</span>
+                : one query against the semantic layer plus a Vega-Lite spec for drawing its rows.
+                Write one in the browser and it renders live — by the same code that draws every
+                published chart, against the same curated metrics, so the numbers cannot come from
+                anywhere else.
+              </p>
+              <p className="opacity-80 mt-2 text-sm">
+                Save drafts while you work on it, then publish it to the library when it is worth
+                showing — where it sits alongside ours and the chatbot's, and readers vote.
+              </p>
+              <div className="card-actions mt-4">
+                <Link to="/dashboards/new" className="btn btn-primary btn-sm">
+                  Build a dashboard
+                </Link>
+                <Link to="/dashboards" className="btn btn-ghost btn-sm">
+                  See what others published
+                </Link>
+              </div>
+            </div>
+            <pre className="bg-base-300 rounded-box p-4 text-xs overflow-x-auto leading-relaxed">
+              <code>{SPEC_SNIPPET}</code>
+            </pre>
+          </div>
+        </div>
       </section>
 
       {(sampleTopics.length > 0 || featured) && (

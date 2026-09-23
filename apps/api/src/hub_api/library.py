@@ -52,7 +52,7 @@ old table by hand whenever you like.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import (
     JSON,
@@ -120,13 +120,19 @@ dashboards = Table(
     # stale, the render can, and a reader is always told which they are looking
     # at.
     Column("last_rendered", DateTime(timezone=True), nullable=False),
-    # "chat" (an agent save) or "curated" (written by us). Display only —
-    # neither is trusted more than the other, since both are the same
-    # validated spec.
+    # "chat" (an agent save), "user" (published from the builder by a
+    # signed-in person, `hub_api.builder`) or "curated" (written by us).
+    # Display, plus one rule in `save`: a `"user"` save may only replace a row
+    # it already owns, never an unowned one. Who owns a row is `saved_by`, not
+    # this — none of the three is trusted more than another, since all three
+    # are the same validated spec.
     Column("source", String(16), nullable=False, default="curated"),
-    # The signed-in email that saved it, where there was one. NEVER returned
-    # by a public route: `public_rows` builds its own projection rather than
-    # handing back the table's columns for exactly this reason.
+    # The signed-in email that saved it, where there was one — NULL for a
+    # curated row and for the agent saving through the chat surface's own
+    # credential. NEVER returned by a public route: `public_rows` builds its own
+    # projection rather than handing back the table's columns for exactly this
+    # reason. This is the ownership key (`save`, `owner_of`) and what
+    # `rows_saved_by` lists an author their own dashboards by.
     Column("saved_by", String(320), nullable=True),
     # Consumer-aligned OpenMetadata domain names, resolved from the query's
     # cubes at save time. A plain JSON list, filtered in Python like
@@ -241,7 +247,7 @@ def public_rows(
     top, the crowd sorts the rest, and a tie goes to the newer dashboard rather
     than to whichever row the database happened to return first.
 
-    The query is included; the `vega` spec is not. A list of specs is only
+    The query is included; the `vega_lite` spec is not. A list of specs is only
     useful once its rows are bound, which is what the per-dashboard data route
     does — see `hub_api.content`.
     """
@@ -341,6 +347,56 @@ def names(engine: Engine, *, limit: int | None = None) -> list[str]:
         return [str(value) for value in connection.execute(statement).scalars()]
 
 
+def owner_of(engine: Engine, name: str) -> str | None | Literal[False]:
+    """Who owns the named dashboard: their address, `None` for ours and the
+    agent's, or `False` when no dashboard has that name.
+
+    Three answers rather than two, because the caller has to tell "free to
+    publish" from "published by nobody in particular" — a person may take the
+    first and not the second. The one read in this module that returns
+    `saved_by`, and the reason it exists: `hub_api.builder` has to know whether
+    a name is theirs before spending a Cube query to find out. No route returns
+    it; the builder compares it against the signed-in author (see `save`'s
+    ownership rule) and answers yes or no.
+    """
+    statement = select(dashboards.c.saved_by).where(dashboards.c.name == name)
+    with engine.connect() as connection:
+        row = connection.execute(statement).first()
+    if row is None:
+        return False
+    return row.saved_by
+
+
+def rows_saved_by(engine: Engine, author_email: str) -> list[dict[str, Any]]:
+    """The published dashboards this author saved, newest edit first.
+
+    Shaped like a `public_rows` entry, because it feeds the same card — plus
+    `hidden`, which is already in `_summary` and is the whole point of showing
+    an author their own list: a dashboard voted below `HIDE_AT_SCORE` has
+    dropped off the public page, and its author is the person who can fix it.
+    """
+    statement = (
+        select(dashboards)
+        .where(dashboards.c.saved_by == author_email)
+        .order_by(dashboards.c.updated_at.desc(), dashboards.c.id.desc())
+    )
+    with engine.connect() as connection:
+        rows = list(connection.execute(statement))
+        votes = _my_votes(connection, [int(row.id) for row in rows], author_email)
+
+    listed = []
+    for row in rows:
+        entry = _summary(row)
+        entry["query"] = dict(row.spec).get("query", {})
+        entry["my_vote"] = votes.get(int(row.id), 0)
+        # The full spec, unlike `public_rows` — this is the author's own work
+        # coming back to them, and without it "republish this, fixed" would mean
+        # rewriting the Vega-Lite from the picture.
+        entry["spec"] = dict(row.spec)
+        listed.append(entry)
+    return listed
+
+
 def index(engine: Engine) -> list[dict[str, Any]]:
     """Every dashboard, specs omitted — what `get_dashboard` lists to the agent.
     Includes hidden ones, with their scores, for the same reason `by_name` does."""
@@ -354,6 +410,11 @@ def index(engine: Engine) -> list[dict[str, Any]]:
 
 class LibraryFull(RuntimeError):
     """The library is at `MAX_DASHBOARDS` and this save would add another."""
+
+
+class LibraryOwned(RuntimeError):
+    """This name is already someone's published dashboard, and this save is not
+    theirs to make. Carries the name, for the message the caller shows."""
 
 
 def save(
@@ -380,6 +441,26 @@ def save(
     name is supposed to mean "this same chart" (see `save_dashboard`'s own
     guidance to the model).
 
+    **Whose overwrite, though.** A name is a flat, shared namespace, so "saving
+    under an existing name replaces it" was a harmless rule while the only
+    savers were us and the chat agent. It is not harmless now that anyone
+    signed in can publish from the builder (`hub_api.builder`): it would let
+    the next author quietly replace a chart someone else published, and keep
+    the votes it earned. So an overwrite has to be the owner's, and `saved_by`
+    — not `source` — is who that is:
+
+      - A row with a `saved_by` may only be replaced by a save carrying that
+        same address. Channel is irrelevant: a dashboard someone published from
+        the builder and one the agent saved *for* them in a signed-in chat are
+        equally theirs, and either way they can correct it.
+      - A row with no `saved_by` is ours or the agent's, and only we and the
+        agent (`source` other than `"user"`) may replace it. A person
+        republishing over one would be taking a curated dashboard's name and
+        its votes.
+
+    Anything else raises `LibraryOwned`. The caller turns it into "pick a
+    different name", which is the only fix.
+
     `html` is the page the caller has just rendered from this exact spec — a
     save cannot happen without one, because `save_dashboard` renders to
     validate anyway and throwing that render away only to redo it on the first
@@ -392,8 +473,18 @@ def save(
     payload = spec.model_dump(mode="json", exclude_defaults=True)
     with engine.begin() as connection:
         existing = connection.execute(
-            select(dashboards.c.id).where(dashboards.c.name == spec.name)
+            select(dashboards.c.id, dashboards.c.source, dashboards.c.saved_by).where(
+                dashboards.c.name == spec.name
+            )
         ).first()
+        # Not this row's owner: refused, unless the row has no owner at all and
+        # this save is not a person's — see the docstring.
+        if (
+            existing is not None
+            and existing.saved_by != saved_by
+            and (existing.saved_by is not None or source == "user")
+        ):
+            raise LibraryOwned(spec.name)
         if existing is None:
             total = int(
                 connection.execute(select(func.count()).select_from(dashboards)).scalar_one()

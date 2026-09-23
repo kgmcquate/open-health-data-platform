@@ -9,6 +9,7 @@ import Topics from "./pages/Topics";
 const TopicDetail = lazy(() => import("./pages/TopicDetail"));
 const Dashboards = lazy(() => import("./pages/Dashboards"));
 const DashboardDetail = lazy(() => import("./pages/DashboardDetail"));
+const DashboardBuilder = lazy(() => import("./pages/DashboardBuilder"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Search = lazy(() => import("./pages/Search"));
@@ -30,6 +31,10 @@ export default function App() {
             <Route path="/topics" element={<Topics />} />
             <Route path="/topics/:name" element={<TopicDetail />} />
             <Route path="/dashboards" element={<Dashboards />} />
+            {/* Listed before `:name` to read in the intended order — router
+             * ranking already prefers the static segment over the dynamic one,
+             * so "new" is the builder and never a dashboard to look up. */}
+            <Route path="/dashboards/new" element={<DashboardBuilder />} />
             <Route path="/dashboards/:name" element={<DashboardDetail />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/search" element={<Search />} />

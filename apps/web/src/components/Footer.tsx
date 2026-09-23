@@ -4,9 +4,8 @@ export default function Footer() {
       <aside>
         <p className="font-bold">Open Health Data Platform</p>
         <p className="max-w-md text-sm opacity-80">
-          Population-level figures from public data. Not clinical decision
-          support — always consult a qualified professional for medical
-          questions.
+          Population-level figures from public data.
+          Content is for information only, not medical advice.
         </p>
       </aside>
       <nav>

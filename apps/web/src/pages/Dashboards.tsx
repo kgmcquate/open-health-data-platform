@@ -327,14 +327,24 @@ export default function Dashboards() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
-      <h1 className="text-4xl font-bold mb-2">Dashboards</h1>
+      <div className="flex items-end justify-between gap-4 mb-2 flex-wrap">
+        <h1 className="text-4xl font-bold">Dashboards</h1>
+        {/* The third way a chart gets onto this page, next to ours and the
+         * agent's: someone writing the spec themselves (`/dashboards/new`). */}
+        <Link to="/dashboards/new" className="btn btn-primary btn-sm">
+          Create your own
+        </Link>
+      </div>
 
       {loading && <span className="loading loading-spinner loading-lg" />}
       {error && <div className="alert alert-error">{error}</div>}
       {shown && shown.length === 0 && (
         <div className="alert">
-          No dashboards yet — ask the chatbot to draw something and save it, and
-          it will show up here.
+          No dashboards yet — ask the chatbot to draw something and save it, or{" "}
+          <Link to="/dashboards/new" className="link">
+            write a spec yourself
+          </Link>
+          , and it will show up here.
         </div>
       )}
 

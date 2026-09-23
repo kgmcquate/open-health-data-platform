@@ -42,7 +42,7 @@ SPEC: dict[str, Any] = {
         "measures": ["ed_visits.avg_percent"],
         "time_dimensions": [{"dimension": "ed_visits.week_end", "granularity": "week"}],
     },
-    "vega": {
+    "vega_lite": {
         "mark": "line",
         "encoding": {
             "x": {"field": "ed_visits.week_end", "type": "temporal"},
@@ -99,7 +99,7 @@ def test_yaml_omits_unset_defaults() -> None:
 
 
 def test_a_vega_spec_may_not_carry_literal_data() -> None:
-    """`data.values` is the hole a `vega` passthrough would open.
+    """`data.values` is the hole a `vega_lite` passthrough would open.
 
     Literal `values` in a `data` block are smuggled numbers — the chart claims
     its rows came from Cube while drawing whatever the model wrote — so they
@@ -110,8 +110,8 @@ def test_a_vega_spec_may_not_carry_literal_data() -> None:
         DashboardSpec.model_validate(
             {
                 **SPEC,
-                "vega": {
-                    **SPEC["vega"],
+                "vega_lite": {
+                    **SPEC["vega_lite"],
                     "data": {"values": [{"ed_visits.avg_percent": 7}]},
                 },
             }
@@ -123,8 +123,8 @@ def test_a_remote_data_url_is_allowed() -> None:
     spec = DashboardSpec.model_validate(
         {
             **SPEC,
-            "vega": {
-                **SPEC["vega"],
+            "vega_lite": {
+                **SPEC["vega_lite"],
                 "data": {
                     "url": "https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json",
                     "format": {"type": "topojson", "feature": "states"},
@@ -132,7 +132,7 @@ def test_a_remote_data_url_is_allowed() -> None:
             },
         }
     )
-    assert "url" in spec.vega["data"]
+    assert "url" in spec.vega_lite["data"]
 
 
 def test_an_empty_data_values_placeholder_is_allowed() -> None:
@@ -142,8 +142,8 @@ def test_an_empty_data_values_placeholder_is_allowed() -> None:
         {
             **SPEC,
             "data_path": "$.transform[0].from.data.values",
-            "vega": {
-                **SPEC["vega"],
+            "vega_lite": {
+                **SPEC["vega_lite"],
                 "transform": [
                     {
                         "lookup": "id",
@@ -157,7 +157,7 @@ def test_an_empty_data_values_placeholder_is_allowed() -> None:
             },
         }
     )
-    assert spec.vega["transform"][0]["from"]["data"] == {"values": []}
+    assert spec.vega_lite["transform"][0]["from"]["data"] == {"values": []}
 
 
 def test_a_nested_literal_data_block_is_rejected_too() -> None:
@@ -166,7 +166,7 @@ def test_a_nested_literal_data_block_is_rejected_too() -> None:
         DashboardSpec.model_validate(
             {
                 **SPEC,
-                "vega": {
+                "vega_lite": {
                     "layer": [
                         {
                             "mark": "line",
@@ -189,7 +189,7 @@ def test_transform_and_params_are_allowed() -> None:
     spec = DashboardSpec.model_validate(
         {
             **SPEC,
-            "vega": {
+            "vega_lite": {
                 "transform": [{"filter": "datum['ed_visits.avg_percent'] > 0"}],
                 "params": [{"name": "cutoff", "value": 0}],
                 "mark": "line",
@@ -200,7 +200,7 @@ def test_transform_and_params_are_allowed() -> None:
             },
         }
     )
-    assert spec.vega["transform"][0]["filter"] == "datum['ed_visits.avg_percent'] > 0"
+    assert spec.vega_lite["transform"][0]["filter"] == "datum['ed_visits.avg_percent'] > 0"
 
 
 # --- binding rows to the authored Vega-Lite --------------------------------
@@ -208,7 +208,7 @@ def test_transform_and_params_are_allowed() -> None:
 
 def test_cube_columns_are_escaped_for_vega() -> None:
     """The silent-empty-chart bug: an unescaped dot is a nested-field lookup."""
-    spec = bind_data(_spec().vega, ROWS, list(ROWS[0]))
+    spec = bind_data(_spec().vega_lite, ROWS, list(ROWS[0]))
     assert spec["encoding"]["y"]["field"] == "ed_visits\\.avg_percent"
 
 
@@ -224,7 +224,7 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
         {
             **SPEC,
             "data_path": "$.transform[0].from.data.values",
-            "vega": {
+            "vega_lite": {
                 "width": 500,
                 "height": 300,
                 "data": {
@@ -249,7 +249,7 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
             },
         }
     )
-    bound = bind_data(spec.vega, rows, list(rows[0]), spec.data_path)
+    bound = bind_data(spec.vega_lite, rows, list(rows[0]), spec.data_path)
     assert bound["data"]["url"]  # the geometry reference survives
     assert "values" not in bound["data"]
     from_clause = bound["transform"][0]["from"]
@@ -271,7 +271,7 @@ def test_a_geojson_feature_property_is_not_mistaken_for_a_cube_column() -> None:
     against the query's columns always fails since no cube is named
     `properties`. It must be left untouched, the same as `datum.`/`parent.`."""
     rows = [{"ed_visits.state_name": "Ohio", "ed_visits.avg_percent": 3.1}]
-    vega = {
+    vega_lite = {
         "data": {"url": "https://example.com/us-states.json", "format": {"type": "json"}},
         "transform": [
             {
@@ -290,7 +290,7 @@ def test_a_geojson_feature_property_is_not_mistaken_for_a_cube_column() -> None:
             {"field": "ed_visits.avg_percent", "type": "quantitative"},
         ],
     }
-    bound = bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
+    bound = bind_data(vega_lite, rows, list(rows[0]), "$.transform[0].from.data.values")
     assert bound["transform"][0]["lookup"] == "properties.name"
     assert bound["tooltip"][0]["field"] == "properties.name"
     assert bound["tooltip"][1]["field"] == "ed_visits\\.avg_percent"
@@ -306,7 +306,7 @@ def test_a_lookup_against_a_remote_basemap_is_left_alone() -> None:
     in `encoding`, just one level deeper. `from.data` carrying a `url` is what
     tells the two kinds of lookup apart."""
     rows = [{"ed_visits.state_name": "Ohio", "ed_visits.avg_percent": 3.1}]
-    vega = {
+    vega_lite = {
         "data": {"values": []},
         "transform": [
             {
@@ -328,7 +328,7 @@ def test_a_lookup_against_a_remote_basemap_is_left_alone() -> None:
             "color": {"field": "ed_visits.avg_percent", "type": "quantitative"},
         },
     }
-    bound = bind_data(vega, rows, list(rows[0]))
+    bound = bind_data(vega_lite, rows, list(rows[0]))
     from_clause = bound["transform"][0]["from"]
     assert from_clause["key"] == "properties.name"
     assert from_clause["fields"] == ["id", "properties"]
@@ -349,7 +349,7 @@ def test_bare_lookup_names_resolve_and_keep_the_models_own_field_names() -> None
             "immunization.avg_coverage_pct": 55.3,
         }
     ]
-    vega = {
+    vega_lite = {
         "data": {"url": "https://example.com/us.json", "format": {"type": "topojson"}},
         "transform": [
             {
@@ -364,7 +364,7 @@ def test_bare_lookup_names_resolve_and_keep_the_models_own_field_names() -> None
         "mark": "geoshape",
         "encoding": {"color": {"field": "avg_coverage_pct", "type": "quantitative"}},
     }
-    bound = bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
+    bound = bind_data(vega_lite, rows, list(rows[0]), "$.transform[0].from.data.values")
     from_clause = bound["transform"][0]["from"]
     assert from_clause["key"] == "immunization\\.fips"
     assert from_clause["fields"] == ["immunization\\.avg_coverage_pct", "immunization\\.geography"]
@@ -377,13 +377,13 @@ def test_bare_lookup_names_resolve_and_keep_the_models_own_field_names() -> None
 def test_an_unresolvable_lookup_key_fails_with_the_reason() -> None:
     """A name matching no column at all — a genuine typo — still raises."""
     rows = [{"ed_visits.fips": "06"}]
-    vega = {
+    vega_lite = {
         "data": {"url": "https://example.com/us.json", "format": {"type": "topojson"}},
         "transform": [{"lookup": "id", "from": {"key": "not_a_real_column", "fields": []}}],
         "mark": "geoshape",
     }
     with pytest.raises(ValueError, match="column 'not_a_real_column' is not in the query result"):
-        bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
+        bind_data(vega_lite, rows, list(rows[0]), "$.transform[0].from.data.values")
 
 
 def test_a_lookup_without_fields_fails_with_the_reason() -> None:
@@ -399,7 +399,7 @@ def test_a_lookup_without_fields_fails_with_the_reason() -> None:
             "chronic_disease.avg_age_adjusted_prevalence": 33.4,
         }
     ]
-    vega = {
+    vega_lite = {
         "data": {"url": "https://example.com/us-states.json", "format": {"type": "topojson"}},
         "transform": [
             {"lookup": "properties.name", "from": {"data": {"values": []}, "key": "state_name"}}
@@ -407,7 +407,7 @@ def test_a_lookup_without_fields_fails_with_the_reason() -> None:
         "mark": "geoshape",
     }
     with pytest.raises(ValueError, match="from.fields"):
-        bind_data(vega, rows, list(rows[0]), "$.transform[0].from.data.values")
+        bind_data(vega_lite, rows, list(rows[0]), "$.transform[0].from.data.values")
 
 
 def test_a_vega_transform_in_a_vega_lite_spec_fails_with_the_reason() -> None:
@@ -415,7 +415,7 @@ def test_a_vega_transform_in_a_vega_lite_spec_fails_with_the_reason() -> None:
     Vega-Lite identifies a step by its own key and has no `type` discriminator,
     so vega-lite rejects the step in the browser and the card comes back empty
     — with a 200 on this side, where nothing is left to notice it."""
-    vega = {
+    vega_lite = {
         "transform": [
             {"type": "formula", "expr": "+datum.rate", "as": "rate_num"},
         ],
@@ -423,13 +423,13 @@ def test_a_vega_transform_in_a_vega_lite_spec_fails_with_the_reason() -> None:
         "encoding": {"y": {"field": "rate_num", "type": "quantitative"}},
     }
     with pytest.raises(ValueError, match="names no Vega-Lite transform"):
-        bind_data(vega, ROWS, list(ROWS[0]))
+        bind_data(vega_lite, ROWS, list(ROWS[0]))
 
 
 def test_the_vega_lite_transforms_a_chart_actually_uses_are_accepted() -> None:
     """The guard must not fail a spec that would have drawn: a false reject
     here costs a chart, which is worse than the silent blank it prevents."""
-    vega = {
+    vega_lite = {
         "transform": [
             {"calculate": "datum['ed_visits.avg_percent'] * 2", "as": "doubled"},
             {"filter": "datum.doubled > 0"},
@@ -440,7 +440,7 @@ def test_the_vega_lite_transforms_a_chart_actually_uses_are_accepted() -> None:
         "mark": "bar",
         "encoding": {"y": {"field": "doubled", "type": "quantitative"}},
     }
-    bind_data(vega, ROWS, list(ROWS[0]))
+    bind_data(vega_lite, ROWS, list(ROWS[0]))
 
 
 def _choropleth(data_path: str | None = None) -> dict[str, object]:
@@ -448,7 +448,7 @@ def _choropleth(data_path: str | None = None) -> dict[str, object]:
     by a `lookup` whose `from.data` is the `{"values": []}` placeholder."""
     spec: dict[str, object] = {
         **SPEC,
-        "vega": {
+        "vega_lite": {
             "data": {
                 "url": "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json",
                 "format": {"type": "topojson", "feature": "states"},
@@ -484,7 +484,7 @@ def test_rows_are_never_bound_onto_the_basemap_geometry() -> None:
     spec = DashboardSpec.model_validate(_choropleth())
     assert spec.data_path == DEFAULT_DATA_PATH
     with pytest.raises(ValueError, match="basemap geometry") as excinfo:
-        bind_data(spec.vega, ROWS, list(ROWS[0]), spec.data_path)
+        bind_data(spec.vega_lite, ROWS, list(ROWS[0]), spec.data_path)
     assert "'$.transform[0].from.data.values'" in str(excinfo.value)
 
 
@@ -492,7 +492,7 @@ def test_an_unbound_row_placeholder_fails_rather_than_drawing_empty() -> None:
     """The other half of the same mistake: rows bound somewhere real, but not at
     the placeholder the `lookup` joins from. That join runs against `[]` — valid
     Vega-Lite, a map with every value missing, and no error anywhere."""
-    vega = {
+    vega_lite = {
         "transform": [
             {
                 "lookup": "ed_visits.week_end",
@@ -507,21 +507,21 @@ def test_an_unbound_row_placeholder_fails_rather_than_drawing_empty() -> None:
         "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
     }
     with pytest.raises(ValueError, match="row placeholder") as excinfo:
-        bind_data(vega, ROWS, list(ROWS[0]), DEFAULT_DATA_PATH)
+        bind_data(vega_lite, ROWS, list(ROWS[0]), DEFAULT_DATA_PATH)
     assert "'$.transform[0].from.data.values'" in str(excinfo.value)
 
 
 def test_a_choropleth_with_the_right_data_path_still_binds() -> None:
     """The checks above must not cost the spec that was written correctly."""
     spec = DashboardSpec.model_validate(_choropleth("$.transform[0].from.data.values"))
-    bound = bind_data(spec.vega, ROWS, list(ROWS[0]), spec.data_path)
+    bound = bind_data(spec.vega_lite, ROWS, list(ROWS[0]), spec.data_path)
     assert "values" not in bound["data"]
     assert bound["transform"][0]["from"]["data"] == {"values": ROWS}
 
 
 def test_a_data_path_that_leads_nowhere_fails_with_the_reason() -> None:
     with pytest.raises(ValueError, match="does not name an existing part"):
-        bind_data(_spec().vega, ROWS, list(ROWS[0]), "$.transform[0].from.data.values")
+        bind_data(_spec().vega_lite, ROWS, list(ROWS[0]), "$.transform[0].from.data.values")
 
 
 def test_an_invalid_data_path_is_rejected_at_validation() -> None:
@@ -531,14 +531,14 @@ def test_an_invalid_data_path_is_rejected_at_validation() -> None:
 
 def test_data_is_bound_as_values_not_a_url() -> None:
     """The rows land as `data.values`, never a URL the browser would fetch."""
-    spec = bind_data(_spec().vega, ROWS, list(ROWS[0]))
+    spec = bind_data(_spec().vega_lite, ROWS, list(ROWS[0]))
     assert spec["data"] == {"values": ROWS}
     assert "url" not in spec["data"]
 
 
 def test_a_unit_spec_gets_width_and_autosize_defaults() -> None:
     """A bare {mark, encoding} still renders full-width, like the compiled output."""
-    spec = bind_data(_spec().vega, ROWS, list(ROWS[0]))
+    spec = bind_data(_spec().vega_lite, ROWS, list(ROWS[0]))
     assert spec["width"] == "container"
     assert spec["autosize"] == {"type": "fit", "contains": "padding"}
 
@@ -616,7 +616,7 @@ def test_a_layer_childs_own_size_is_dropped() -> None:
 
 def test_a_transform_output_is_not_escaped() -> None:
     """A dotless field (a transform output) is left alone; only members are escaped."""
-    vega = {
+    vega_lite = {
         "transform": [{"calculate": "datum['ed_visits.avg_percent']", "as": "rate"}],
         "mark": "bar",
         "encoding": {
@@ -624,7 +624,7 @@ def test_a_transform_output_is_not_escaped() -> None:
             "y": {"field": "rate", "type": "quantitative"},
         },
     }
-    spec = bind_data(vega, ROWS, list(ROWS[0]))
+    spec = bind_data(vega_lite, ROWS, list(ROWS[0]))
     assert spec["encoding"]["y"]["field"] == "rate"
     assert spec["encoding"]["x"]["field"] == "ed_visits\\.week_end\\.week"
 
@@ -686,7 +686,7 @@ def test_an_unplottable_spec_raises_rather_than_rendering_silently() -> None:
     spec = DashboardSpec.model_validate(
         {
             **SPEC,
-            "vega": {
+            "vega_lite": {
                 "mark": "line",
                 "encoding": {
                     "x": {"field": "ed_visits.absent", "type": "temporal"},
@@ -708,12 +708,12 @@ def test_row_data_is_escaped_into_the_payload_script() -> None:
 
 
 def test_the_spec_has_nowhere_to_put_rows() -> None:
-    """The property behind "the model supplies a `vega` spec, never data values".
+    """The property behind "the model supplies a `vega_lite` spec, never data values".
 
     It is structural rather than a matter of discipline: a spec is a query plus
-    a `vega` spec, and there is no field a caller can use to smuggle numbers
+    a `vega_lite` spec, and there is no field a caller can use to smuggle numbers
     past Cube — not as a `rows` key (rejected by `extra="forbid"`) and not as a
-    `data` key inside `vega` (rejected by the `VegaSpec` validator). It is also
+    `data` key inside `vega_lite` (rejected by the `VegaLiteSpec` validator). It is also
     what keeps a saved chart from going stale — there is no cached answer in the
     file to go stale.
     """
@@ -789,7 +789,7 @@ def test_an_unplottable_spec_returns_an_error_not_an_embed(
     """
     bad_spec = {
         **SPEC,
-        "vega": {
+        "vega_lite": {
             "mark": "line",
             "encoding": {
                 "x": {"field": "ed_visits.absent", "type": "temporal"},
