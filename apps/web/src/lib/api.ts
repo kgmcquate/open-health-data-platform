@@ -34,15 +34,49 @@ export interface TopicDetail {
   sources: Topic[];
 }
 
-export interface CuratedDashboard {
+/** One published dashboard, as `/api/dashboards` lists it.
+ *
+ * The chart is NOT here: it is a whole HTML page, rendered server-side from
+ * the dashboard's spec and served by `dashboardHtmlUrl` one at a time.
+ * `last_rendered`/`stale` say how old the numbers in that page are — a spec
+ * cannot go stale, a rendered picture of it can. `query` is here because the
+ * card shows it; it is what the numbers are traceable to.
+ *
+ * `source` is "chat" for a dashboard the assistant saved and "curated" for one
+ * of ours. Neither is trusted more than the other — both are the same
+ * validated spec — it is there so a reader knows where a chart came from. */
+export interface Dashboard {
   id: number;
+  /** The kebab-case key it was saved under — also its URL. */
+  name: string;
   title: string;
   description: string;
-  vega: Record<string, unknown>;
-  cube_query: Record<string, unknown>;
+  caption: string | null;
+  topics: string[];
   featured: boolean;
-  created_at: string;
+  source: "chat" | "curated";
+  query: Record<string, unknown>;
+  upvotes: number;
+  downvotes: number;
+  score: number;
+  hidden: boolean;
+  /** When the stored page was last rendered, and whether that is old enough
+   * that viewing it schedules a fresh render server-side. */
+  last_rendered: string | null;
+  stale: boolean;
+  /** This viewer's own vote: 1, -1, or 0 when they have not voted (or are
+   * signed out, who cannot vote at all). */
+  my_vote: number;
+  created_at: string | null;
+  updated_at: string | null;
 }
+
+/** Where a dashboard's rendered page lives. Loaded into a sandboxed iframe by
+ * `src`, never fetched into this app: it is a full HTML document served under
+ * a CSP `sandbox` header, and it has no business running on the hub's own
+ * origin (`hub_api.content`'s `dashboard_html`). */
+export const dashboardHtmlUrl = (name: string) =>
+  `/api/dashboards/${encodeURIComponent(name)}/html`;
 
 export interface LiteratureItem {
   id: number;
@@ -76,7 +110,7 @@ export const fetchTopic = (name: string) =>
   getJson<TopicDetail>(`/api/topics/${encodeURIComponent(name)}`);
 
 export const fetchDashboards = (topic?: string) =>
-  getJson<CuratedDashboard[]>(topic ? `/api/dashboards?topic=${encodeURIComponent(topic)}` : "/api/dashboards");
+  getJson<Dashboard[]>(topic ? `/api/dashboards?topic=${encodeURIComponent(topic)}` : "/api/dashboards");
 export const fetchLiterature = (topic?: string) =>
   getJson<LiteratureItem[]>(topic ? `/api/literature?topic=${encodeURIComponent(topic)}` : "/api/literature");
 
@@ -167,3 +201,9 @@ export const deleteThread = (id: number) => sendJson<{ ok: true }>(`/api/threads
 
 export const submitFeedback = (turnId: number, rating: "positive" | "negative") =>
   sendJson<{ ok: true }>("/api/feedback", "POST", { turn_id: turnId, rating });
+
+/** Vote a dashboard up (1), down (-1), or withdraw the vote (0). Requires a
+ * signed-in session — votes are one per person per dashboard, which only
+ * means anything with a verified identity behind it. */
+export const voteDashboard = (name: string, value: 1 | 0 | -1) =>
+  sendJson<Dashboard>(`/api/dashboards/${encodeURIComponent(name)}/vote`, "POST", { value });

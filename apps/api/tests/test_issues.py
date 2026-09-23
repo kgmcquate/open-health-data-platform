@@ -215,5 +215,7 @@ def test_tool_spec_exposes_only_the_allowlisted_tools(client: TestClient) -> Non
     } == {
         "report_issue",
         "render_dashboard",
+        "save_dashboard",
+        "get_dashboard",
     }
     assert spec["paths"]["/report_issue"]["post"]["operationId"] == "report_issue"

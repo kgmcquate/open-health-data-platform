@@ -306,6 +306,48 @@ browser-side virtual filesystem that nothing reads, so no image ever appeared.
 The rendered card carries its own YAML source, so the spec it drew is always
 readable without the model retyping it.
 
+**The library.** A rendered chart lives for one turn; a *saved* one is a row in
+`dashboards` (`hub_api.library`) and is **published** — the same row the public
+Dashboards page and the topic pages list ([ADR-0028](decisions/0028-agent-published-dashboards-ranked-by-votes.md)).
+Two operations on the same `/tools` app build it up: `save_dashboard` takes
+exactly the spec `render_dashboard` takes and stores it under its kebab-case
+`name`, and `get_dashboard` lists what is saved (no `name`) or returns one
+dashboard's full spec (with a `name`) for the model to pass straight back into
+`render_dashboard`, edited or not. Saving under a name that already exists
+overwrites it — the name is the key, so a re-save is a correction rather than a
+second entry.
+
+Four properties hold this up:
+
+  - **A save is validated by doing.** `save_dashboard` runs the query and
+    renders the chart before it writes anything, so a spec that cannot be drawn
+    never enters the library, and the model gets the same correctable reason a
+    failed render gives it.
+  - **The spec is the source of truth; the page is derived from it.** A row
+    holds the `DashboardSpec` and the HTML page rendered from it
+    (`render_html` — the same document the chat embeds), produced at save time
+    and served as-is by `GET /api/dashboards/{name}/html`, under a CSP
+    `sandbox` header so a model-influenced document never runs on the hub's
+    own origin. Serving a stored page means the Dashboards page is a read from
+    Postgres rather than one Cube query per card; what it costs is freshness,
+    so `last_rendered`/`stale` ride on every listing and a view of a stale page
+    schedules a re-render behind the response (`refresh_render`). The spec
+    cannot go stale, and the page can always be rebuilt from it.
+  - **Votes rank it.** Signed-in readers vote a dashboard up or down (one row
+    per person per dashboard, changeable and withdrawable); `featured` sorts
+    ours to the top, and `library.HIDE_AT_SCORE` drops the disliked off the
+    page. Hiding is a display rule — the agent still reads a hidden dashboard,
+    with its score, so it can fix one rather than reoffer it.
+  - **Topics come from the catalog.** A save maps the query's cubes to their
+    curated tables and asks OpenMetadata which Consumer-aligned domains own
+    them (`DomainsClient.topics_for_tables`), so a dashboard reaches the right
+    topic page because of what it queries. No match means no topic, never a
+    guessed one, and a catalog outage costs the topics, not the save.
+
+The cost of this is stated in §6 and in ADR-0028: a dashboard the agent saved is
+visible before anyone has reviewed it, and its title and caption are the one part
+of it nothing validates.
+
 ## 6. Safety
 
 Mostly inherited from ARCHITECTURE.md §6; what is new to this design is called out.
@@ -325,6 +367,13 @@ Mostly inherited from ARCHITECTURE.md §6; what is new to this design is called 
 - **Decline is a first-class outcome.** "We don't have that at that grain" must be an
   acceptable, well-rendered answer that offers a modelling request (§8), not a failure the
   model tries to paper over.
+- **The agent can publish, as of ADR-0028.** `save_dashboard` puts a dashboard on a public
+  page with no review in front of it. What bounds that is structural — the spec cannot carry
+  data, the query is the same validated `CubeQuery` as everywhere else, and the page
+  re-queries Cube — so the exposure is a real chart with a model-written title, ranked down
+  by votes after the fact. Like ADR-0027's write-back, this is an accepted risk rather than
+  an oversight; unlike it, the blast radius is a page visitors read rather than context the
+  agent feeds itself.
 
 ---
 

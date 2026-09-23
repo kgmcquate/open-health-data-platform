@@ -5,7 +5,7 @@ import {
   fetchLiterature,
   fetchTopic,
   type CatalogAsset,
-  type CuratedDashboard,
+  type Dashboard,
   type LiteratureItem,
   type TopicDetail as TopicDetailData,
 } from "../lib/api";
@@ -99,7 +99,7 @@ export default function TopicDetail() {
   const { name = "" } = useParams<{ name: string }>();
 
   const topic = useFetch<TopicDetailData>(() => fetchTopic(name), [name]);
-  const dashboards = useFetch<CuratedDashboard[]>(() => fetchDashboards(name), [name]);
+  const dashboards = useFetch<Dashboard[]>(() => fetchDashboards(name), [name]);
   const literature = useFetch<LiteratureItem[]>(() => fetchLiterature(name), [name]);
 
   if (topic.loading) {

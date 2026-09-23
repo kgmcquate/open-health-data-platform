@@ -80,6 +80,7 @@ RENDER_ROW_CAP = 500
 # export; it shows the head and says how much it left out.
 TABLE_ROW_CAP = 50
 
+
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -393,9 +394,7 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
                     if isinstance(value.get("key"), str):
                         value["key"] = _resolve_lookup_field(value["key"], columns)
                     fields = value.get("fields")
-                    if not isinstance(fields, list) or not all(
-                        isinstance(f, str) for f in fields
-                    ):
+                    if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
                         raise ValueError(
                             "a `lookup` transform must list `from.fields` — the columns to "
                             "join in by name. Without it Vega-Lite attaches the whole matched "
@@ -471,9 +470,7 @@ def _inject_values(spec: Any, data_path: str, rows: list[dict[str, Any]]) -> Non
     last_idx = match.group("idx")
 
     parents = parse_jsonpath(parent_path).find(spec)
-    if not parents and (
-        parent_path.endswith("['data']") or parent_path.endswith(".data")
-    ):
+    if not parents and (parent_path.endswith("['data']") or parent_path.endswith(".data")):
         # The server owns `data` keys; create the one this path expects.
         holder_match = _TAIL_RE.match(parent_path)
         assert holder_match is not None
@@ -483,9 +480,7 @@ def _inject_values(spec: Any, data_path: str, rows: list[dict[str, Any]]) -> Non
                 holder.value["data"] = {}
         parents = parse_jsonpath(parent_path).find(spec)
     if not parents:
-        raise ValueError(
-            f"`data_path` {data_path!r} does not name an existing part of the spec"
-        )
+        raise ValueError(f"`data_path` {data_path!r} does not name an existing part of the spec")
     for parent in parents:
         if isinstance(parent.value, list):
             parent.value[int(last_idx or last_key or 0)] = rows
@@ -616,6 +611,17 @@ def _theme_config(theme: dict[str, Any]) -> dict[str, Any]:
 _THEME_CONFIG = {"light": _theme_config(_LIGHT), "dark": _theme_config(_DARK)}
 
 
+def theme_config() -> dict[str, Any]:
+    """The Vega `config` per theme, for a caller that binds a spec itself.
+
+    The embed page below merges these at render time; the hub's own Dashboards
+    page (`hub_api.content`'s data route) renders a bound spec in the browser
+    instead and needs the same two configs, or its charts come out in
+    Vega-Lite's default palette rather than this platform's.
+    """
+    return deepcopy(_THEME_CONFIG)
+
+
 # CDN pins, not floating majors. This page renders inside a chat client we do
 # not control, on a machine we do not control; a silent major bump upstream
 # would break every dashboard at once with no deploy on our side.
@@ -701,7 +707,7 @@ def _format_cell(value: Any) -> str:
     return str(value)
 
 
-def _columns_of(rows: list[dict[str, Any]]) -> list[str]:
+def columns_of(rows: list[dict[str, Any]]) -> list[str]:
     """Union of keys across rows, first-seen order.
 
     Cube omits a key from a row whose value is null, so reading only the first
@@ -731,7 +737,7 @@ def render_html(spec: DashboardSpec, data: ChartData) -> str:
     one party that could fix the spec. The caller now decides what to do with
     the failure instead.
     """
-    columns = _columns_of(data.rows)
+    columns = columns_of(data.rows)
     rows = data.rows[:RENDER_ROW_CAP]
 
     vega_spec = bind_data(spec.vega, rows, columns, spec.data_path)

@@ -26,8 +26,9 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type FC } from "react";
+import { useEffect, useState, type FC } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { DashboardEmbed } from "../components/DashboardEmbed";
 import LogoMark from "../components/icons/LogoMark";
 import { useHubChatRuntime, type HubChatRuntime } from "../chat/runtime";
 import {
@@ -314,41 +315,6 @@ function UserMessage() {
         </ActionBarPrimitive.Edit>
       </ActionBarPrimitive.Root>
     </MessagePrimitive.Root>
-  );
-}
-
-// `render_dashboard` (hub_api.dashboards) answers with a full HTML document —
-// Vega loaded from a CDN, the chart's own data table/query in a <details>,
-// and a script that posts its rendered height so this frame can size itself
-// (there is no same-origin access into a sandboxed iframe to measure it
-// directly). `sandbox` omits allow-same-origin for exactly that isolation,
-// but keeps allow-scripts (Vega must run) and allow-popups (the chart's own
-// "..." export menu opens a new tab).
-function DashboardEmbed({ html }: { html: string }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(320);
-
-  useEffect(() => {
-    function onMessage(e: MessageEvent) {
-      if (e.source !== iframeRef.current?.contentWindow) return;
-      const data = e.data as { type?: string; height?: number } | undefined;
-      if (data?.type === "iframe:height" && typeof data.height === "number") {
-        setHeight(Math.max(160, Math.ceil(data.height)));
-      }
-    }
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-
-  return (
-    <iframe
-      ref={iframeRef}
-      srcDoc={html}
-      sandbox="allow-scripts allow-popups"
-      title="Dashboard"
-      className="w-full rounded-box border border-base-300 bg-base-100"
-      style={{ height }}
-    />
   );
 }
 

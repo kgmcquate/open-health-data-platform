@@ -306,3 +306,80 @@ async def test_upstream_sources_is_empty_for_a_table_with_no_lineage() -> None:
     sources = await client.upstream_sources(["snowflake.CURATED.SOME.TABLE"])
 
     assert sources == []
+
+
+# ---------------------------------------------------------------- topics_for_tables
+
+
+async def test_topics_for_tables_matches_a_cube_name_to_its_domain() -> None:
+    """The join behind a saved dashboard's topics: a Cube cube is named for
+    the dbt model it wraps, and that model is a table carrying the domain. The
+    cube name arrives lowercase, the warehouse table is upper-cased — matching
+    has to survive that or every dashboard lands with no topic."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/domains":
+            return httpx.Response(200, json=DOMAINS_PAYLOAD)
+        query_filter = request.url.params["query_filter"]
+        if '"Infectious Disease"' in query_filter:
+            return httpx.Response(200, json=ASSETS_SEARCH_PAYLOAD)
+        return httpx.Response(200, json={"hits": {"hits": []}})
+
+    client = DomainsClient("http://om", "jwt", client=_mock(handler))
+
+    topics = await client.topics_for_tables(["nndss_weekly"])
+
+    assert topics == ["Infectious Disease"]
+
+
+async def test_topics_for_tables_matches_on_the_fqns_last_segment_too() -> None:
+    """OM may carry a friendlier `displayName` than the table's own name; the
+    FQN still ends in the real identifier."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/domains":
+            return httpx.Response(200, json=DOMAINS_PAYLOAD)
+        renamed = {
+            "hits": {
+                "hits": [
+                    {
+                        "_source": {
+                            "id": "e1",
+                            "name": "Weekly NNDSS cases",
+                            "fullyQualifiedName": (
+                                "snowflake.CURATED.INFECTIOUS_DISEASE.NNDSS_WEEKLY"
+                            ),
+                            "entityType": "table",
+                        }
+                    }
+                ]
+            }
+        }
+        return httpx.Response(200, json=renamed)
+
+    client = DomainsClient("http://om", "jwt", client=_mock(handler))
+
+    assert "Infectious Disease" in await client.topics_for_tables(["nndss_weekly"])
+
+
+async def test_an_uncatalogued_cube_gets_no_topic_rather_than_a_guess() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/domains":
+            return httpx.Response(200, json=DOMAINS_PAYLOAD)
+        return httpx.Response(200, json=ASSETS_SEARCH_PAYLOAD)
+
+    client = DomainsClient("http://om", "jwt", client=_mock(handler))
+
+    assert await client.topics_for_tables(["not_a_real_cube"]) == []
+
+
+async def test_topics_for_tables_asks_nothing_when_there_are_no_tables() -> None:
+    """No cubes means no OM round trips at all — a save should not pay for a
+    catalog read it cannot use."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected call to {request.url}")
+
+    client = DomainsClient("http://om", "jwt", client=_mock(handler))
+
+    assert await client.topics_for_tables([]) == []

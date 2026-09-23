@@ -128,6 +128,18 @@ def get_user_email(request: Request) -> str:
     raise HTTPException(401, "Not signed in.")
 
 
+def get_optional_user_email(request: Request) -> str | None:
+    """The same identity, but `None` instead of a 401 when signed out.
+
+    For a public route that shows a *little* more to someone who is signed in —
+    `hub_api.content`'s dashboard listing, which fills in which way the viewer
+    voted. A dependency rather than an inline `request.session` read so the
+    identity rules stay in one module and a test can override it.
+    """
+    user = request.session.get("user")
+    return str(user["email"]) if user and user.get("email") else None
+
+
 @router.get("/me")
 def me(
     user_email: Annotated[str, Depends(get_user_email)],
@@ -282,9 +294,7 @@ async def chat(
     model = body.model
     if not model:
         if not agents:
-            raise HTTPException(
-                503, "The chat agent is not configured (no model API key)."
-            )
+            raise HTTPException(503, "The chat agent is not configured (no model API key).")
         raise HTTPException(400, "A model must be selected. See GET /api/models.")
     config = agents.get(model)
     if config is None:

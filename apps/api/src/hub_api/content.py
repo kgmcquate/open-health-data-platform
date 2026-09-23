@@ -7,11 +7,17 @@ surface later) or by the Dagster pipeline's trending-literature sync
 by the chat agent, so what a topic page shows cannot be influenced by prompt
 injection or an upstream API going strange.
 
-The dashboards here are the curated, published kind. Do not confuse them with
-the chat's `render_dashboard` tool (`hub_api.dashboards`, mounted under
-`/tools`), which draws a throwaway spec into a single chat turn: that one is
-agent-written and never stored, this one is human-written and read by a public
-page.
+**Dashboards are the exception to "never by the chat agent", deliberately.**
+The `dashboards` table (`hub_api.library`, which replaces the orphaned
+`curated_dashboards` this module used to own) is written by the agent's
+`save_dashboard` tool as well as by us, and the routes below publish those
+rows on the Dashboards and topic pages. What replaces the old "we wrote every
+row" guarantee is: a row is a validated `DashboardSpec` — a Cube query plus a
+Vega-Lite spec with no literal data anywhere — rendered by us from that spec,
+and readers vote, with `hub_api.library.HIDE_AT_SCORE` dropping the disliked
+ones off the page. Read that module's docstring for what this does and does
+not protect against before widening it further. Literature and topics keep the
+original property: no user and no agent writes them.
 
 Topics are the exception: that page reads OpenMetadata's own Consumer-aligned
 domains directly (`ohdp_agent.domains`) rather than a table here, so a topic
@@ -36,51 +42,53 @@ pattern as ``OHDP_CUBE_API_SECRET`` — see
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import (
     JSON,
     Boolean,
     Column,
-    DateTime,
     Integer,
     String,
     Table,
-    inspect,
     select,
     text,
     update,
 )
 from sqlalchemy.engine import Engine
 
-from hub_api import db
+from hub_api import dashboards, db, library
+from hub_api.chat import get_optional_user_email, get_user_email
 from ohdp_agent.domains import CatalogAsset, Domain, DomainsClient, DomainsError
 from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
 
+# What a stored dashboard page is served with. `sandbox` is the important one —
+# see `dashboard_html` — and `nosniff` stops a browser second-guessing the
+# type. `allow-same-origin` is deliberately absent.
+_EMBED_HEADERS = {
+    "Content-Security-Policy": "sandbox allow-scripts allow-popups",
+    "X-Content-Type-Options": "nosniff",
+}
+
+
+class DashboardVote(BaseModel):
+    # 0 withdraws — `library.vote` deletes the row rather than storing a
+    # neutral one, so "has not voted" stays a single state.
+    value: Literal[-1, 0, 1]
+
+
 # All on db.metadata so one `ensure_schema` creates everything hub-api owns.
-curated_dashboards = Table(
-    "curated_dashboards",
-    db.metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("title", String, nullable=False),
-    Column("description", String, nullable=False),
-    # A Vega-Lite spec bound server-side (ohdp_agent.dashboard) — the same
-    # mechanism the chatbot draws with, so a dashboard on this page is one the
-    # agent could reproduce.
-    Column("vega", JSON, nullable=False),
-    Column("cube_query", JSON, nullable=False),
-    Column("featured", Boolean, nullable=False, default=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    # The Consumer-aligned domain (topic) name this dashboard is attached to,
-    # e.g. "Infectious Disease" — nullable because a dashboard needn't belong
-    # to exactly one topic. Added after the table already existed in some
-    # databases; see `ensure_columns_and_indexes` below.
-    Column("topic", String, nullable=True, index=True),
-)
+# `curated_dashboards` used to be defined here. Its replacement is `dashboards`
+# in `hub_api.library`, which both this module (public reads, votes) and
+# `hub_api.dashboards` (the agent's save/get tools) share — a table two modules
+# write to should not live inside one of them. The old table is not migrated
+# and not dropped: nothing ever wrote to it, so it is simply orphaned, and
+# `dashboards` is created fresh with the NOT NULL columns it wants.
 
 curated_literature = Table(
     "curated_literature",
@@ -110,29 +118,20 @@ def ensure_columns_and_indexes(engine: Engine) -> None:
     """Schema fixes for a database whose tables predate a column or index —
     same problem `db.py`'s `_add_missing_columns` solves for `chat_turns`:
     `metadata.create_all` only creates *missing* tables, so it never adds a
-    column to a `curated_*` table that already exists. The column check goes
-    through `inspect()` rather than `ADD COLUMN IF NOT EXISTS` because SQLite
-    (used by the test suite) never learned that syntax — `_add_missing_columns`
-    hits the same wall for the same reason. `CREATE INDEX IF NOT EXISTS` has
-    no such gap, so the indexes stay plain SQL, safe to run on every startup
-    including a fresh database (where `create_all` already added them as part
-    of the columns' own definitions).
+    column to a `curated_*` table that already exists. `CREATE INDEX IF NOT
+    EXISTS` has no such gap, so the index stays plain SQL, safe to run on every
+    startup including a fresh database (where `create_all` already added it as
+    part of the column's own definition).
+
+    Nothing here touches dashboards any more. `dashboards` (`hub_api.library`)
+    is a new table rather than a migrated `curated_dashboards`, so `create_all`
+    builds it complete and there is nothing to patch up.
     """
-    inspector = inspect(engine)
-    dashboard_columns = {col["name"] for col in inspector.get_columns("curated_dashboards")}
     with engine.begin() as connection:
-        if "topic" not in dashboard_columns:
-            connection.execute(text("ALTER TABLE curated_dashboards ADD COLUMN topic VARCHAR"))
         connection.execute(
             text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS ix_curated_literature_url "
                 "ON curated_literature (url)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_curated_dashboards_topic "
-                "ON curated_dashboards (topic)"
             )
         )
 
@@ -164,17 +163,87 @@ def _domains_client() -> DomainsClient | None:
 
 @router.get("/dashboards")
 def list_dashboards(
-    request: Request, topic: str | None = Query(default=None)
+    request: Request,
+    # Optional, not `get_user_email`: this page is public. Being signed in only
+    # adds which way *you* voted, and a signed-out visitor has voted on nothing.
+    viewer_email: Annotated[str | None, Depends(get_optional_user_email)] = None,
+    topic: str | None = Query(default=None),
 ) -> list[dict[str, Any]]:
-    rows = _rows(
-        request,
-        curated_dashboards,
-        curated_dashboards.c.featured.desc(),
-        curated_dashboards.c.created_at.desc(),
-    )
-    if topic is not None:
-        rows = [row for row in rows if row.get("topic") == topic]
-    return rows
+    """Published dashboards, best first, minus the ones voted below
+    `library.HIDE_AT_SCORE`. Degrades to `[]` without a database, like every
+    other public read here."""
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        return []
+    return library.public_rows(engine, topic=topic, viewer_email=viewer_email)
+
+
+@router.get(
+    "/dashboards/{name}/html",
+    response_class=HTMLResponse,
+    responses={200: {"content": {"text/html": {}}, "description": "The rendered dashboard"}},
+)
+def dashboard_html(request: Request, name: str, background: BackgroundTasks) -> HTMLResponse:
+    """The dashboard's rendered page, as stored.
+
+    Served rather than drawn: the page is produced once, when the dashboard is
+    saved or re-rendered, so opening the Dashboards page is a read from
+    Postgres instead of one Cube query per card. What that costs is staleness,
+    and staleness is handled rather than hidden — the listing carries
+    `last_rendered` and `stale`, and a view that finds the page older than
+    `library.STALE_AFTER_SECONDS` schedules a re-render *after* answering, so
+    the visitor who noticed gets the old page fast and the next one gets fresh
+    numbers.
+
+    **The CSP header is load-bearing.** This document is model-influenced —
+    the title, description and Vega-Lite spec come from whoever saved the
+    dashboard — and it is built to be viewed inside a sandboxed iframe
+    (ADR-0025). Anyone can also open this URL directly, and then it would be a
+    top-level document on the hub's own origin. `sandbox` in CSP puts it in an
+    opaque origin either way, keeping `allow-scripts` (Vega has to run) and
+    `allow-popups` (the chart's own export menu).
+    """
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        raise HTTPException(503, "Database is not available.")
+
+    stored = library.rendered_page(engine, name)
+    if stored is None:
+        raise HTTPException(404, "No such dashboard.")
+    html, last_rendered = stored
+
+    if library.is_stale(last_rendered):
+        entry = library.by_name(engine, name)
+        if entry is not None:
+            background.add_task(dashboards.refresh_render, engine, name, entry["spec"])
+
+    return HTMLResponse(content=html, headers=_EMBED_HEADERS)
+
+
+@router.post("/dashboards/{name}/vote")
+def vote_dashboard(
+    request: Request,
+    name: str,
+    body: DashboardVote,
+    # Signing in is the whole spam guard: `dashboard_votes` holds one row per
+    # person per dashboard, which is only meaningful if "person" is verified.
+    voter_email: Annotated[str, Depends(get_user_email)],
+) -> dict[str, Any]:
+    """Vote a dashboard up (1), down (-1), or withdraw a vote (0).
+
+    Votes are what separates good dashboards from bad ones now that the chat
+    agent can publish them (see this module's docstring) — so this is the one
+    write route here a signed-in user can reach, and it can only ever change
+    that user's own single row.
+    """
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        raise HTTPException(503, "Database is not available.")
+    entry = library.vote(engine, name=name, voter_email=voter_email, value=body.value)
+    if entry is None:
+        raise HTTPException(404, "No such dashboard.")
+    log.info("dashboard_voted", name=name, value=body.value, score=entry["score"])
+    return entry
 
 
 @router.get("/literature")

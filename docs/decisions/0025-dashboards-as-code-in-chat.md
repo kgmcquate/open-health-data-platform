@@ -62,8 +62,15 @@ chat model's output is a fetch issued from inside the reader's browser.
 > (a choropleth's basemap geometry) is allowed; rows are still bound from the
 > Cube query by the server. The
 > saved-dashboard half — `list_saved_dashboards`, `open_saved_dashboard`, and the
-> `ohdp_agent/dashboards/` package — was later removed. See `docs/chatbot.md §5`
-> for the current shape.
+> `ohdp_agent/dashboards/` package — was later removed, and has since returned in
+> a different form: `save_dashboard`/`get_dashboard` on the same `/tools` app,
+> backed by the `dashboards` table rather than by YAML files in the image, so
+> keeping a dashboard no longer requires a deploy — or a PR, since
+> [ADR-0028](0028-agent-published-dashboards-ranked-by-votes.md) made a save
+> publish straight onto the public Dashboards page, ranked by reader votes.
+> Neither one draws — the model passes a spec `get_dashboard` returned back into
+> `render_dashboard` — so the embed-headers argument above still applies to
+> exactly one operation. See `docs/chatbot.md §5` for the current shape.
 
 ## Consequences
 

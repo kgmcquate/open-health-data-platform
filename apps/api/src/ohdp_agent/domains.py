@@ -197,6 +197,33 @@ class DomainsClient:
         assets.sort(key=lambda a: a.name)
         return assets
 
+    async def topics_for_tables(self, table_names: list[str]) -> list[str]:
+        """Which topics own these curated tables, by bare table name.
+
+        This is the join behind a saved dashboard's topics: a Cube cube is
+        named for the dbt model it wraps, that model is a table in
+        `CURATED.<AREA>`, and the schema's Consumer-aligned domain is
+        inherited by every table under it (see the module docstring on
+        `displayName.keyword`). So a dashboard lands on the right topic page
+        because of what it queries — nobody has to label it, and a model is
+        never asked to pick a topic it could get wrong.
+
+        Matching is on the bare name, lowercased, against both an asset's
+        display name and the last segment of its FQN: Snowflake upper-cases
+        identifiers, and OM may carry a friendlier `displayName` than the
+        table's own. A name matching nothing contributes nothing — an
+        unmatched cube means no topic, never a guessed one.
+        """
+        wanted = {name.strip().lower() for name in table_names if name.strip()}
+        if not wanted:
+            return []
+        matched: list[str] = []
+        for topic in await self.list_by_type("Consumer-aligned"):
+            assets = await self.assets_in_domain(topic.name, "table")
+            if any(wanted & _table_keys(asset) for asset in assets):
+                matched.append(topic.name)
+        return matched
+
     async def upstream_sources(self, table_fqns: list[str]) -> list[Domain]:
         """The Source-aligned domains that `table_fqns` ultimately read from.
 
@@ -244,6 +271,11 @@ class DomainsClient:
         # an intersection with the Source-aligned list rather than a field test.
         sources = await self.list_by_type("Source-aligned")
         return [source for source in sources if source.name in domain_names]
+
+
+def _table_keys(asset: CatalogAsset) -> set[str]:
+    """The names a table might be recognised by, lowercased."""
+    return {asset.name.strip().lower(), asset.fqn.rsplit(".", 1)[-1].strip().lower()}
 
 
 def _to_domain(base_url: str, raw: dict[str, Any]) -> Domain:

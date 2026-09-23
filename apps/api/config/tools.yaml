@@ -35,7 +35,8 @@
 #         X-Api-Key: "${PETSTORE_API_KEY}"
 
 connections:
-  # `ohdp-tools` (render_dashboard, report_issue) used to be a connection
+  # `ohdp-tools` (render_dashboard, save_dashboard, get_dashboard,
+  # report_issue) used to be a connection
   # here, pointed at hub-api's own cluster address. That was a self-call —
   # hub-api fetching its own OpenAPI spec from itself over the network during
   # its own startup, before it was serving any requests, under a single-pod

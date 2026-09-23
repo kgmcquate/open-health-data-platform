@@ -53,12 +53,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     finish restarting. `/api/chat` returns 503 while `state.engine` is unset.
     """
     app.state.engine = None
+    # The same pool, on the mounted sub-app as well: a mounted app resets
+    # `scope["app"]` to itself, so `/tools` routes reading `request.app.state`
+    # (hub_api.dashboards.get_library_engine, for the dashboard library) see
+    # `tools_app.state`, not this one. Set to None first for the same reason
+    # `app.state.engine` is: the attribute must exist even when Postgres does
+    # not, so those routes answer 503 instead of AttributeError-ing into a 500.
+    tools_app.state.engine = None
     if settings.app_database_url:
         try:
             engine = db.make_engine(settings.app_database_url)
             db.ensure_schema(engine)
             ensure_columns_and_indexes(engine)
             app.state.engine = engine
+            tools_app.state.engine = engine
         except Exception as exc:  # noqa: BLE001 — see docstring
             log.error("database_unavailable", error=str(exc))
     else:
@@ -66,7 +74,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     openai_models = await discover_openai_models() if settings.openai_backends else {}
     tool_connections = await load_tool_connections()
-    # `tools_app` (render_dashboard, report_issue) is this same process's own
+    # `tools_app` (render_dashboard, save_dashboard, get_dashboard,
+    # report_issue) is this same process's own
     # `/tools` app, already fully assembled by the module-level code below —
     # wired in-process rather than as a `tools.yaml` connection so building it
     # never depends on hub-api being up enough to answer its own request (see

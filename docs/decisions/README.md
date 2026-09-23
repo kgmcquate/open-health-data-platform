@@ -30,6 +30,7 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0022](0022-token-usage-limits.md) | Per-user/group token usage limits on Open WebUI | Superseded — Open WebUI removed; hub-api quota gate remains |
 | [0023](0023-openrouter-glm-model-backend.md) | OpenRouter + GLM 5.3 Flash as Open WebUI's model backend | Superseded — Open WebUI removed |
 | [0024](0024-cube-store-pre-aggregations.md) | Cube Store and pre-aggregations | Accepted |
-| [0025](0025-dashboards-as-code-in-chat.md) | Dashboards as code, rendered in the chat turn | Accepted |
+| [0025](0025-dashboards-as-code-in-chat.md) | Dashboards as code, rendered in the chat turn | Accepted; saving/publishing amended by [0028](0028-agent-published-dashboards-ranked-by-votes.md) |
 | [0026](0026-cms-rest-api-ingestion.md) | CMS ingestion over its own REST API, not Socrata; Iceberg landing side shared | Accepted |
 | [0027](0027-chat-agent-memory-write-back.md) | Chat agent writes OpenMetadata memories unreviewed | Accepted; amends [0016](0016-chat-agent-tool-surface.md) |
+| [0028](0028-agent-published-dashboards-ranked-by-votes.md) | The chat agent publishes dashboards; readers vote them down | Accepted; amends [0025](0025-dashboards-as-code-in-chat.md) |
