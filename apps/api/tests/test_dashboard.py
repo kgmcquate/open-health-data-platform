@@ -14,7 +14,6 @@ which is why they are asserted rather than eyeballed:
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator
 from typing import Any
 
@@ -643,10 +642,14 @@ def test_an_unknown_column_names_the_ones_that_exist() -> None:
 # --- the rendered page -----------------------------------------------------
 
 
-def test_render_carries_its_own_source_and_disclaimer() -> None:
+def test_render_carries_its_own_source() -> None:
+    """The disclaimer itself moved to `ohdp_agent.loop.DISCLAIMER`, attached to
+    the chat turn rather than repeated on every card (`test_loop.py`'s
+    `test_disclaimer_is_attached_by_us_not_asked_of_the_model`) — this only
+    covers what the card itself still owns.
+    """
     html = render_html(_spec(), ChartData(rows=ROWS, row_count=2))
     assert "ed-visits.yaml" in html
-    assert "Not clinical decision support" in html
     # Without this the iframe renders at a stub height and the content is cut off.
     assert "iframe:height" in html
 
@@ -811,57 +814,71 @@ def test_an_unplottable_spec_returns_an_error_not_an_embed(
     assert response.headers.get("content-disposition") != "inline"
 
 
-# --- the handoff to the Hub UI frontend ------------------------------------
+# --- escaping, and the entity-copy-paste failure mode ----------------------
 #
-# The embed does not travel to the browser as a plain HTTP body. The Hub UI
-# JSON-stringifies it into a token attribute and runs an HTML-entity decode
-# *before* the JSON parse. These two tests replay that round trip, because
-# anything that can break, breaks silently: if decoding turns escaped quotes
-# back into bare quotes inside the JSON string, the parse fails and the embed
-# is dropped without an error.
+# The embed used to travel through Open WebUI, which HTML-entity-decoded the
+# JSON string carrying it before parsing, so `_esc` escaped `&`/`<`/`>` twice
+# to leave exactly one level after that decode. Open WebUI is gone (ADR-0017);
+# the Hub UI sets this document straight as an iframe's `srcdoc`/`src` with no
+# decode step, so a double escape now just leaves a literal `&gt;` sitting in
+# the rendered card — including its own "Dashboard source" panel, which is
+# exactly the shape a reader can select and paste back into a new spec. These
+# tests cover both the escaping itself and the guardrail that catches a spec
+# built from such a paste before it ever renders.
 
 
-def _through_frontend(document: str) -> Any:
-    """What the frontend ends up with, given `document` as the embed."""
-    import html as html_module
-
-    attribute = json.dumps([document])  # stringifyAttribute()
-    decoded = html_module.unescape(attribute)  # decode() from html-entities
-    try:
-        return json.loads(decoded)  # parseJSONString()
-    except json.JSONDecodeError:
-        return decoded  # fallback: the raw string, not an array
-
-
-def test_the_embed_survives_decode_before_parse() -> None:
-    """The bug that made the dashboard silently not appear at all.
-
-    `html.escape(..., quote=True)` emits `&quot;` for every quote in the
-    embedded Cube query and YAML source. The decode pass turns each one into a
-    bare `"` inside a JSON string literal, and the whole array stops parsing.
+def test_the_embed_has_no_quote_entities() -> None:
+    """`&quot;` in the embedded Cube query or YAML source is still avoided —
+    `_esc` leaves quotes raw because every call site is text content, never an
+    HTML attribute — even though the Open WebUI decode step that originally
+    forced this choice is gone.
     """
     spec = DashboardSpec.model_validate(SPEC)
     document = render_html(spec, ChartData(rows=ROWS, row_count=2))
 
     assert "&quot;" not in document
-    survived = _through_frontend(document)
-    assert isinstance(survived, list), "the embed was dropped before it reached the iframe"
-    assert survived[0] == document
 
 
-def test_markup_in_a_title_cannot_survive_the_decode_as_markup() -> None:
-    """The other half: that decode also *undoes* a single level of escaping.
-
-    Titles and captions are model-supplied and cell values come from the
-    warehouse, so escaping them once and letting the host decode it would hand
-    the frontend live markup.
+def test_markup_in_a_title_cannot_survive_as_markup() -> None:
+    """Titles are model-supplied and cell values come from the warehouse, so a
+    `<script>` typed into either must come out as inert text, not live markup.
     """
-    spec = DashboardSpec.model_validate(
-        {**SPEC, "title": "<script>alert(1)</script>"}
-    )
+    spec = DashboardSpec.model_validate({**SPEC, "title": "<script>alert(1)</script>"})
     document = render_html(spec, ChartData(rows=ROWS, row_count=2))
 
-    delivered = _through_frontend(document)
-    assert isinstance(delivered, list)
-    assert "<script>alert(1)</script>" not in delivered[0]
-    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in delivered[0]
+    assert "<script>alert(1)</script>" not in document
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in document
+
+
+def test_an_entity_is_escaped_exactly_once() -> None:
+    """The regression this file exists to prevent: a value that already
+    contains a real `>` must render as one `&gt;`, not two escaped levels
+    (`&amp;gt;`) and not zero (a raw `>` sitting in text content is harmless,
+    but a doubled escape is the bug that shipped)."""
+    spec = DashboardSpec.model_validate({**SPEC, "caption": "coverage >= 6 months"})
+    document = render_html(spec, ChartData(rows=ROWS, row_count=2))
+
+    assert "coverage &gt;= 6 months" in document
+    assert "&amp;gt;" not in document
+
+
+def test_a_literal_html_entity_in_a_filter_is_rejected_at_validation() -> None:
+    """The actual incident: a `transform.filter` comparing against `'&gt;=6
+    Months'` compiles as valid Vega-Lite — it's just a string literal — and
+    matches no row that says `>=6 Months`, so the chart draws empty with no
+    error anywhere. Caught here instead, with the offending text named.
+    """
+    bad_spec = {
+        **SPEC,
+        "vega_lite": {
+            **SPEC["vega_lite"],
+            "transform": [{"filter": "datum.stratification === '&gt;=6 Months'"}],
+        },
+    }
+    with pytest.raises(ValidationError, match="&gt;"):
+        DashboardSpec.model_validate(bad_spec)
+
+
+def test_a_literal_html_entity_in_a_caption_is_rejected_at_validation() -> None:
+    with pytest.raises(ValidationError, match="&amp;"):
+        DashboardSpec.model_validate({**SPEC, "caption": "flu &amp; RSV coverage"})

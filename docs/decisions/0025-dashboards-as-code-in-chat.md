@@ -104,19 +104,29 @@ chat model's output is a fetch issued from inside the reader's browser.
   are provably the same numbers. That needs a Cube client and a Cube secret in
   the Streamlit chart, so it is a separate decision rather than a consequence of
   this one.
-- **The embed HTML must contain no `&quot;`, and must escape `&`, `<` and `>`
-  twice (historical Open WebUI detail).** Under Open WebUI the embed did not
+- **The embed HTML must contain no `&quot;` (historical Open WebUI detail,
+  double-escape half since removed).** Under Open WebUI the embed did not
   reach the browser as an HTTP body: it was placed on a `function_call_output`
   item, JSON-stringified into a token attribute, and then evaluated with
   `parseJSONString(decode(attr))` — an HTML-entity decode *before* the JSON
   parse. A `&quot;` in the document therefore decoded to a bare `"` inside a JSON
   string literal, `JSON.parse` failed, the fallback returned the raw string, and
-  the embed was silently dropped. The same decode also undid one level of
-  escaping, so a single escape would hand the frontend live markup built from
-  model-supplied titles and warehouse values. `_esc` therefore leaves quotes raw
-  (valid in text content, and JSON-safe) and escapes the three markup characters
-  twice. `test_dashboard.py` replays the round trip so a regression fails there
-  rather than in front of a user.
+  the embed was silently dropped. `_esc` still leaves quotes raw for this
+  reason (also just valid in ordinary HTML text content). The same decode also
+  undid one level of `&`/`<`/`>` escaping, so `_esc` escaped those three twice
+  to leave exactly one level after the decode — but nothing on the Hub UI's own
+  path (`DashboardEmbed.tsx`'s `srcdoc`/`src`, `ohdp_agent.loop`'s SSE
+  `tool_result` payload) ever performed that decode, so after Open WebUI was
+  removed the second escape just sat there as a literal `&gt;`/`&lt;`/`&amp;`
+  in every rendered card, including its own "Dashboard source" panel — visible,
+  copyable, and indistinguishable from a real value. Caught 2026-09-24 when a
+  spec built by copying a stratification label out of a rendered card's source
+  panel silently drew empty. `_esc` now escapes once; `DashboardSpec` and
+  `bind_data` also reject a literal HTML entity anywhere in `vega_lite`,
+  `title`, `description` or `caption` outright, so a future copy of escaped
+  text out of *any* HTML surface fails at save/render time with a message
+  naming the exact character, rather than drawing an empty chart. `test_dashboard.py`
+  still replays the header/HTML contract on our side of the wire.
 - Open WebUI-specific pin behaviour mattered because the embed contract was
   upstream behaviour, not an API we controlled. With Open WebUI removed, the Hub
   UI owns the iframe rendering; the header pair and the HTML are still exercised

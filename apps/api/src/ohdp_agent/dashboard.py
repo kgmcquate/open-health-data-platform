@@ -33,10 +33,10 @@ makes them easy to get wrong:
     container`/`autosize: fit`, height capped — rather than drawing whatever
     the spec asked for.
 
-The rendered HTML is a full document for a sandboxed iframe (Open WebUI's Rich
-UI embed, ADR-0025). It loads Vega from a CDN, reports its own height by
-`postMessage`, and carries its own YAML source so the reader can see the exact
-spec without the model retyping it.
+The rendered HTML is a full document for a sandboxed iframe, rendered by the
+Hub UI (`apps/web`'s `DashboardEmbed`, ADR-0025). It loads Vega from a CDN,
+reports its own height by `postMessage`, and carries its own YAML source so
+the reader can see the exact spec without the model retyping it.
 
 Colour comes from the reference data-viz palette, unmodified: eight categorical
 slots in fixed order, separately stepped for the dark surface rather than
@@ -55,7 +55,7 @@ from typing import Annotated, Any
 
 import yaml
 from jsonpath_ng.ext import parse as parse_jsonpath
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from ohdp_agent.models import CubeQuery
 
@@ -134,9 +134,51 @@ def _assert_no_data(node: Any) -> None:
 
 
 def _no_data(spec: dict[str, Any]) -> dict[str, Any]:
-    """`AfterValidator` for `VegaLiteSpec`: allow everything but literal `data`."""
+    """`AfterValidator` for `VegaLiteSpec`: no literal `data`, no HTML entities.
+
+    Runs wherever a `DashboardSpec` is constructed — `from_yaml`,
+    `save_dashboard`, `render_dashboard` all validate through this type — so a
+    bad spec is rejected before it ever reaches `bind_data`, not only when it
+    happens to reach a render.
+    """
     _assert_no_data(spec)
+    _assert_no_html_entities(spec, "vega_lite")
     return spec
+
+
+# `&gt;=6 Months` compiles as valid Vega-Lite — it's just a string literal — and
+# a `transform.filter` comparing against it matches no row that actually says
+# `>=6 Months`, so the chart draws empty with no error anywhere on either side
+# of the wire. The classic way this gets into a spec: a rendered dashboard
+# card's own "Dashboard source" panel is HTML, so selecting text out of it and
+# pasting it into a new spec carries the *display* form of `<`, `>` and `&`,
+# not the character. Matched case-insensitively so `&GT;` fails the same way.
+_HTML_ENTITY_RE = re.compile(r"&(?:amp|lt|gt|quot|#0*39|#x0*27);", re.IGNORECASE)
+
+
+def _assert_no_html_entities(node: Any, where: str) -> None:
+    """Reject a literal HTML entity anywhere in `node`, at any depth.
+
+    Called on the `vega_lite` spec (where it silently empties a chart via a
+    `filter`/`calculate` expression) and on the free-text fields a human might
+    also have copied it into (`title`, `description`, `caption`).
+    """
+    if isinstance(node, str):
+        match = _HTML_ENTITY_RE.search(node)
+        if match:
+            raise ValueError(
+                f"{where} contains {match.group()!r}, which is an HTML entity, "
+                "not the character it displays as. This usually comes from "
+                "copying text out of a rendered dashboard card (e.g. its "
+                '"Dashboard source" panel) instead of typing the literal '
+                f"character — check {node!r} for what it should say instead"
+            )
+    elif isinstance(node, dict):
+        for value in node.values():
+            _assert_no_html_entities(value, where)
+    elif isinstance(node, list):
+        for item in node:
+            _assert_no_html_entities(item, where)
 
 
 # Vega-Lite picks a transform by which of these keys it carries — there is no
@@ -222,6 +264,18 @@ class DashboardSpec(_Strict):
     # explanation; this is for the part a reader cannot see, such as a
     # population restriction that lives in the filters.
     caption: str | None = Field(default=None, max_length=400)
+
+    @model_validator(mode="after")
+    def _no_html_entities_in_text(self) -> DashboardSpec:
+        """The same copy-paste-off-a-rendered-card mistake `_no_data` catches
+        in `vega_lite`, but for the free-text fields it's just as easy to
+        happen to: a `caption` or `title` typed from what a card displayed.
+        """
+        for field_name in ("title", "description", "caption"):
+            value = getattr(self, field_name)
+            if value:
+                _assert_no_html_entities(value, field_name)
+        return self
 
     @classmethod
     def from_yaml(cls, text: str) -> DashboardSpec:
@@ -801,33 +855,19 @@ def _json_for_html(value: Any) -> str:
 
 
 def _esc(text: str | None) -> str:
-    """Escape for HTML text content, in a form that survives the chat client.
+    """Escape for HTML text content.
 
-    Two departures from `html.escape(..., quote=True)`, both forced by how Open
-    WebUI hands an embed to its own frontend. `ToolCallDisplay.svelte` and
-    `ConsecutiveDetailsGroup.svelte` HTML-entity-**decode** the JSON string
-    carrying this document *before* parsing it.
-
-    **Quotes are left raw.** A `&quot;` decodes to a bare `"` inside a JSON
-    string literal, so `JSON.parse` fails; their `parseJSONString` returns the
-    raw text instead of raising, the `Array.isArray(...)` guard rejects it, and
-    the embed is dropped with no error anywhere — the dashboard simply never
-    appears. A raw `"` is valid in HTML text content and crosses the wire as
-    `\\"`, which the decode pass does not touch.
-
-    **`&`, `<` and `>` are escaped twice.** That same pass would undo a single
-    escape and hand the frontend live markup assembled from model-supplied
-    titles and warehouse values. Escaping twice leaves exactly one level after
-    the decode, which renders as the literal character. Should the client ever
-    stop decoding, this degrades to a visible `&lt;` rather than to injected
-    markup — the safe direction to fail in.
-
-    Nothing escaped here may be interpolated into an HTML *attribute*; every
-    call site is text content, which is what makes leaving quotes raw sound.
-    `test_dashboard.py` replays the decode-then-parse round trip, so a future
-    edit that reintroduces `&quot;` fails there rather than in front of a user.
+    Used to escape twice, for a decode-before-parse step Open WebUI's frontend
+    did to the JSON string carrying this document. Open WebUI is gone
+    (ADR-0017); the Hub UI (`apps/web`) sets this document straight as an
+    iframe's `srcdoc`/`src` with no decode step in between (`DashboardEmbed.tsx`,
+    `ohdp_agent.loop._tool_result_payload`), so a second escape now leaves a
+    literal `&gt;`/`&lt;`/`&amp;` sitting in the rendered card — including in
+    the "Dashboard source" YAML panel, which a reader can select and copy
+    straight back into a new spec. Quotes are left raw because every call site
+    below is text content, never an HTML attribute.
     """
-    return (text or "").replace("&", "&amp;amp;").replace("<", "&amp;lt;").replace(">", "&amp;gt;")
+    return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _table_html(rows: list[dict[str, Any]], columns: list[str]) -> str:
