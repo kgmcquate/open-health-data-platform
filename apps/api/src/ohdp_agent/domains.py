@@ -221,16 +221,37 @@ class DomainsClient:
         rebuilt by the same sync that seeds the domains, so the hub's search
         bar asks it rather than keeping a second index of its own.
 
+        Restricted to the curated layer: an asset only matches if it carries
+        one of the Consumer-aligned (topic) domains, the same join
+        `topics_for_tables` relies on to call a mart curated (see the module
+        docstring on `displayName.keyword`). Raw and staging tables carry a
+        Source-aligned domain instead, never a topic's, so they never show up
+        in a visitor's search bar — there's nothing there for them to act on
+        yet. A metric's FQN doesn't follow the `service.database.schema.table`
+        shape tables do (it's `cube.<domain>.<name>`), which is why this
+        filters by domain rather than by parsing the FQN.
+
         Results come back in OM's relevance order — unlike `assets_in_domain`,
         which lists a whole domain and therefore sorts by name. An empty or
         all-punctuation `text` is not a query and returns `[]` without a round
-        trip.
+        trip, and so does a search when there are no topic domains to filter
+        against.
         """
         query = search_query(text)
         if not query:
             return []
+        topic_names = [topic.name for topic in await self.list_by_type("Consumer-aligned")]
+        if not topic_names:
+            return []
         query_filter = {
-            "query": {"bool": {"must": [{"terms": {"entityType": list(SEARCHABLE_ENTITY_TYPES)}}]}}
+            "query": {
+                "bool": {
+                    "must": [
+                        {"terms": {"entityType": list(SEARCHABLE_ENTITY_TYPES)}},
+                        {"terms": {"domains.displayName.keyword": topic_names}},
+                    ]
+                }
+            }
         }
         body = await self._get(
             "/api/v1/search/query",

@@ -259,7 +259,7 @@ class DashboardSpec(_Strict):
     # Where `bind_data` attaches the query's rows, as a JSONPath into `vega_lite` —
     # `$.transform[0].from.data.values` for a choropleth whose geography is a
     # top-level `data.url`. The default is the top-level `$.data.values`.
-    data_path: Annotated[str, AfterValidator(_valid_data_path)] = DEFAULT_DATA_PATH
+    data_path: Annotated[str, AfterValidator(_valid_data_path)] = DEFAULT_DATA_PATH # pyright: ignore[reportUndefinedVariable]
     # One sentence of what the chart shows. The chart should carry the
     # explanation; this is for the part a reader cannot see, such as a
     # population restriction that lives in the filters.

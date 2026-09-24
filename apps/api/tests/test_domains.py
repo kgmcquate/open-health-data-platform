@@ -428,12 +428,16 @@ SEARCH_PAYLOAD = {
 }
 
 
+def _search_handler(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/api/v1/domains":
+        return httpx.Response(200, json=DOMAINS_PAYLOAD)
+    return httpx.Response(200, json=SEARCH_PAYLOAD)
+
+
 async def test_search_keeps_relevance_order_and_both_asset_kinds() -> None:
     """Unlike `assets_in_domain`, which lists a domain and sorts by name, this
     must hand back whatever order OM ranked the hits in."""
-    client = DomainsClient(
-        "http://om", "jwt", client=_mock(lambda r: httpx.Response(200, json=SEARCH_PAYLOAD))
-    )
+    client = DomainsClient("http://om", "jwt", client=_mock(_search_handler))
 
     hits = await client.search("nndss weekly")
 
@@ -446,19 +450,19 @@ async def test_search_keeps_relevance_order_and_both_asset_kinds() -> None:
 async def test_search_drops_entity_types_it_cannot_link_to() -> None:
     """A pipeline is in the `dataAsset` index but `<om>/pipeline/<fqn>` is not
     the link `_to_asset` would build, so it is filtered rather than offered."""
-    client = DomainsClient(
-        "http://om", "jwt", client=_mock(lambda r: httpx.Response(200, json=SEARCH_PAYLOAD))
-    )
+    client = DomainsClient("http://om", "jwt", client=_mock(_search_handler))
 
     hits = await client.search("nndss")
 
     assert "pipeline" not in {h.entity_type for h in hits}
 
 
-async def test_search_filters_on_the_searchable_entity_types() -> None:
+async def test_search_filters_on_the_searchable_entity_types_and_topic_domains() -> None:
     seen: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/domains":
+            return httpx.Response(200, json=DOMAINS_PAYLOAD)
         seen["q"] = request.url.params["q"]
         seen["query_filter"] = request.url.params["query_filter"]
         seen["size"] = request.url.params["size"]
@@ -470,7 +474,21 @@ async def test_search_filters_on_the_searchable_entity_types() -> None:
 
     assert seen["q"] == "respiratory*"
     assert '"entityType": ["table", "metric"]' in seen["query_filter"]
+    assert '"domains.displayName.keyword": ["Infectious Disease", "Respiratory"]' in seen["query_filter"]
     assert seen["size"] == "5"
+
+
+async def test_search_with_no_topic_domains_makes_no_search_request() -> None:
+    """Nothing is curated yet, so there's nothing a free-text search can return."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/domains":
+            return httpx.Response(200, json={"data": []})
+        raise AssertionError("OM should not have been searched")
+
+    client = DomainsClient("http://om", "jwt", client=_mock(handler))
+
+    assert await client.search("respiratory") == []
 
 
 async def test_search_with_no_usable_words_makes_no_request() -> None:
@@ -507,9 +525,7 @@ async def test_the_cache_is_bounded_once_search_keys_on_free_text() -> None:
     domains. `search` keys on whatever anyone types — one entry per debounced
     keystroke in a process that runs for weeks — so the cap is what keeps that
     from being a slow leak."""
-    client = DomainsClient(
-        "http://om", "jwt", client=_mock(lambda r: httpx.Response(200, json=SEARCH_PAYLOAD))
-    )
+    client = DomainsClient("http://om", "jwt", client=_mock(_search_handler))
 
     for index in range(domains_module._CACHE_MAX_ENTRIES + 50):
         await client.search(f"query{index}")
@@ -518,18 +534,20 @@ async def test_the_cache_is_bounded_once_search_keys_on_free_text() -> None:
 
 
 async def test_a_repeated_search_is_served_from_the_cache() -> None:
-    """The flip side of the cap: typing the same thing twice is one OM call,
-    which is the point of sharing the topic reads' cache."""
+    """The flip side of the cap: typing the same thing twice makes no new OM
+    calls, which is the point of sharing the topic reads' cache. The first
+    search costs two calls (the topic-domain lookup, then the search itself);
+    the second is served entirely from cache."""
     calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(200, json=SEARCH_PAYLOAD)
+        return _search_handler(request)
 
     client = DomainsClient("http://om", "jwt", client=_mock(handler))
 
     await client.search("respiratory")
     await client.search("respiratory")
 
-    assert calls == 1
+    assert calls == 2
