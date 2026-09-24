@@ -8,11 +8,6 @@ export default function Topics() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-10">
       <h1 className="text-4xl font-bold mb-2">Topics</h1>
-      <p className="opacity-70 mb-8 max-w-2xl">
-        Public health subjects, each with its own metrics, data assets,
-        dashboards, and literature — one place to see everything the platform
-        holds on a topic, instead of hunting across separate pages.
-      </p>
 
       {loading && <span className="loading loading-spinner loading-lg" />}
       {error && <div className="alert alert-error">{error}</div>}

@@ -96,25 +96,30 @@ export default function Navbar() {
               </div>
             )}
 
-            <label className="label" htmlFor="theme-select">
+            <div className="label">
               <span className="label-text">Appearance</span>
-            </label>
-            <select
-              id="theme-select"
-              className="select select-bordered select-sm"
-              value={theme}
-              aria-label="Theme"
-              onChange={(e) => {
-                setTheme(e.target.value as typeof theme);
-                applyTheme(e.target.value as typeof theme);
-              }}
-            >
+            </div>
+            {/* Deliberately not a native <select>: opening its OS-level
+                option list steals focus from the dropdown wrapper, which
+                daisyUI's CSS-only dropdown reads as focus leaving the panel
+                and closes it before a choice can be made. */}
+            <div className="join join-vertical w-full" role="radiogroup" aria-label="Theme">
               {THEMES.map((t) => (
-                <option key={t.id} value={t.id}>
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={theme === t.id}
+                  className={`join-item btn btn-sm justify-start ${theme === t.id ? "btn-active" : "btn-ghost"}`}
+                  onClick={() => {
+                    setTheme(t.id);
+                    applyTheme(t.id);
+                  }}
+                >
                   {t.label}
-                </option>
+                </button>
               ))}
-            </select>
+            </div>
 
             {user && (
               <>

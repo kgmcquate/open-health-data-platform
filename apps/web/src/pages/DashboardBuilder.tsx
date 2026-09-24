@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
+import CodeMirror from "@uiw/react-codemirror";
+import { yaml } from "@codemirror/lang-yaml";
+import { ohdpCodeMirrorTheme } from "../lib/codeMirrorTheme";
 import {
   createDraft,
   deleteDraft,
@@ -41,16 +44,23 @@ import {
  */
 
 const FALLBACK_STARTER = `# A dashboard is one semantic-layer query plus a Vega-Lite spec.
-# The query's rows are bound by the server — a spec may not carry data.
+# Data is injected into the spec by the server — a spec may not carry its own data.
 name: my-first-dashboard
 title: A title that names what is being counted
 description: The question this chart answers, for someone browsing the library.
+
+# The Cube query below defines what data is pulled from the Data Platform.
+# Cube is the semantic layer that defines every metric, dimension and time grain the platform can answer.
+# More about Cube queries: https://docs.cube.dev/reference/core-data-apis/rest-api/query-format#query-properties
 query:
   measures:
     - cube_name.some_measure
   time_dimensions:
     - dimension: cube_name.some_date
       granularity: week
+
+# The Vega-Lite spec below is a template that works with the query above.
+# Vega-Lite is a declarative charting language; see its docs (https://vega.github.io/vega-lite/docs/) for more.
 vega_lite:
   mark: line
   encoding:
@@ -77,16 +87,23 @@ function starterSpec(cubes: CubeRef[] | null): string {
   if (!cube || !measure || !time) return FALLBACK_STARTER;
 
   return `# A dashboard is one semantic-layer query plus a Vega-Lite spec.
-# The query's rows are bound by the server — a spec may not carry data.
+# Data is injected into the spec by the server — a spec may not carry its own data.
 name: my-first-dashboard
 title: ${measure.title || measure.name} by week
 description: The question this chart answers, for someone browsing the library.
+
+# The Cube query below defines what data is pulled from the Data Platform.
+# Cube is the semantic layer that defines every metric, dimension and time grain the platform can answer.
+# More about Cube queries: https://docs.cube.dev/reference/core-data-apis/rest-api/query-format#query-properties
 query:
   measures:
     - ${measure.name}
   time_dimensions:
     - dimension: ${time.name}
       granularity: week
+
+# The Vega-Lite spec below is a template that works with the query above.
+# Vega-Lite is a declarative charting language; see its docs (https://vega.github.io/vega-lite/docs/) for more.
 vega_lite:
   mark: line
   encoding:
@@ -338,24 +355,9 @@ export default function DashboardBuilder() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-10 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
       <header className="space-y-2">
-        <h1 className="text-4xl font-bold">Create your own dashboard</h1>
-        <p className="opacity-80 max-w-3xl">
-          A dashboard here is <span className="font-semibold">a question, not a picture</span>: one
-          query against the semantic layer, plus a{" "}
-          <a
-            href="https://vega.github.io/vega-lite/docs/"
-            target="_blank"
-            rel="noreferrer"
-            className="link link-primary"
-          >
-            Vega-Lite
-          </a>{" "}
-          spec saying how to draw its rows. Write it below and press Render to see it — by the same
-          code that draws every published chart, so the numbers come from the same place, and your
-          spec cannot carry any of its own.
-        </p>
+        <h1 className="text-4xl font-bold">Vega Dashboard Builder</h1>
       </header>
 
       {user === null && (
@@ -371,18 +373,20 @@ export default function DashboardBuilder() {
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h2 className="text-lg font-semibold">
-              Spec
+              YAML Spec
               {draftId !== null && <span className="badge badge-ghost badge-sm ml-2">draft</span>}
             </h2>
           </div>
 
-          <textarea
-            className="textarea textarea-bordered w-full font-mono text-xs leading-relaxed"
-            style={{ minHeight: "32rem" }}
-            spellCheck={false}
+          <CodeMirror
             value={specYaml}
-            onChange={(event) => setSpecYaml(event.target.value)}
-            onKeyDown={(event) => {
+            height="32rem"
+            theme="none"
+            extensions={[yaml(), ohdpCodeMirrorTheme]}
+            onChange={(value) => setSpecYaml(value)}
+            className="textarea textarea-bordered w-full font-mono text-xs leading-relaxed"
+            spellCheck={false}
+            onKeyDown={(event: any) => {
               // Draw now, whatever the idle timer thinks — the shortcut every
               // editor with a preview pane has.
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -519,7 +523,7 @@ export default function DashboardBuilder() {
                       ? "Drawing…"
                       : signedIn
                         ? "Press Render to draw your chart."
-                        : "Sign in to draw your spec."}
+                        : "Sign in to render your dashboard."}
                   </p>
                 </div>
               </div>
