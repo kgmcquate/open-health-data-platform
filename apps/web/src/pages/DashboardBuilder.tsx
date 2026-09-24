@@ -40,12 +40,6 @@ import {
  *     this page could say, so they are shown verbatim (`lib/api`'s `failure`).
  */
 
-// How long the editor sits idle before drawing on its own. Long enough not to
-// fire mid-word, short enough that "renders live" is true. Each render is a
-// Cube query against pre-aggregated cubes (ADR-0024), and an unchanged
-// document is never re-sent.
-const AUTO_RENDER_MS = 1500;
-
 const FALLBACK_STARTER = `# A dashboard is one semantic-layer query plus a Vega-Lite spec.
 # The query's rows are bound by the server — a spec may not carry data.
 name: my-first-dashboard
@@ -93,7 +87,7 @@ query:
   time_dimensions:
     - dimension: ${time.name}
       granularity: week
-vega:
+vega_lite:
   mark: line
   encoding:
     x:
@@ -243,7 +237,6 @@ export default function DashboardBuilder() {
   const signedIn = Boolean(user);
 
   const [specYaml, setSpecYaml] = useState("");
-  const [autoRender, setAutoRender] = useState(true);
   const [preview, setPreview] = useState<DashboardPreview | null>(null);
   const [rendering, setRendering] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
@@ -258,18 +251,12 @@ export default function DashboardBuilder() {
   const [mine, setMine] = useState<MyDashboard[]>([]);
   const [published, setPublished] = useState<PublishResult | null>(null);
 
-  // The text the preview on screen was drawn from. Compared before every
-  // render so an idle timer, a click and a re-mount cannot re-run the same
-  // query, and bumped *before* the request so a failed render is not retried
-  // in a loop by the debounce.
-  const drawn = useRef<string | null>(null);
   // Which render is current: a slow response for text the author has already
   // replaced must not overwrite a newer one.
   const runId = useRef(0);
 
   const render = useCallback(async (text: string) => {
     if (!text.trim()) return;
-    drawn.current = text;
     const run = ++runId.current;
     setRendering(true);
     setRenderError(null);
@@ -307,15 +294,6 @@ export default function DashboardBuilder() {
   useEffect(() => {
     setSpecYaml((current) => (current.trim() === "" ? starterSpec(cubes) : current));
   }, [cubes]);
-
-  // "Renders live": draw once the typing stops, unless this exact text is
-  // already on screen.
-  useEffect(() => {
-    if (!autoRender || !signedIn) return;
-    if (!specYaml.trim() || specYaml === drawn.current) return;
-    const timer = setTimeout(() => void render(specYaml), AUTO_RENDER_MS);
-    return () => clearTimeout(timer);
-  }, [specYaml, autoRender, signedIn, render]);
 
   function loadInto(text: string, id: number | null) {
     setSpecYaml(text);
@@ -374,9 +352,9 @@ export default function DashboardBuilder() {
           >
             Vega-Lite
           </a>{" "}
-          spec saying how to draw its rows. Write it below and it is rendered as you type — by the
-          same code that draws every published chart, so the numbers come from the same place, and
-          your spec cannot carry any of its own.
+          spec saying how to draw its rows. Write it below and press Render to see it — by the same
+          code that draws every published chart, so the numbers come from the same place, and your
+          spec cannot carry any of its own.
         </p>
       </header>
 
@@ -396,15 +374,6 @@ export default function DashboardBuilder() {
               Spec
               {draftId !== null && <span className="badge badge-ghost badge-sm ml-2">draft</span>}
             </h2>
-            <label className="label cursor-pointer gap-2 py-0">
-              <span className="label-text text-xs">Render as I type</span>
-              <input
-                type="checkbox"
-                className="toggle toggle-sm"
-                checked={autoRender}
-                onChange={(event) => setAutoRender(event.target.checked)}
-              />
-            </label>
           </div>
 
           <textarea
@@ -549,7 +518,7 @@ export default function DashboardBuilder() {
                     {rendering
                       ? "Drawing…"
                       : signedIn
-                        ? "Your chart appears here as you type."
+                        ? "Press Render to draw your chart."
                         : "Sign in to draw your spec."}
                   </p>
                 </div>
