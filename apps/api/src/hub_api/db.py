@@ -1,4 +1,4 @@
-"""Chat turn log, the thread list, and the monthly quota counter
+"""Chat turn log, the thread list, and the daily quota counters
 (docs/chatbot.md §6, §7).
 
 Every chat turn is written to `chat_turns` — question, persona, plan, queries,
@@ -9,9 +9,10 @@ a turn's own row is still the unit of history (one question, one answer), not
 a separate per-message table — reconstructing a thread's message list is
 "every turn in order, user text then assistant text."
 
-It is also the quota counter: "questions asked this calendar month" is a count
-over this table, so there is no second source of truth to drift. That costs an
-index scan per question, which is nothing next to a model call.
+It is also the quota counter: "questions/tokens/dashboard actions since
+midnight" is read straight off this table (`questions_today`, `tokens_today`,
+`tool_calls_today`), so there is no second source of truth to drift. That
+costs an index scan per question, which is nothing next to a model call.
 
 Schema is created on startup with `create_all` rather than a migration tool —
 honest for an append-only log, except `create_all` only creates missing
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from typing import Any, Literal
 
 from sqlalchemy import (
@@ -147,22 +149,85 @@ def ensure_schema(engine: Engine) -> None:
     log.info("chat_schema_ready")
 
 
-def questions_this_month(engine: Engine, user_email: str) -> int:
-    """Questions `user_email` has asked since the start of the current UTC month.
+def _start_of_today_la() -> datetime:
+    """Midnight America/Los_Angeles, as of right now — converted to UTC.
 
-    Calendar-month, not rolling-30-day: it is what a user can predict, and it is
-    what a monthly subscription implies.
+    Pacific rather than UTC because that is where most of today's users are —
+    "resets at midnight" should match the midnight they experience. Converted
+    back to UTC before it is used in a query, deliberately: SQLite has no real
+    timezone-aware column type, so an aware datetime is bound as a wall-clock
+    string with the offset dropped. `chat_turns.created_at` is always written
+    as `datetime.now(UTC)`; binding an LA wall clock against it directly
+    compares two different wall clocks as if they were the same one and cuts
+    the boundary 7-8 hours off. Converting to UTC first makes both sides the
+    same wall clock again (see `test_tokens_today_cuts_at_los_angeles_midnight_
+    not_utc_midnight` for the case that catches a regression here).
     """
-    now = datetime.now(UTC)
-    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return (
+        datetime.now(ZoneInfo("America/Los_Angeles"))
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        .astimezone(UTC)
+    )
+
+
+def questions_today(engine: Engine, user_email: str) -> int:
+    """Questions `user_email` has asked since midnight America/Los_Angeles.
+
+    A COUNT over the log rather than a second counter, for the same reason
+    `tokens_today` below is a SUM over it: there is no source of truth to drift
+    from if there is only ever the one.
+    """
     statement = (
         select(func.count())
         .select_from(chat_turns)
         .where(chat_turns.c.user_email == user_email)
-        .where(chat_turns.c.created_at >= start)
+        .where(chat_turns.c.created_at >= _start_of_today_la())
     )
     with engine.connect() as connection:
         return int(connection.execute(statement).scalar_one())
+
+
+def tokens_today(engine: Engine, user_email: str) -> int:
+    """Input + output tokens `user_email` has spent since midnight America/Los_Angeles.
+
+    Same shape as `questions_today` and for the same reason: the log is
+    the only source of truth, so this is a SUM over it rather than a second
+    counter that could drift from it.
+    """
+    statement = (
+        select(func.coalesce(func.sum(chat_turns.c.input_tokens + chat_turns.c.output_tokens), 0))
+        .where(chat_turns.c.user_email == user_email)
+        .where(chat_turns.c.created_at >= _start_of_today_la())
+    )
+    with engine.connect() as connection:
+        return int(connection.execute(statement).scalar_one())
+
+
+def tool_calls_today(engine: Engine, user_email: str, tool_name: str) -> int:
+    """How many of `user_email`'s tool calls today were `tool_name`
+    (e.g. `"render_dashboard"`, `"save_dashboard"`) — for capping a specific
+    action separately from the overall token budget (`ohdp_agent.loop`'s
+    `Turn.tool_calls`, persisted verbatim into `chat_turns.tool_calls`).
+
+    Counted in Python over today's turns rather than as a JSON-aggregate SQL
+    query: `tool_calls` is a JSON blob, and the two engines this runs
+    against — SQLite locally, Postgres in prod — have no JSON-array syntax in
+    common to write that count once. A user's turns for one day is a short
+    list, so this costs a slightly wider read, not a slower one.
+    """
+    statement = (
+        select(chat_turns.c.tool_calls)
+        .where(chat_turns.c.user_email == user_email)
+        .where(chat_turns.c.created_at >= _start_of_today_la())
+    )
+    with engine.connect() as connection:
+        turns_tool_calls = connection.execute(statement).scalars().all()
+    return sum(
+        1
+        for calls in turns_tool_calls
+        for call in calls or []
+        if call.get("name") == tool_name
+    )
 
 
 def record_turn(

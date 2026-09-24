@@ -371,13 +371,25 @@ export function useHubChatRuntime(
         signal: controller.signal,
       });
       if (!response.ok || !response.body) {
-        const detail = await response.text().catch(() => "");
+        const raw = await response.text().catch(() => "");
+        // FastAPI's HTTPException body is `{"detail": "..."}` — the 429 case
+        // covers several independent daily gates (questions, tokens, dashboard
+        // renders/saves) with different messages, so this reads whichever one
+        // fired rather than collapsing all of them to one hardcoded string.
+        const detail = (() => {
+          try {
+            const parsed = JSON.parse(raw) as { detail?: unknown };
+            return typeof parsed.detail === "string" ? parsed.detail : "";
+          } catch {
+            return "";
+          }
+        })();
         throw new Error(
           response.status === 401
             ? "Sign in to use the chat."
             : response.status === 429
-              ? "Monthly question limit reached."
-              : `Chat failed (${response.status}). ${detail}`,
+              ? detail || "You've hit a usage limit for now."
+              : `Chat failed (${response.status}). ${detail || raw}`,
         );
       }
       for await (const event of readSse(response)) {

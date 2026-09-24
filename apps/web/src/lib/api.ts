@@ -269,6 +269,27 @@ export interface ChatModel {
  * Auto-discovered models are usable by id but omitted from the picker. */
 export const fetchModels = () => getJson<ChatModel[]>("/api/models");
 
+/** `GET /api/chat`'s sibling quota readout: what this signed-in user has used
+ * today against the daily question, token, and `render_dashboard`/
+ * `save_dashboard` caps (`hub_api.chat.me`). Every cap is enforced
+ * server-side regardless of whether this is ever fetched — this is display
+ * only. Shown in the Settings dropdown (`Navbar.tsx`), next to the signed-in
+ * identity it already shows there. */
+export interface ChatAllowance {
+  email: string;
+  tier: string;
+  questions_used_today: number;
+  questions_allowed_per_day: number;
+  tokens_used_today: number;
+  tokens_allowed_per_day: number;
+  renders_used_today: number;
+  renders_allowed_per_day: number;
+  saves_used_today: number;
+  saves_allowed_per_day: number;
+}
+
+export const fetchChatAllowance = () => getJson<ChatAllowance>("/api/me");
+
 export async function logout(): Promise<void> {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
 }

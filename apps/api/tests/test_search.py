@@ -53,7 +53,7 @@ SPEC: dict[str, Any] = {
     "title": "Influenza ED visits",
     "description": "Weekly share of emergency department visits.",
     "query": {"measures": ["ed_visits.avg_percent"]},
-    "vega": {"mark": "line"},
+    "vega_lite": {"mark": "line"},
 }
 
 

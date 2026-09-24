@@ -165,8 +165,21 @@ class Settings(BaseSettings):
         return [(url, keys[i] if i < len(keys) else "") for i, url in enumerate(urls)]
 
     # Chat quotas (ARCHITECTURE.md §10 open decision 3 — provisional)
-    free_monthly_questions: int = 20
-    paid_monthly_questions: int = 500
+    free_daily_questions: int = 10
+    paid_daily_questions: int = 50
+    # A second, independent gate alongside the question count: a handful of
+    # questions can burn very different amounts of model spend, so the thing
+    # worth capping is tokens too, not just questions.
+    free_daily_tokens: int = 50_000
+    paid_daily_tokens: int = 2_000_000
+    # `render_dashboard`/`save_dashboard` cost a live Cube query apiece (and a
+    # save also costs a catalog publish), on top of whatever tokens the turn
+    # itself burns — capped separately so a chart-heavy session can't dodge
+    # the token gate by asking the model to draw the same query forty times.
+    free_daily_renders: int = 30
+    paid_daily_renders: int = 300
+    free_daily_saves: int = 2
+    paid_daily_saves: int = 20
 
     # Issue reporting (hub_api.issues). The token is a fine-grained PAT with
     # issues:write on `github_issues_repo` and nothing else — it is handed to a

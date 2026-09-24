@@ -2,7 +2,7 @@
 
 Responsibilities (ARCHITECTURE.md §2, §5, §6):
   - OIDC session verification, `tier` claim extraction
-  - entitlement + monthly quota checks BEFORE the chat agent is invoked
+  - entitlement + daily quota checks BEFORE the chat agent is invoked
   - mint short-lived Cube service tokens (chat agent + dashboards)
   - Stripe webhook handling for tier changes
   - log every chat question/plan/result to Postgres (eval set)

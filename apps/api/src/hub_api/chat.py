@@ -58,7 +58,7 @@ TITLE_MAX_LENGTH = 60
 
 
 class ChatRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000)
+    question: str = Field(min_length=1, max_length=4000)
     # Explicit, not inferred — "explicit is honest and testable" (§10.4).
     persona: str = Field(default="", max_length=128)
     # Must be one of the ids returned by GET /api/models. The browser never
@@ -175,13 +175,22 @@ def me(
     user_email: Annotated[str, Depends(get_user_email)],
     engine: Annotated[Engine, Depends(get_engine)],
 ) -> dict[str, object]:
-    """Who the wall says you are and what you have left this month."""
-    used = db.questions_this_month(engine, user_email)
+    """Who the wall says you are and what you have left today."""
+    used = db.questions_today(engine, user_email)
+    tokens_used = db.tokens_today(engine, user_email)
+    renders_used = db.tool_calls_today(engine, user_email, "render_dashboard")
+    saves_used = db.tool_calls_today(engine, user_email, "save_dashboard")
     return {
         "email": user_email,
         "tier": TIER,
-        "questions_used": used,
-        "questions_allowed": _allowance(),
+        "questions_used_today": used,
+        "questions_allowed_per_day": _daily_question_allowance(),
+        "tokens_used_today": tokens_used,
+        "tokens_allowed_per_day": _daily_token_allowance(),
+        "renders_used_today": renders_used,
+        "renders_allowed_per_day": _daily_render_allowance(),
+        "saves_used_today": saves_used,
+        "saves_allowed_per_day": _daily_save_allowance(),
     }
 
 
@@ -342,13 +351,70 @@ async def chat(
     theoretical; it becomes real when §5's tiers do, and the fix then is a
     reservation row rather than a count.
     """
-    allowance = _allowance()
-    used = db.questions_this_month(engine, user_email)
-    if used >= allowance:
-        log.info("quota_exceeded", user=user_email, used=used, allowance=allowance)
+    daily_question_allowance = _daily_question_allowance()
+    used = db.questions_today(engine, user_email)
+    if used >= daily_question_allowance:
+        log.info(
+            "daily_question_quota_exceeded",
+            user=user_email,
+            used=used,
+            allowance=daily_question_allowance,
+        )
         raise HTTPException(
             429,
-            f"You have used all {allowance} questions included this month.",
+            f"You have used all {daily_question_allowance} questions included today. "
+            "Come back after midnight America/Los_Angeles.",
+        )
+
+    daily_token_allowance = _daily_token_allowance()
+    tokens_used_today = db.tokens_today(engine, user_email)
+    if tokens_used_today >= daily_token_allowance:
+        log.info(
+            "daily_token_quota_exceeded",
+            user=user_email,
+            used=tokens_used_today,
+            allowance=daily_token_allowance,
+        )
+        raise HTTPException(
+            429,
+            f"You have used all {daily_token_allowance:,} tokens included today. "
+            "Come back after midnight America/Los_Angeles.",
+        )
+
+    # `render_dashboard`/`save_dashboard` are capped separately from the token
+    # budget above (settings.py's own comment says why). Checked here, before
+    # the turn starts, the same way the token gate is: a question that never
+    # touches a dashboard still costs the free index scan, and a long turn
+    # that renders past the cap mid-turn is bounded by MAX_TURNS the same way
+    # a turn can already burn past the token cap mid-turn.
+    daily_render_allowance = _daily_render_allowance()
+    renders_used_today = db.tool_calls_today(engine, user_email, "render_dashboard")
+    if renders_used_today >= daily_render_allowance:
+        log.info(
+            "daily_render_quota_exceeded",
+            user=user_email,
+            used=renders_used_today,
+            allowance=daily_render_allowance,
+        )
+        raise HTTPException(
+            429,
+            f"You have used all {daily_render_allowance} dashboard renders included "
+            "today. Come back after midnight America/Los_Angeles.",
+        )
+
+    daily_save_allowance = _daily_save_allowance()
+    saves_used_today = db.tool_calls_today(engine, user_email, "save_dashboard")
+    if saves_used_today >= daily_save_allowance:
+        log.info(
+            "daily_save_quota_exceeded",
+            user=user_email,
+            used=saves_used_today,
+            allowance=daily_save_allowance,
+        )
+        raise HTTPException(
+            429,
+            f"You have used all {daily_save_allowance} dashboard saves included "
+            "today. Come back after midnight America/Los_Angeles.",
         )
 
     model = body.model
@@ -504,5 +570,17 @@ async def _stream(
         )
 
 
-def _allowance() -> int:
-    return settings.paid_monthly_questions if TIER == "paid" else settings.free_monthly_questions
+def _daily_question_allowance() -> int:
+    return settings.paid_daily_questions if TIER == "paid" else settings.free_daily_questions
+
+
+def _daily_token_allowance() -> int:
+    return settings.paid_daily_tokens if TIER == "paid" else settings.free_daily_tokens
+
+
+def _daily_render_allowance() -> int:
+    return settings.paid_daily_renders if TIER == "paid" else settings.free_daily_renders
+
+
+def _daily_save_allowance() -> int:
+    return settings.paid_daily_saves if TIER == "paid" else settings.free_daily_saves

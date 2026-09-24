@@ -1,10 +1,11 @@
 import { NavLink, Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { THEMES, applyTheme, storedTheme } from "../theme";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import GearIcon from "./icons/GearIcon";
 import LogoMark from "./icons/LogoMark";
 import SearchBar from "./SearchBar";
+import { fetchChatAllowance, type ChatAllowance } from "../lib/api";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
@@ -13,9 +14,30 @@ const NAV_ITEMS = [
   { to: "/chat", label: "Chat" },
 ];
 
+/** One row of the Settings dropdown's usage block — `used / allowed`, in red
+ * once the cap is hit. Renders nothing while `allowance` hasn't loaded yet
+ * rather than a misleading "0 / 0" (`Navbar`'s effect only fetches it for a
+ * signed-in user, and the fetch can still be in flight or have failed). */
+function UsageRow({ label, used, allowed }: { label: string; used: number; allowed: number }) {
+  const exhausted = used >= allowed;
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="opacity-70">{label}</span>
+      <span className={`tabular-nums ${exhausted ? "text-error" : ""}`}>
+        {used.toLocaleString()} / {allowed.toLocaleString()}
+      </span>
+    </div>
+  );
+}
+
 export default function Navbar() {
   const { user, signIn, signOut } = useAuth();
   const [theme, setTheme] = useState(storedTheme() ?? "ohdp");
+  const [allowance, setAllowance] = useState<ChatAllowance | null>(null);
+
+  useEffect(() => {
+    if (user) fetchChatAllowance().then(setAllowance).catch(() => setAllowance(null));
+  }, [user]);
 
   return (
     <div className="navbar bg-base-100/90 backdrop-blur border-b border-base-300 sticky top-0 z-40 px-4">
@@ -94,6 +116,37 @@ export default function Navbar() {
                   <span className="text-xs opacity-70 truncate">{user.email}</span>
                 )}
               </div>
+            )}
+
+            {user && allowance && (
+              <>
+                <div className="flex flex-col gap-1 py-1">
+                  <div className="label pb-0">
+                    <span className="label-text">Usage today</span>
+                  </div>
+                  <UsageRow
+                    label="Questions"
+                    used={allowance.questions_used_today}
+                    allowed={allowance.questions_allowed_per_day}
+                  />
+                  <UsageRow
+                    label="Tokens"
+                    used={allowance.tokens_used_today}
+                    allowed={allowance.tokens_allowed_per_day}
+                  />
+                  <UsageRow
+                    label="Dashboard renders"
+                    used={allowance.renders_used_today}
+                    allowed={allowance.renders_allowed_per_day}
+                  />
+                  <UsageRow
+                    label="Dashboard saves"
+                    used={allowance.saves_used_today}
+                    allowed={allowance.saves_allowed_per_day}
+                  />
+                </div>
+                <div className="divider my-1" />
+              </>
             )}
 
             <div className="label">

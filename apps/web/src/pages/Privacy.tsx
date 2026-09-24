@@ -53,7 +53,7 @@ export default function Privacy() {
       <h2 className="text-2xl font-bold mt-8 mb-2">Why we collect it</h2>
       <ul className="list-disc pl-6 space-y-2 opacity-80">
         <li>To authenticate you and keep you signed in.</li>
-        <li>To enforce per-tier monthly question quotas.</li>
+        <li>To enforce per-tier daily usage quotas.</li>
         <li>To answer the questions you ask the assistant.</li>
         <li>
           To file issues or feedback you explicitly ask us to submit on your

@@ -6,7 +6,9 @@ SQLite file (matching local dev; see db.make_engine's own docstring on why
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import Table, create_engine
@@ -45,6 +47,125 @@ def _turn(
     )
     assert turn_id is not None
     return turn_id
+
+
+def test_questions_today_counts_turns_and_is_scoped_to_owner(engine: Engine) -> None:
+    thread_id = db.create_thread(engine, user_email=USER, title="t")
+    _turn(engine, thread_id=thread_id, question="q1", answer="a1")
+    _turn(engine, thread_id=thread_id, question="q2", answer="a2")
+    # Another user's questions must not count toward this one's total.
+    _turn(engine, thread_id=None, question="q3", answer="a3", user_email="other@example.org")
+
+    assert db.questions_today(engine, USER) == 2
+    assert db.questions_today(engine, "nobody@example.org") == 0
+
+
+def test_tokens_today_sums_input_and_output_and_is_scoped_to_owner(engine: Engine) -> None:
+    thread_id = db.create_thread(engine, user_email=USER, title="t")
+
+    def record(user_email: str, input_tokens: int, output_tokens: int) -> None:
+        turn_id = db.record_turn(
+            engine,
+            user_email=user_email,
+            tier="free",
+            persona="",
+            question="q",
+            plan="",
+            answer="a",
+            tool_calls=[],
+            queries=[],
+            citations=[],
+            stripped_citations=[],
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            thread_id=thread_id,
+        )
+        assert turn_id is not None
+
+    record(USER, 100, 50)
+    record(USER, 200, 25)
+    # Another user's spend must not count toward this one's total.
+    record("other@example.org", 9_999, 9_999)
+
+    assert db.tokens_today(engine, USER) == 100 + 50 + 200 + 25
+    assert db.tokens_today(engine, "nobody@example.org") == 0
+
+
+def test_tool_calls_today_counts_by_name_and_is_scoped_to_owner(engine: Engine) -> None:
+    thread_id = db.create_thread(engine, user_email=USER, title="t")
+
+    def record(user_email: str, tool_calls: list[dict[str, str]]) -> None:
+        turn_id = db.record_turn(
+            engine,
+            user_email=user_email,
+            tier="free",
+            persona="",
+            question="q",
+            plan="",
+            answer="a",
+            tool_calls=tool_calls,
+            queries=[],
+            citations=[],
+            stripped_citations=[],
+            input_tokens=1,
+            output_tokens=1,
+            thread_id=thread_id,
+        )
+        assert turn_id is not None
+
+    record(
+        USER,
+        [
+            {"name": "render_dashboard"},
+            {"name": "run_metric_query"},
+            {"name": "render_dashboard"},
+        ],
+    )
+    record(USER, [{"name": "save_dashboard"}])
+    # Another user's calls must not count toward this one's total.
+    record("other@example.org", [{"name": "render_dashboard"}] * 5)
+
+    assert db.tool_calls_today(engine, USER, "render_dashboard") == 2
+    assert db.tool_calls_today(engine, USER, "save_dashboard") == 1
+    assert db.tool_calls_today(engine, USER, "run_metric_query") == 1
+    assert db.tool_calls_today(engine, "nobody@example.org", "render_dashboard") == 0
+
+
+def test_tokens_today_cuts_at_los_angeles_midnight_not_utc_midnight(engine: Engine) -> None:
+    """SQLite's DateTime(timezone=True) drops the UTC offset on comparison —
+    binding an LA-local wall clock straight against `created_at` (always
+    UTC) would put the cutoff 7-8 hours off from real LA midnight. A turn 5
+    minutes either side of LA midnight is the case that catches it."""
+    la_midnight_utc = (
+        datetime.now(ZoneInfo("America/Los_Angeles"))
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        .astimezone(UTC)
+    )
+
+    def record_at(when: datetime, input_tokens: int) -> None:
+        with engine.begin() as connection:
+            connection.execute(
+                db.chat_turns.insert().values(
+                    created_at=when,
+                    user_email=USER,
+                    tier="free",
+                    persona="",
+                    question="q",
+                    plan="",
+                    answer="a",
+                    tool_calls=[],
+                    queries=[],
+                    citations=[],
+                    stripped_citations=[],
+                    input_tokens=input_tokens,
+                    output_tokens=0,
+                )
+            )
+
+    record_at(la_midnight_utc - timedelta(minutes=5), 1000)  # yesterday in LA
+    record_at(la_midnight_utc + timedelta(minutes=5), 2000)  # today in LA
+
+    assert db.tokens_today(engine, USER) == 2000
 
 
 def test_record_turn_returns_its_id_and_bumps_thread_updated_at(engine: Engine) -> None:

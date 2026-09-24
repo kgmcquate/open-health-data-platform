@@ -804,7 +804,7 @@ export default function Chat() {
             <h1 className="text-3xl font-bold">Sign in to chat</h1>
             <p className="py-4 opacity-70">
               The chatbot burns real tokens, so it sits behind sign-in with a
-              monthly question budget. Free tier included.
+              daily question budget. Free tier included.
             </p>
             <button className="btn btn-primary" onClick={signIn}>
               Sign in

@@ -52,7 +52,7 @@ query:
   time_dimensions:
     - dimension: ed_visits.week_end
       granularity: week
-vega:
+vega_lite:
   mark: line
   encoding:
     x: { field: ed_visits.week_end, type: temporal }

@@ -42,7 +42,7 @@ SPEC: dict[str, Any] = {
         "measures": ["ed_visits.avg_percent"],
         "time_dimensions": [{"dimension": "ed_visits.week_end", "granularity": "week"}],
     },
-    "vega": {
+    "vega_lite": {
         "mark": "line",
         "encoding": {
             "x": {"field": "ed_visits.week_end", "type": "temporal"},
@@ -115,7 +115,7 @@ def test_no_rows_are_stored_with_the_spec(client: TestClient, cube: None) -> Non
     entry = client.get("/tools/get_dashboard", params={"name": "ed-visits"}).json()["dashboards"][0]
 
     assert "3.1" not in str(entry)
-    assert "data" not in entry["spec"]["vega"]
+    assert "data" not in entry["spec"]["vega_lite"]
 
 
 def test_the_index_lists_names_without_their_specs(client: TestClient, cube: None) -> None:
@@ -156,7 +156,7 @@ def test_a_spec_that_cannot_be_drawn_is_not_saved(client: TestClient, cube: None
     model gets the same correctable reason a failed render gives it."""
     bad = {
         **SPEC,
-        "vega": {
+        "vega_lite": {
             "mark": "line",
             "encoding": {"y": {"field": "ed_visits.absent", "type": "quantitative"}},
         },

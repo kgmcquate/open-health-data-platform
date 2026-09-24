@@ -484,7 +484,7 @@ Flag these rather than deciding unilaterally:
    toward clinical decision support. Framing must stay explicitly population-level and
    non-clinical, with disclaimers on every generated output. Worth a lawyer's hour
    before launch.
-3. **Free-tier chat quota.** Starting proposal: 20 questions/month free, 500 paid.
+3. **Free-tier chat quota.** Starting proposal: 20 questions/day free, 500 paid.
 4. **Which persona leads.** Clinicians and business users want different defaults from
    the same data; this affects the metrics modeled first.
 

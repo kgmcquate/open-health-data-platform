@@ -44,7 +44,7 @@ SPEC: dict[str, Any] = {
         "measures": ["ed_visits.avg_percent"],
         "time_dimensions": [{"dimension": "ed_visits.week_end", "granularity": "week"}],
     },
-    "vega": {
+    "vega_lite": {
         "mark": "line",
         "encoding": {
             "x": {"field": "ed_visits.week_end", "type": "temporal"},
@@ -187,7 +187,7 @@ def test_preview_refuses_a_spec_carrying_its_own_numbers(author: TestClient, cub
     """The property the whole dashboard path exists to hold, applied to a human:
     rows come from Cube or they do not come at all."""
     smuggled = _yaml(
-        vega={
+        vega_lite={
             "data": {"values": [{"x": 1, "y": 2}]},
             "mark": "line",
             "encoding": {"x": {"field": "x"}, "y": {"field": "y"}},
@@ -465,7 +465,7 @@ def test_a_spec_that_cannot_be_drawn_is_never_published(author: TestClient, cube
         "/api/builder/publish",
         json={
             "spec_yaml": _yaml(
-                vega={
+                vega_lite={
                     "mark": "line",
                     "encoding": {"x": {"field": "ed_visits.nonexistent", "type": "temporal"}},
                 }
@@ -528,7 +528,7 @@ def test_an_authors_own_list_carries_the_source_to_edit(author: TestClient, cube
 
     entry = author.get("/api/builder/published").json()[0]
 
-    assert yaml.safe_load(entry["spec_yaml"])["vega"] == SPEC["vega"]
+    assert yaml.safe_load(entry["spec_yaml"])["vega_lite"] == SPEC["vega_lite"]
     # And it is still absent from the public listing of the same dashboard.
     assert "spec_yaml" not in author.get("/api/dashboards").json()[0]
 

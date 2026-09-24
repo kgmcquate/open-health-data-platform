@@ -41,7 +41,7 @@ SPEC: dict[str, Any] = {
         "measures": ["ed_visits.avg_percent"],
         "time_dimensions": [{"dimension": "ed_visits.week_end", "granularity": "week"}],
     },
-    "vega": {
+    "vega_lite": {
         "mark": "line",
         "encoding": {
             "x": {"field": "ed_visits.week_end", "type": "temporal"},
@@ -194,7 +194,7 @@ def test_the_listing_carries_no_chart_only_its_query(client: TestClient, cube: N
 
     entry = client.get("/api/dashboards").json()[0]
 
-    assert "vega" not in entry
+    assert "vega_lite" not in entry
     assert "spec" not in entry
 
 
@@ -385,7 +385,7 @@ def test_a_saved_dashboard_has_its_own_metadata_route(client: TestClient, cube: 
     assert entry["name"] == "ed-visits"
     assert entry["title"] == SPEC["title"]
     assert entry["query"] == SPEC["query"]
-    assert "vega" not in entry
+    assert "vega_lite" not in entry
     assert "spec" not in entry
     assert "saved_by" not in entry
 

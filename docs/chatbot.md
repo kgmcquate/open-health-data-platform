@@ -193,7 +193,7 @@ Two phases, which is also how §6's "always show the plan" requirement gets sati
 
 ```
 user question
-  └─ hub-api: authn, tier, monthly quota gate      ← before the model is invoked
+  └─ hub-api: authn, tier, daily quota gates (questions/tokens/dashboards)      ← before the model is invoked
      └─ PLAN phase
         get_persona_context → find_context → semantic_search → get_asset_context
         → list_metrics / describe_metric → [search_literature]
@@ -418,7 +418,14 @@ Mostly inherited from ARCHITECTURE.md §6; what is new to this design is called 
 - **No SQL tool, ever.** Cube queries are Pydantic models. §2.2.
 - **Caps in three independent places:** the tool layer (defensive), Cube `queryRewrite`
   (authoritative, already written), and a Snowflake statement timeout. Do not rely on any one.
-- **Quota** enforced in hub-api before the model is invoked, per tier.
+- **Quota** enforced in hub-api before the model is invoked, per tier — a daily question count,
+  a daily token cap, and a daily cap each on `render_dashboard`/`save_dashboard` calls, all read
+  straight from the `chat_turns` log (`db.questions_today`, `db.tokens_today`,
+  `db.tool_calls_today`). The dashboard caps exist because those two tools cost a live Cube query
+  (a save also costs a catalog publish) on top of whatever tokens the turn itself burns, and
+  because `hub_api.issues.get_reporter` deliberately never attributes a chatbot-sourced tool call
+  to a specific human (it can only tell "the chat surface" from a shared bearer token) — so per-user
+  attribution has to happen here, before the turn starts, not inside `hub_api.dashboards` itself.
 - **Every answer shows its work** — the metrics used, the compiled SQL, the row count.
 - **Disclaimer on every generated output**: population-level, not clinical decision support
   (§10.2).

@@ -25,7 +25,7 @@ SPEC: dict[str, Any] = {
     "title": "ED visit share",
     "description": "Average share of ED visits, by week.",
     "query": {"measures": ["respiratory__ed_visit_share_weekly.avg_percent"]},
-    "vega": {
+    "vega_lite": {
         "mark": "line",
         "encoding": {
             "y": {"field": "respiratory__ed_visit_share_weekly.avg_percent", "type": "quantitative"}
