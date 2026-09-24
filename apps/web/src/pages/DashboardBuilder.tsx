@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
@@ -128,12 +128,44 @@ function when(iso: string | null): string {
   });
 }
 
+const INITIAL_CUBE_COUNT = 10;
+
+/** A stable random sample, chosen once per `cubes` load rather than on every
+ * render — otherwise the list would reshuffle under the author's cursor as
+ * they typed into unrelated fields. */
+function sampleCubes(cubes: CubeRef[], count: number): CubeRef[] {
+  const shuffled = [...cubes];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, count);
+}
+
+function memberMatches(member: { name: string; title: string; description: string }, needle: string): boolean {
+  return (
+    member.name.toLowerCase().includes(needle) ||
+    member.title.toLowerCase().includes(needle) ||
+    member.description.toLowerCase().includes(needle)
+  );
+}
+
 /** Every member a query may name, straight from Cube's `/meta` — the same
  * world the chat agent works in. A mistyped member is the most common way a
  * hand-written spec comes back empty, so each name is a click-to-copy button
- * rather than something to retype. */
+ * rather than something to retype.
+ *
+ * There are too many cubes to browse comfortably, so the panel opens on a
+ * random sample of 10 and a search narrows it to whatever measure, dimension
+ * or cube the author is actually looking for. */
 function FieldReference({ cubes }: { cubes: CubeRef[] | null }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const sample = useMemo(
+    () => (cubes ? sampleCubes(cubes, INITIAL_CUBE_COUNT) : []),
+    [cubes],
+  );
 
   async function copy(name: string) {
     try {
@@ -147,10 +179,67 @@ function FieldReference({ cubes }: { cubes: CubeRef[] | null }) {
 
   if (!cubes) return null;
 
+  const needle = search.trim().toLowerCase();
+  const searching = needle !== "";
+
+  const entries = (searching ? cubes : sample)
+    .map((cube) => {
+      if (!searching) return { cube, measures: cube.measures, dimensions: cube.dimensions };
+
+      const measureHits = cube.measures.filter((m) => memberMatches(m, needle));
+      const dimensionHits = cube.dimensions.filter((d) => memberMatches(d, needle));
+      const cubeHits =
+        cube.name.toLowerCase().includes(needle) ||
+        (cube.title || "").toLowerCase().includes(needle) ||
+        (cube.description || "").toLowerCase().includes(needle);
+
+      const hasMemberHits = measureHits.length > 0 || dimensionHits.length > 0;
+      if (!cubeHits && !hasMemberHits) return null;
+
+      return {
+        cube,
+        measures: measureHits.length > 0 ? measureHits : cubeHits ? cube.measures : [],
+        dimensions: dimensionHits.length > 0 ? dimensionHits : cubeHits ? cube.dimensions : [],
+      };
+    })
+    .filter(
+      (
+        entry,
+      ): entry is { cube: CubeRef; measures: CubeRef["measures"]; dimensions: CubeRef["dimensions"] } =>
+        entry !== null,
+    );
+
   return (
     <div className="space-y-2">
-      {cubes.map((cube) => (
-        <details key={cube.name} className="collapse collapse-arrow bg-base-200">
+      <label className="input input-sm input-bordered flex items-center gap-2">
+        <svg
+          className="h-4 w-4 opacity-50"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+        >
+          <circle cx="11" cy="11" r="7" strokeWidth="2" />
+          <path d="m20 20-3.5-3.5" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        <input
+          type="search"
+          className="grow"
+          placeholder="Search measures, dimensions, cubes…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          aria-label="Search fields you can query"
+        />
+      </label>
+
+      <p className="text-xs opacity-60">
+        {searching
+          ? `${entries.length} of ${cubes.length} cubes match "${search.trim()}"`
+          : `Showing a random ${sample.length} of ${cubes.length} cubes — search to find a specific field.`}
+      </p>
+
+      {entries.map(({ cube, measures, dimensions }) => (
+        <details key={cube.name} className="collapse collapse-arrow bg-base-200" open={searching}>
           <summary className="collapse-title text-sm font-medium">
             {cube.title || cube.name}
             <span className="ml-2 font-mono text-xs opacity-60">{cube.name}</span>
@@ -158,8 +247,8 @@ function FieldReference({ cubes }: { cubes: CubeRef[] | null }) {
           <div className="collapse-content text-xs space-y-3">
             {cube.description && <p className="opacity-70">{cube.description}</p>}
             {[
-              { label: "Measures", members: cube.measures },
-              { label: "Dimensions", members: cube.dimensions },
+              { label: "Measures", members: measures },
+              { label: "Dimensions", members: dimensions },
             ].map(({ label, members }) =>
               members.length === 0 ? null : (
                 <div key={label}>
