@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Hard ceiling applied here as well as in semantic/cube/cube.js. If these two
 # ever disagree, cube.js wins — it is the one an attacker cannot skip.
-MAX_ROWS = 10_000
+MAX_ROWS = 20_000
 
 # `cube_name.field_name`. Cube identifiers are snake_case; nothing else parses.
 MEMBER_RE = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")

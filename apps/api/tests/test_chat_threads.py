@@ -19,6 +19,7 @@ from hub_api import chat, db
 from hub_api.main import app
 from hub_api.models import ModelConfig
 from ohdp_agent.loop import Deps
+from ohdp_shared import settings
 
 USER = "researcher@example.org"
 OTHER = "other@example.org"
@@ -42,6 +43,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     db.ensure_schema(engine)
     app.dependency_overrides[chat.get_engine] = lambda: engine
     app.dependency_overrides[chat.get_user_email] = lambda: USER
+    app.dependency_overrides[chat.get_user_tier] = lambda: "free"
     client = TestClient(app)
     # Override the agent registry after lifespan has run so the /models endpoint
     # sees predictable entries without needing real API keys.
@@ -56,6 +58,22 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         yield client
     finally:
         app.dependency_overrides.clear()
+
+
+def test_me_reports_the_authenticated_tiers_allowances(client: TestClient) -> None:
+    """`/api/me` reads `chat.get_user_tier`, not a hardcoded constant — a paid
+    session must see the paid daily caps, not the free ones."""
+    free = client.get("/api/me").json()
+    assert free["tier"] == "free"
+    assert free["questions_allowed_per_day"] == settings.free_daily_questions
+
+    app.dependency_overrides[chat.get_user_tier] = lambda: "paid"
+    paid = client.get("/api/me").json()
+    assert paid["tier"] == "paid"
+    assert paid["questions_allowed_per_day"] == settings.paid_daily_questions
+    assert paid["tokens_allowed_per_day"] == settings.paid_daily_tokens
+    assert paid["renders_allowed_per_day"] == settings.paid_daily_renders
+    assert paid["saves_allowed_per_day"] == settings.paid_daily_saves
 
 
 def test_create_list_and_get_thread(client: TestClient) -> None:

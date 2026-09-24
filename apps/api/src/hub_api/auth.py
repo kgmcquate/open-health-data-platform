@@ -116,6 +116,22 @@ def get_current_user(request: Request) -> User:
     return User(**{**data, "email": email, "is_admin": is_admin(email)})
 
 
+def get_user_tier(request: Request) -> str:
+    """This request's tier, without building the rest of `User` — `chat.py`'s
+    quota gates and Cube calls want only this field, on the hot path for
+    every question, the same way `chat.get_user_email` is a lighter sibling
+    of `get_current_user` for routes that only need the address.
+
+    Same lag as this module's docstring describes for `tier` generally: a
+    Stripe-driven upgrade takes effect at the session's next login, not the
+    moment the webhook lands. "free" for a request with no session at all —
+    every caller of this is already behind its own `get_user_email` check,
+    so that default is a defensive fallback, not a real code path.
+    """
+    user = request.session.get("user")
+    return str(user.get("tier", "free")) if user else "free"
+
+
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
     """An admin, or 403. The wall in front of every destructive route.
 

@@ -82,9 +82,15 @@ from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
 
-# Everyone reaching the chat is tier `free` (ARCHITECTURE.md §5), and tier is
-# what Cube's `queryRewrite` reads to apply its row ceiling — so it is set here
-# and never taken from the caller.
+# Deliberately still hardcoded, unlike `hub_api.chat.TIER` (removed in favor
+# of `auth.get_user_tier`, resolved from the caller's session). That fix
+# doesn't reach here: `render_dashboard`/`save_dashboard` are called through
+# the `ohdp-tools` MCP connection on a shared bearer token, and
+# `hub_api.issues.get_reporter` deliberately never resolves that caller to a
+# specific human (`Reporter(source="chatbot", email=None)` — see its own
+# docstring). There is no session to read a real tier from at this layer for
+# the vast majority of calls here, so every render gets the free row ceiling
+# regardless of who asked, until that identity gap is closed.
 TIER = "free"
 
 # Rendering an embed means holding the chart's rows in memory and returning a

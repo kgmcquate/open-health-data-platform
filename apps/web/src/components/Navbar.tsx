@@ -118,6 +118,13 @@ export default function Navbar() {
               </div>
             )}
 
+            {user && (
+              <div className="flex items-center justify-between text-xs pb-1">
+                <span className="opacity-70">Plan</span>
+                <span className="font-medium">{user.tier === "paid" ? "Pro" : "Free"}</span>
+              </div>
+            )}
+
             {user && allowance && (
               <>
                 <div className="flex flex-col gap-1 py-1">

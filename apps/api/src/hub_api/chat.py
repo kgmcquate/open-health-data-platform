@@ -11,8 +11,9 @@ limit costs us an index scan rather than an Opus call (§6, ARCHITECTURE.md §10
 request body.** `app.open-health-data-platform.org` reaches hub-api's Ingress
 directly — there is no oauth2-proxy wall in front of it any more (hub_api.auth
 does its own OIDC, ARCHITECTURE.md §5, gated by `settings.allowed_emails_list`
-until billing (M4) can meter strangers). `tier` still comes from `TIER`, below,
-rather than a signed claim, because the IdP does not issue one yet.
+until billing (M4) can meter strangers). `tier` comes from that same session,
+via `hub_api.auth.get_user_tier` — `users.tier` as of the caller's last
+login (`auth._upsert_user`), bumped by the billing webhook once M4 exists.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.engine import Engine
 
 from hub_api import db
+from hub_api.auth import get_user_tier
 from hub_api.models import AgentRegistry, ModelConfig
 from ohdp_agent.catalog import CatalogClient
 from ohdp_agent.cube import CubeClient
@@ -41,11 +43,6 @@ from ohdp_shared import get_logger, settings
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["chat"])
-
-# Every user is `free` until the OIDC provider of ARCHITECTURE.md §5 exists and
-# can put a real `tier` claim in a session. Named rather than inlined so the
-# place that has to change is obvious.
-TIER = "free"
 
 # Sent every 15s so the proxy and any intermediary see traffic on a long plan
 # phase. An SSE comment line, ignored by EventSource.
@@ -173,6 +170,7 @@ def get_optional_user_email(request: Request) -> str | None:
 @router.get("/me")
 def me(
     user_email: Annotated[str, Depends(get_user_email)],
+    tier: Annotated[str, Depends(get_user_tier)],
     engine: Annotated[Engine, Depends(get_engine)],
 ) -> dict[str, object]:
     """Who the wall says you are and what you have left today."""
@@ -182,15 +180,15 @@ def me(
     saves_used = db.tool_calls_today(engine, user_email, "save_dashboard")
     return {
         "email": user_email,
-        "tier": TIER,
+        "tier": tier,
         "questions_used_today": used,
-        "questions_allowed_per_day": _daily_question_allowance(),
+        "questions_allowed_per_day": _daily_question_allowance(tier),
         "tokens_used_today": tokens_used,
-        "tokens_allowed_per_day": _daily_token_allowance(),
+        "tokens_allowed_per_day": _daily_token_allowance(tier),
         "renders_used_today": renders_used,
-        "renders_allowed_per_day": _daily_render_allowance(),
+        "renders_allowed_per_day": _daily_render_allowance(tier),
         "saves_used_today": saves_used,
-        "saves_allowed_per_day": _daily_save_allowance(),
+        "saves_allowed_per_day": _daily_save_allowance(tier),
     }
 
 
@@ -338,6 +336,7 @@ def _decode_image(data_url: str) -> tuple[bytes, str]:
 async def chat(
     body: ChatRequest,
     user_email: Annotated[str, Depends(get_user_email)],
+    tier: Annotated[str, Depends(get_user_tier)],
     engine: Annotated[Engine, Depends(get_engine)],
     agents: Annotated[AgentRegistry, Depends(get_agents)],
     pending: Annotated[AskRegistry, Depends(get_pending_asks)],
@@ -351,7 +350,7 @@ async def chat(
     theoretical; it becomes real when §5's tiers do, and the fix then is a
     reservation row rather than a count.
     """
-    daily_question_allowance = _daily_question_allowance()
+    daily_question_allowance = _daily_question_allowance(tier)
     used = db.questions_today(engine, user_email)
     if used >= daily_question_allowance:
         log.info(
@@ -366,7 +365,7 @@ async def chat(
             "Come back after midnight America/Los_Angeles.",
         )
 
-    daily_token_allowance = _daily_token_allowance()
+    daily_token_allowance = _daily_token_allowance(tier)
     tokens_used_today = db.tokens_today(engine, user_email)
     if tokens_used_today >= daily_token_allowance:
         log.info(
@@ -387,7 +386,7 @@ async def chat(
     # touches a dashboard still costs the free index scan, and a long turn
     # that renders past the cap mid-turn is bounded by MAX_TURNS the same way
     # a turn can already burn past the token cap mid-turn.
-    daily_render_allowance = _daily_render_allowance()
+    daily_render_allowance = _daily_render_allowance(tier)
     renders_used_today = db.tool_calls_today(engine, user_email, "render_dashboard")
     if renders_used_today >= daily_render_allowance:
         log.info(
@@ -402,7 +401,7 @@ async def chat(
             "today. Come back after midnight America/Los_Angeles.",
         )
 
-    daily_save_allowance = _daily_save_allowance()
+    daily_save_allowance = _daily_save_allowance(tier)
     saves_used_today = db.tool_calls_today(engine, user_email, "save_dashboard")
     if saves_used_today >= daily_save_allowance:
         log.info(
@@ -451,7 +450,7 @@ async def chat(
     ask = AskUserChannel(owner=user_email, pending=pending)
 
     return StreamingResponse(
-        _stream(engine, body, user_email, config, images, ask),
+        _stream(engine, body, user_email, tier, config, images, ask),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -467,13 +466,14 @@ async def _stream(
     engine: Engine,
     body: ChatRequest,
     user_email: str,
+    tier: str,
     config: ModelConfig,
     images: list[tuple[bytes, str]],
     ask: AskUserChannel,
 ) -> AsyncIterator[str]:
     """Drive the agent, forward its events, and log the turn when it ends."""
     turn = Turn(question=body.question, persona=body.persona)
-    cube = CubeClient(settings.cube_api_url, settings.cube_api_secret, tier=TIER)
+    cube = CubeClient(settings.cube_api_url, settings.cube_api_secret, tier=tier)
     catalog = (
         CatalogClient(settings.openmetadata_url, settings.openmetadata_jwt)
         if settings.openmetadata_jwt
@@ -545,7 +545,7 @@ async def _stream(
         db.record_turn(
             engine,
             user_email=user_email,
-            tier=TIER,
+            tier=tier,
             persona=turn.persona,
             thread_id=body.thread_id,
             question=turn.question,
@@ -570,17 +570,17 @@ async def _stream(
         )
 
 
-def _daily_question_allowance() -> int:
-    return settings.paid_daily_questions if TIER == "paid" else settings.free_daily_questions
+def _daily_question_allowance(tier: str) -> int:
+    return settings.paid_daily_questions if tier == "paid" else settings.free_daily_questions
 
 
-def _daily_token_allowance() -> int:
-    return settings.paid_daily_tokens if TIER == "paid" else settings.free_daily_tokens
+def _daily_token_allowance(tier: str) -> int:
+    return settings.paid_daily_tokens if tier == "paid" else settings.free_daily_tokens
 
 
-def _daily_render_allowance() -> int:
-    return settings.paid_daily_renders if TIER == "paid" else settings.free_daily_renders
+def _daily_render_allowance(tier: str) -> int:
+    return settings.paid_daily_renders if tier == "paid" else settings.free_daily_renders
 
 
-def _daily_save_allowance() -> int:
-    return settings.paid_daily_saves if TIER == "paid" else settings.free_daily_saves
+def _daily_save_allowance(tier: str) -> int:
+    return settings.paid_daily_saves if tier == "paid" else settings.free_daily_saves
