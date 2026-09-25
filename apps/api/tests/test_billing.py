@@ -156,6 +156,139 @@ def test_unconfigured_billing_is_a_503(
     assert stripe == []
 
 
+# --- Billing portal -----------------------------------------------------------
+
+
+@pytest.fixture
+def portal(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """A fake `billing_portal.Session.create` that records its kwargs and
+    returns a portal URL."""
+    created: list[dict[str, Any]] = []
+
+    class FakeSession:
+        url = "https://billing.stripe.com/session/test_123"
+
+    def create(**kwargs: Any) -> FakeSession:
+        created.append(kwargs)
+        return FakeSession()
+
+    monkeypatch.setattr(stripe_lib.billing_portal.Session, "create", create)
+    return created
+
+
+def _insert_subscription(
+    engine: Engine,
+    *,
+    email: str = "buyer@example.org",
+    customer_id: str,
+    subscription_id: str,
+    status: str = "active",
+    created_at: datetime,
+) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            billing.subscriptions.insert().values(
+                user_email=email,
+                stripe_customer_id=customer_id,
+                stripe_subscription_id=subscription_id,
+                status=status,
+                price_id=PRICE,
+                cancel_at_period_end=False,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+        )
+
+
+def test_portal_requires_signing_in(portal: list[dict[str, Any]]) -> None:
+    response = TestClient(app).post("/api/billing/portal")
+
+    assert response.status_code == 401
+    assert portal == []
+
+
+def test_portal_404s_without_a_subscription(
+    client: TestClient, engine: Engine, portal: list[dict[str, Any]]
+) -> None:
+    response = client.post("/api/billing/portal")
+
+    assert response.status_code == 404
+    assert portal == []
+
+
+def test_portal_opens_for_the_buyers_customer(
+    client: TestClient, engine: Engine, portal: list[dict[str, Any]]
+) -> None:
+    _insert_subscription(
+        engine,
+        customer_id="cus_1",
+        subscription_id="sub_1",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    response = client.post("/api/billing/portal")
+
+    assert response.status_code == 200
+    assert response.json() == {"url": "https://billing.stripe.com/session/test_123"}
+    (session,) = portal
+    assert session["customer"] == "cus_1"
+    assert session["return_url"] == "https://ohdp.example/billing"
+
+
+def test_portal_uses_the_most_recent_subscription(
+    client: TestClient, engine: Engine, portal: list[dict[str, Any]]
+) -> None:
+    _insert_subscription(
+        engine,
+        customer_id="cus_old",
+        subscription_id="sub_old",
+        status="canceled",
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    _insert_subscription(
+        engine,
+        customer_id="cus_new",
+        subscription_id="sub_new",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    client.post("/api/billing/portal")
+
+    (session,) = portal
+    assert session["customer"] == "cus_new"
+
+
+def test_portal_does_not_leak_another_buyers_customer(
+    client: TestClient, engine: Engine, portal: list[dict[str, Any]]
+) -> None:
+    _insert_subscription(
+        engine,
+        email="someone-else@example.org",
+        customer_id="cus_other",
+        subscription_id="sub_other",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    response = client.post("/api/billing/portal")
+
+    assert response.status_code == 404
+    assert portal == []
+
+
+def test_portal_unconfigured_billing_is_a_503(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+    engine: Engine,
+    portal: list[dict[str, Any]],
+) -> None:
+    monkeypatch.setattr(settings, "stripe_secret_key", "", raising=False)
+
+    response = client.post("/api/billing/portal")
+
+    assert response.status_code == 503
+    assert portal == []
+
+
 # --- Webhook -----------------------------------------------------------------
 
 

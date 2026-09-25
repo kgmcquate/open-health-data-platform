@@ -140,6 +140,18 @@ export default function Navbar() {
               </div>
             )}
 
+            {user && user.tier === "plus" && (
+              <div className="flex flex-col gap-1 py-1">
+                {/* "Manage subscription" itself opens Stripe's hosted Billing
+                    Portal (a POST, not a link) — that button lives on /billing
+                    next to the rest of the plan details, so this just gets
+                    there. */}
+                <Link to="/billing" className="btn btn-outline btn-sm justify-start">
+                  Manage subscription
+                </Link>
+              </div>
+            )}
+
             {user && allowance && (
               <>
                 <div className="flex flex-col gap-1 py-1">

@@ -300,6 +300,15 @@ export const fetchChatAllowance = () => getJson<ChatAllowance>("/api/me");
 export const createCheckoutSession = () =>
   sendJson<{ client_secret: string }>("/api/billing/checkout", "POST");
 
+/** Open the Stripe Billing Portal for the signed-in Plus subscriber
+ * (`hub_api.billing`). Returns a Stripe-hosted URL — unlike Checkout, this is
+ * not embedded, so the caller navigates the browser there directly (Stripe
+ * sends them back to /billing when they're done). 401 when signed out, 404
+ * if this account has never checked out, 503 when billing is not
+ * configured. */
+export const createBillingPortalSession = () =>
+  sendJson<{ url: string }>("/api/billing/portal", "POST");
+
 export async function logout(): Promise<void> {
   await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
 }

@@ -15,6 +15,15 @@ Stripe subscription id) before `hub_api.auth.set_user_tier` flips the buyer's
 `users.tier`. `stripe_events` is a bare insert-or-skip idempotency log keyed on
 Stripe's event id, because Stripe's delivery guarantee is "at least once."
 
+`POST /api/billing/portal` is how a Plus buyer manages what they already
+bought — canceling, swapping the card on file, or pulling an invoice. It opens
+a Stripe-hosted **Billing Portal** session for the buyer's Stripe customer id
+(looked up from their most recent `subscriptions` row) rather than building
+any of that here; the portal itself posts back through the same
+`customer.subscription.*` webhook events above, so a cancellation made there
+flows through the exact same tier-update path as one Stripe triggers for any
+other reason (a failed renewal, dunning running out, ...).
+
 A few choices worth writing down:
 
   - **Embedded form, not hosted Checkout or Payment Links.** The checkout must
@@ -114,6 +123,15 @@ class CheckoutStart(BaseModel):
     client_secret: str
 
 
+class PortalStart(BaseModel):
+    """Response to `POST /api/billing/portal` — a Stripe-hosted Billing Portal
+    URL. Unlike Checkout, the portal is not embedded: the browser navigates
+    there directly, and Stripe sends the buyer back to `return_url` when
+    they're done."""
+
+    url: str
+
+
 def _require_stripe() -> None:
     """Fail loudly (503) before Stripe is called if billing cannot work, rather
     than half-creating a session that is missing its key or its price."""
@@ -173,6 +191,57 @@ def start_checkout(user: Annotated[User, Depends(get_current_user)]) -> Checkout
         raise HTTPException(400, "Stripe could not create a checkout session.") from exc
     log.info("checkout_session_created", email=user.email)
     return CheckoutStart(client_secret=str(session.client_secret))
+
+
+def _latest_stripe_customer_id(engine: Engine, *, email: str) -> str | None:
+    """The Stripe customer id behind `email`'s most recent subscription, or
+    `None` if they've never checked out. There's one Stripe customer per buyer
+    in practice (`checkout.session.completed` always reuses it), so "most
+    recent row" and "the buyer's customer id" agree; `created_at desc` is just
+    the tiebreak if that ever stops being true.
+    """
+    statement = (
+        select(subscriptions.c.stripe_customer_id)
+        .where(subscriptions.c.user_email == email)
+        .order_by(subscriptions.c.created_at.desc())
+        .limit(1)
+    )
+    with engine.connect() as connection:
+        row = connection.execute(statement).first()
+    return str(row.stripe_customer_id) if row else None
+
+
+@router.post("/portal", summary="Open the Stripe Billing Portal")
+def start_portal(
+    request: Request, user: Annotated[User, Depends(get_current_user)]
+) -> PortalStart:
+    """Create a Stripe Billing Portal session for this signed-in user and
+    return its URL. The portal is Stripe's own hosted UI for everything past
+    the initial purchase — canceling, changing the card on file, and viewing
+    invoices — so none of that needs a bespoke page here. 404 if this buyer
+    has never checked out, since there is no Stripe customer to open a portal
+    session for.
+    """
+    _require_stripe()
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        raise HTTPException(503, "Billing storage is not available.")
+    customer_id = _latest_stripe_customer_id(engine, email=user.email)
+    if customer_id is None:
+        raise HTTPException(404, "No subscription found for this account.")
+
+    stripe.api_key = settings.stripe_secret_key
+    stripe.api_version = settings.stripe_api_version
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=f"{settings.hub_base_url.rstrip('/')}/billing",
+        )
+    except stripe.StripeError as exc:
+        log.warning("portal_session_failed", email=user.email, error=str(exc))
+        raise HTTPException(400, "Stripe could not open the billing portal.") from exc
+    log.info("portal_session_created", email=user.email)
+    return PortalStart(url=str(session.url))
 
 
 def _record_event_once(engine: Engine, *, event_id: str, event_type: str) -> bool:

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { createCheckoutSession } from "../lib/api";
+import { createBillingPortalSession, createCheckoutSession } from "../lib/api";
 
 const FEATURES = [
   "50 questions a day (free: 10)",
@@ -48,6 +48,7 @@ export default function Billing() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   // The embedded Checkout page lives inside a modal. These book-keep the modal
   // and the mounted checkout so we create one session per open, mount it once,
@@ -85,6 +86,25 @@ export default function Billing() {
     isOpenRef.current = true;
     modalRef.current?.showModal();
     void start();
+  };
+
+  // Everything past the initial purchase — canceling, swapping the card on
+  // file, pulling an invoice — is Stripe's own hosted Billing Portal, not a
+  // page of ours. This just opens it; the portal sends the buyer back here
+  // (`return_url`) when they're done, and any change they make there arrives
+  // through the same webhook that granted Plus in the first place.
+  const manageSubscription = async () => {
+    setError(null);
+    setPortalLoading(true);
+    try {
+      const { url } = await createBillingPortalSession();
+      window.location.href = url;
+    } catch (exc) {
+      setError(
+        exc instanceof Error ? exc.message : "Couldn't open the billing portal; please try again.",
+      );
+      setPortalLoading(false);
+    }
   };
 
   const start = async () => {
@@ -149,9 +169,23 @@ export default function Billing() {
               Sign in to subscribe
             </button>
           ) : user.tier === "plus" ? (
-            <p>
-              <span className="badge badge-accent badge-lg">You&apos;re on Plus</span>
-            </p>
+            <div className="flex flex-col gap-3">
+              <p>
+                <span className="badge badge-accent badge-lg">You&apos;re on Plus</span>
+              </p>
+              <button
+                className="btn btn-outline btn-sm self-start"
+                onClick={manageSubscription}
+                disabled={portalLoading}
+              >
+                {portalLoading ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  "Manage subscription"
+                )}
+              </button>
+              {error && <p className="text-error text-sm">{error}</p>}
+            </div>
           ) : (
             <button className="btn btn-primary" onClick={openCheckout}>
               Subscribe to Plus
