@@ -9,6 +9,11 @@
       name="description"
       content="Population-level public health data, queryable through one semantic layer — dashboards, literature, and a curated AI chatbot."
     />
+    <!-- Stripe.js for the embedded Checkout form. Loaded directly from
+         js.stripe.com (never bundled — a PCI requirement). The `dahlia` build is
+         required for `stripe.initCheckoutFormSdk(...)`. `defer` so it doesn't
+         block first render; the checkout form is only mounted after a click. -->
+    <script defer src="https://js.stripe.com/dahlia/stripe.js"></script>
   </head>
   <body>
     <div id="root"></div>

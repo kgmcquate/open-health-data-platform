@@ -13,6 +13,7 @@ const DashboardBuilder = lazy(() => import("./pages/DashboardBuilder"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Support = lazy(() => import("./pages/Support"));
+const Billing = lazy(() => import("./pages/Billing"));
 const Search = lazy(() => import("./pages/Search"));
 const Admin = lazy(() => import("./pages/Admin"));
 
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/search" element={<Search />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/support" element={<Support />} />
+            <Route path="/billing" element={<Billing />} />
             <Route path="/admin" element={<Admin />} />
             <Route
               path="*"

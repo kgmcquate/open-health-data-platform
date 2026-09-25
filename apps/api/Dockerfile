@@ -9,6 +9,16 @@
 
 FROM node:22-slim AS web-builder
 
+# Vite bakes VITE_* env vars into the client bundle at `vite build` time, and
+# apps/web/src/pages/Billing.tsx reads `import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY`.
+# The Stripe publishable key is browser-accessible, so it ships inside the image —
+# injected as a build arg from the STRIPE_PUBLISHABLE_KEY repo secret
+# (./.github/workflows/build-images.yml). Empty by default so a build without the
+# secret (local `docker build`, `act preflight`) still succeeds; the /billing page
+# then fails visibly at checkout ("Stripe isn't configured").
+ARG VITE_STRIPE_PUBLISHABLE_KEY
+ENV VITE_STRIPE_PUBLISHABLE_KEY=$VITE_STRIPE_PUBLISHABLE_KEY
+
 WORKDIR /web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci

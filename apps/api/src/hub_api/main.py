@@ -32,6 +32,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from hub_api import db
 from hub_api.admin import router as admin_router
 from hub_api.auth import router as auth_router
+from hub_api.billing import router as billing_router
 from hub_api.builder import router as builder_router
 from hub_api.chat import router as chat_router
 from hub_api.content import ensure_columns_and_indexes
@@ -136,6 +137,7 @@ app.include_router(admin_router)
 # wrapper around `report_issue`, the same function `tools_app.report_issue`
 # below calls for the chat surface.
 app.include_router(issues_router)
+app.include_router(billing_router)
 
 # Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
 # its own routes. That narrow spec is what the chat model's "ohdp-tools"
@@ -188,4 +190,6 @@ if _web_dist.is_dir():
 
 # Routers to be added per milestone:
 #   M2: /auth, /dashboards
-#   M4: /billing/webhook, /tickets
+#   M4: /tickets; and the /billing/webhook that *activates* the tier — billing.py
+#       ships the Checkout half now, but the subscription-events half (webhook
+#       that bumps `users.tier` on checkout.session.completed) is deferred.

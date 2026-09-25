@@ -241,6 +241,37 @@ class Settings(BaseSettings):
     def admin_emails_list(self) -> list[str]:
         return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
 
+    # --- Stripe billing (hub_api.billing) ----------------------------------
+    # The paid tier is a $5/mo Stripe subscription, sold through hosted
+    # Checkout (M4). `stripe_secret_key` is deliberately NOT read under the
+    # usual OHDP_ prefix: the deployment already injects it as a bare
+    # `STRIPE_SECRET_KEY` (platform/helm + .github/workflows/deploy-platform.yml),
+    # so it is looked up under that exact name. Everything else here is
+    # non-secret config and follows the normal OHDP_* convention.
+    stripe_secret_key: str = Field(
+        default="",
+        description=(
+            "Stripe secret key. Read from the STRIPE_SECRET_KEY environment "
+            "variable (no OHDP_ prefix — that is how the deploy injects it)."
+        ),
+        validation_alias="STRIPE_SECRET_KEY",
+    )
+    stripe_price_id: str = Field(
+        default="",
+        description=(
+            "The monthly Stripe Price ID sold by POST /api/billing/checkout. "
+            "Per-account config (differs between test and live), so env-sourced — "
+            "an empty value makes checkout answer 503 rather than half-work."
+        ),
+    )
+    # Pinned API version — Stripe's documented best practice is to pin to the
+    # version your integration was written and tested against. This one carries
+    # the preview flag that the embedded Checkout form (`ui_mode="form"`,
+    # `saved_payment_method_options`) and the client-side Checkout Form SDK beta
+    # are gated behind. Keep it in lock-step with apps/web's
+    # `custom_checkout_payment_form_1` beta flag.
+    stripe_api_version: str = "2026-03-25.dahlia; custom_checkout_payment_form_preview=v1"
+
     @property
     def horizon_catalog_uri(self) -> str:
         """Snowflake Horizon's Iceberg REST endpoint — the one URI both dlt

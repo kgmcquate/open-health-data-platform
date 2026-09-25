@@ -1,0 +1,11 @@
+kubectl -n app exec deploy/hub-api -- python3 -c "
+import os
+from sqlalchemy import create_engine, text
+engine = create_engine(os.environ['OHDP_APP_DATABASE_URL'])
+with engine.begin() as conn:
+    result = conn.execute(
+        text(\"UPDATE users SET tier = 'paid' WHERE email = :email\"),
+        {'email': 'kgmcquate@gmail.com'},
+    )
+    print('rows updated:', result.rowcount)
+"

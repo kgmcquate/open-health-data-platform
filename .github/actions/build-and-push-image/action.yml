@@ -12,6 +12,10 @@ inputs:
     description: Push to the registry (set false when running under act).
     required: false
     default: "true"
+  build_args:
+    description: Optional space/newline-separated KEY=VALUE build args to pass to Docker build.
+    required: false
+    default: ""
 
 outputs:
   image:
@@ -56,6 +60,7 @@ runs:
         context: .
         file: ${{ inputs.dockerfile }}
         push: ${{ inputs.push == 'true' }}
+        build-args: ${{ inputs.build_args }}
         tags: |
           ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
           ${{ steps.meta.outputs.image }}:latest

@@ -129,6 +129,17 @@ export default function Navbar() {
               </div>
             )}
 
+            {user && user.tier !== "paid" && (
+              <div className="flex flex-col gap-1 py-1">
+                {/* The embedded Checkout form lives on /billing (the server hands
+                    back a client_secret, not a redirect URL), so this is a link
+                    rather than a one-click POST. */}
+                <Link to="/billing" className="btn btn-primary btn-sm justify-start">
+                  Upgrade to Pro — $5/mo
+                </Link>
+              </div>
+            )}
+
             {user && allowance && (
               <>
                 <div className="flex flex-col gap-1 py-1">

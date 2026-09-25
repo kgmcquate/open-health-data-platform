@@ -102,6 +102,7 @@ kubectl -n data create secret generic cube-snowflake \
 kubectl -n app create secret generic hub-api-secrets \
   --from-literal=OHDP_OPENMETADATA_JWT= \
   --from-literal=STRIPE_SECRET_KEY= \
+  --from-literal=OHDP_STRIPE_PRICE_ID= \
   --from-literal=OHDP_OIDC_CLIENT_ID= \
   --from-literal=OHDP_OIDC_CLIENT_SECRET=
 

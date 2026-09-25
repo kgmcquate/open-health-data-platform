@@ -147,6 +147,10 @@ jobs:
           CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
           OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          # The Stripe monthly Pro Price ID sold by /api/billing/checkout
+          # (hub_api.billing). Injected into hub-api-secrets as
+          # OHDP_STRIPE_PRICE_ID (settings.stripe_price_id).
+          STRIPE_PRICE_ID: ${{ secrets.STRIPE_PRICE_ID }}
           DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           # hub-api's own OIDC client (hub_api.auth) reuses the same Google
@@ -209,6 +213,7 @@ jobs:
           upsert app hub-api-secrets \
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
+            --from-literal=OHDP_STRIPE_PRICE_ID="$STRIPE_PRICE_ID" \
             --from-literal=OHDP_OIDC_CLIENT_ID="$APP_OIDC_CLIENT_ID" \
             --from-literal=OHDP_OIDC_CLIENT_SECRET="$APP_OIDC_CLIENT_SECRET" \
             --from-literal=OHDP_GITHUB_TOKEN="$HUB_GITHUB_ISSUES_TOKEN" \

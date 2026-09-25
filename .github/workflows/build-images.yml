@@ -53,6 +53,11 @@ jobs:
           name: ohdp-hub-api
           dockerfile: apps/api/Dockerfile
           push: ${{ steps.push.outputs.enabled }}
+          # Vite bakes VITE_* into the client bundle during the image build, so
+          # the Stripe *publishable* key is passed as a build arg (from the
+          # STRIPE_PUBLISHABLE_KEY repo secret), not set at runtime. Omitted for
+          # the other images, which have no web bundle.
+          build_args: VITE_STRIPE_PUBLISHABLE_KEY=${{ secrets.STRIPE_PUBLISHABLE_KEY }}
 
   build-pipeline:
     name: Build ohdp-pipeline
