@@ -21,6 +21,11 @@ A few choices worth writing down:
     is signed in. The session is created for *this* request's verified email
     (`customer_email` is stamped from the signed session cookie, never from a
     request body), so the (future) webhook can reconcile back to `users.email`.
+  - **`ui_mode="embedded_page"`, not "form".** This account has **Managed
+    Payments** enabled by default, which only accepts `hosted_page` /
+    `embedded_page` (see the settings link Stripe returns on a bad mode). The
+    client still renders it with the Checkout Form SDK
+    (`initCheckoutFormSdk`), so the flow is otherwise unchanged.
   - **The API version is pinned** to `settings.stripe_api_version`. That version
     and the beta flag it carries are required for the embedded Checkout form;
     keep it in lock-step with the client-side beta flag in apps/web
@@ -81,7 +86,7 @@ def start_checkout(user: Annotated[User, Depends(get_current_user)]) -> Checkout
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
-            ui_mode="form",
+            ui_mode="embedded_page",
             line_items=[{"price": settings.stripe_price_id, "quantity": 1}],
             billing_address_collection="auto",
             phone_number_collection={"enabled": False},

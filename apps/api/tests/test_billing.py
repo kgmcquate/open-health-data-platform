@@ -87,6 +87,7 @@ def test_session_is_a_subscription_for_the_buyer(
 
     (session,) = stripe
     assert session["mode"] == "subscription"
+    assert session["ui_mode"] == "embedded_page"
     assert session["line_items"] == [{"price": PRICE, "quantity": 1}]
     # The trusted email comes from the session, never from the caller.
     assert session["customer_email"] == "buyer@example.org"

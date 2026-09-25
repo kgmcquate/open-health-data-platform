@@ -266,7 +266,7 @@ class Settings(BaseSettings):
     )
     # Pinned API version — Stripe's documented best practice is to pin to the
     # version your integration was written and tested against. This one carries
-    # the preview flag that the embedded Checkout form (`ui_mode="form"`,
+    # the preview flag that the embedded Checkout form (`ui_mode="embedded_page"`,
     # `saved_payment_method_options`) and the client-side Checkout Form SDK beta
     # are gated behind. Keep it in lock-step with apps/web's
     # `custom_checkout_payment_form_1` beta flag.
