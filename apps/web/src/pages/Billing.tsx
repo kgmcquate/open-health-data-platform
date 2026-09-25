@@ -56,6 +56,59 @@ export default function Billing() {
   const modalRef = useRef<HTMLDialogElement>(null);
   const checkoutRef = useRef<StripeCheckout | null>(null);
   const isOpenRef = useRef(false);
+  const modalBoxRef = useRef<HTMLDivElement>(null);
+  const modalContentRef = useRef<HTMLDivElement>(null);
+
+  // Keep the modal's scroll position steady while the buyer clicks around the
+  // Checkout iframe. Stripe re-measures and resizes its iframe on most
+  // interactions (picking a payment method, focusing a field); for a moment
+  // the content is shorter than the modal, the browser clamps scrollTop to 0,
+  // and when the iframe grows back the buyer is left at the top. We can't see
+  // clicks inside the cross-origin iframe, so instead: a scroll that snaps
+  // straight to 0 from well down the page is treated as that clamp, not the
+  // buyer. We restore the old position now, and again whenever the content
+  // resizes, until it sticks.
+  useEffect(() => {
+    const box = modalBoxRef.current;
+    const content = modalContentRef.current;
+    if (!box || !content) return;
+    let lastTop = 0;
+    let pendingTop: number | null = null;
+
+    const restore = () => {
+      if (pendingTop === null) return;
+      box.scrollTop = pendingTop;
+      if (Math.abs(box.scrollTop - pendingTop) <= 1) pendingTop = null;
+    };
+    const onScroll = () => {
+      const top = box.scrollTop;
+      if (top === 0 && lastTop > 150) {
+        pendingTop ??= lastTop;
+        requestAnimationFrame(restore);
+        return;
+      }
+      if (pendingTop === null) lastTop = top;
+    };
+    // The buyer scrolling the modal themselves (outside the iframe) wins
+    // over any pending restore.
+    const onUserScroll = () => {
+      pendingTop = null;
+    };
+
+    const resizeObserver = new ResizeObserver(restore);
+    resizeObserver.observe(content);
+    box.addEventListener("scroll", onScroll, { passive: true });
+    box.addEventListener("wheel", onUserScroll, { passive: true });
+    box.addEventListener("touchmove", onUserScroll, { passive: true });
+    box.addEventListener("keydown", onUserScroll);
+    return () => {
+      resizeObserver.disconnect();
+      box.removeEventListener("scroll", onScroll);
+      box.removeEventListener("wheel", onUserScroll);
+      box.removeEventListener("touchmove", onUserScroll);
+      box.removeEventListener("keydown", onUserScroll);
+    };
+  }, []);
 
   // Tear down any lingering checkout iframe if the page unmounts first.
   useEffect(() => () => checkoutRef.current?.destroy(), []);
@@ -204,52 +257,57 @@ export default function Billing() {
             runs long. Past ~900px it lays those two out side by side
             instead, which is most of the fix; max-h/overflow-y-auto is the
             fallback for whatever's still too tall for a short viewport. */}
-        <div className="modal-box w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <h3 className="text-lg font-bold">Subscribe to Plus</h3>
+        <div
+          ref={modalBoxRef}
+          className="modal-box w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto"
+        >
+          <div ref={modalContentRef}>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-lg font-bold">Subscribe to Plus</h3>
+              </div>
+              <form method="dialog">
+                <button
+                  className="btn btn-sm btn-circle btn-ghost"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </form>
             </div>
-            <form method="dialog">
-              <button
-                className="btn btn-sm btn-circle btn-ghost"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </form>
-          </div>
 
-          {submitted ? (
-            <div className="text-sm flex flex-col gap-3">
-              <p>
-                Thanks — your subscription is being set up.{" "}
-                <strong>It activates once your payment is confirmed.</strong>
-              </p>
-              <p className="opacity-70">
-                Your account still shows the old plan until you sign in again
-                — sign back in to see Plus reflected everywhere.
-              </p>
-              <button
-                className="btn btn-primary btn-sm self-start"
-                onClick={refreshSession}
-              >
-                Sign out &amp; back in
-              </button>
-            </div>
-          ) : (
-            <div className="relative min-h-[500px]">
-              {/* Always in the DOM while the modal is open so Stripe's
-                  mount("#checkout-form") has something to attach to — it's
-                  called mid-`start()`, before `loading` flips back to false. */}
-              <div id="checkout-form" className="w-full min-h-[500px]" />
-              {loading && (
-                <div className="absolute inset-0 flex justify-center items-center py-10">
-                  <span className="loading loading-spinner loading-lg" />
-                </div>
-              )}
-            </div>
-          )}
-          {error && <p className="text-error text-sm mt-2">{error}</p>}
+            {submitted ? (
+              <div className="text-sm flex flex-col gap-3">
+                <p>
+                  Thanks — your subscription is being set up.{" "}
+                  <strong>It activates once your payment is confirmed.</strong>
+                </p>
+                <p className="opacity-70">
+                  Your account still shows the old plan until you sign in again
+                  — sign back in to see Plus reflected everywhere.
+                </p>
+                <button
+                  className="btn btn-primary btn-sm self-start"
+                  onClick={refreshSession}
+                >
+                  Sign out &amp; back in
+                </button>
+              </div>
+            ) : (
+              <div className="relative min-h-[500px]">
+                {/* Always in the DOM while the modal is open so Stripe's
+                    mount("#checkout-form") has something to attach to — it's
+                    called mid-`start()`, before `loading` flips back to false. */}
+                <div id="checkout-form" className="w-full min-h-[500px]" />
+                {loading && (
+                  <div className="absolute inset-0 flex justify-center items-center py-10">
+                    <span className="loading loading-spinner loading-lg" />
+                  </div>
+                )}
+              </div>
+            )}
+            {error && <p className="text-error text-sm mt-2">{error}</p>}
+          </div>
         </div>
         <form method="dialog" className="modal-backdrop">
           <button>close</button>
