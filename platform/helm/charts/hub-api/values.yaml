@@ -116,7 +116,7 @@ env:
   # provide. Empty means "allow any verified email" — deliberately not empty
   # while this is a single-operator surface (see OHDP_FREE_MONTHLY_QUESTIONS
   # above). Widening this is the one edit that makes sign-in public.
-  OHDP_ALLOWED_EMAILS: kgmcquate@gmail.com
+  OHDP_ALLOWED_EMAILS: kgmcquate@gmail.com,fuzzh3d@gmail.com,atinklenberg@gmail.com
   # Who holds the admin role (hub_api.auth's `is_admin`). Admins can delete a
   # published dashboard — row, stored render and votes, irreversibly — which is
   # the escape hatch for a chart that should never have been on the public page
