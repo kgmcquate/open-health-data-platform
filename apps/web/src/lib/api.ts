@@ -294,8 +294,9 @@ export const fetchChatAllowance = () => getJson<ChatAllowance>("/api/me");
 
 /** Start a Stripe Pro subscription Checkout session (`hub_api.billing`). Returns
  * the embedded Checkout Session's `client_secret`, which the client hands to
- * Stripe's Checkout Form SDK (`stripe.initCheckoutFormSdk`) to render the form
- * in-page. 401 when signed out, 503 when billing is not configured. */
+ * Stripe.js' embedded Checkout page (`stripe.initEmbeddedCheckout`) to render the
+ * Stripe-hosted page in-page. 401 when signed out, 503 when billing is not
+ * configured. */
 export const createCheckoutSession = () =>
   sendJson<{ client_secret: string }>("/api/billing/checkout", "POST");
 

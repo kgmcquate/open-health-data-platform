@@ -10,66 +10,35 @@ const FEATURES = [
   "3 issue reports a day (free: 1)",
 ];
 
-// --- Stripe.js (the `dahlia` build, loaded from index.html) ---------------
-// The embedded Checkout form is rendered by Stripe's Checkout Form SDK:
-//   Stripe(publishableKey, { betas }) -> initCheckoutFormSdk({clientSecret, appearance})
-// Typed loosely here — it is an alpha API reached through a global script, not
-// a package we can import. The publishable key is browser-accessible, so it
+// --- Stripe.js (the v3 build, loaded from index.html) ----------------------
+// The embedded Checkout page is rendered by Stripe.js' embedded Checkout:
+//   Stripe(publishableKey) -> initEmbeddedCheckout({ clientSecret }) -> mount("#checkout-form")
+// Typed loosely here — it is a GA API reached through a global script, not a
+// package we can import. The publishable key is browser-accessible, so it
 // MUST come from a VITE_-prefixed env var (baked in at `vite build` time).
 const PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as
   | string
   | undefined;
 
 type StripeGlobal = {
-  Stripe?: (
-    publishableKey: string,
-    options: { betas: string[] },
-  ) => StripeSdk;
+  Stripe?: (publishableKey: string) => StripeSdk;
 };
 type StripeSdk = {
-  initCheckoutFormSdk: (options: {
+  initEmbeddedCheckout: (options: {
     clientSecret: string;
-    appearance: Record<string, unknown>;
-  }) => StripeCheckout;
+  }) => Promise<StripeCheckout>;
 };
 type StripeCheckout = {
-  createForm: (options: { layout: "expanded" }) => StripeCheckoutForm;
-  loadActions: () => Promise<StripeLoadActionsResult>;
-};
-type StripeCheckoutForm = {
   mount: (selector: string) => void;
-  on: (event: string, handler: (event: unknown) => void) => void;
-};
-type StripeLoadActionsResult = {
-  type: "success" | string;
-  actions?: {
-    confirm: (options: { formConfirmEvent: unknown }) => Promise<void>;
-  };
-};
-
-/** The Checkout Form SDK appearance — the configured look-and-feel for the
- * Stripe-hosted iframe. Values set in the Checkout Studio UI. */
-const APPEARANCE: Record<string, unknown> = {
-  theme: "stripe",
-  labels: "auto",
-  inputs: "spaced",
-  variables: {
-    borderRadius: "4px",
-    colorBackground: "#ffffff",
-    colorDanger: "#df1b41",
-    colorPrimary: "#0570de",
-    colorSuccess: "#00c853",
-    colorText: "#30313d",
-    fontFamily: "default",
-    fontSizeBase: "16px",
-    spacingUnit: "4px",
-  },
+  on: (event: "onComplete", handler: () => void) => void;
 };
 
 /** The Pro plans page (`hub_api.billing`): a $5/mo Stripe subscription sold via
- * Stripe's **embedded** Checkout form. The server hands back a `client_secret`
- * (never a redirect URL); `initCheckoutFormSdk` mounts the Stripe-hosted form
- * into `#checkout-form` below and confirms the payment in-page, on this origin.
+ * Stripe's **embedded Checkout** page. The server hands back a `client_secret`;
+ * `initEmbeddedCheckout` mounts the Stripe-hosted Checkout page into
+ * `#checkout-form` below and the purchase completes on this origin (the server
+ * disables the post-payment redirect, so `onComplete` is what flips the UI to
+ * the "Thanks" state).
  *
  * The numbers in `FEATURES` are the paid-tier caps the server enforces — the
  * public plan copy, not a quota source of truth. */
@@ -97,28 +66,16 @@ export default function Billing() {
     try {
       // 1. Ask the server for an embedded Checkout Session (client_secret).
       const { client_secret } = await createCheckoutSession();
-      // 2. Initialize the Checkout Form SDK with the client secret + appearance.
-      const stripe = Stripe(PUBLISHABLE_KEY, { betas: ["custom_checkout_payment_form_1"] });
-      const checkout = stripe.initCheckoutFormSdk({
+      // 2. Mount the embedded Checkout page in-page (Stripe-hosted iframe).
+      const stripe = Stripe(PUBLISHABLE_KEY);
+      const checkout = await stripe.initEmbeddedCheckout({
         clientSecret: client_secret,
-        appearance: APPEARANCE,
       });
-      // 3. Create, mount, and wire the confirm event.
-      const form = checkout.createForm({ layout: "expanded" });
-      form.mount("#checkout-form");
-      const loadActionsResult = await checkout.loadActions();
-      if (loadActionsResult.type === "success" && loadActionsResult.actions) {
-        form.on("confirm", async (event) => {
-          try {
-            await loadActionsResult.actions!.confirm({ formConfirmEvent: event });
-            setSubmitted(true);
-          } catch (exc) {
-            console.error("Payment confirmation error:", exc);
-          }
-        });
-      } else {
-        setError("Checkout couldn't start; please try again.");
-      }
+      checkout.mount("#checkout-form");
+      // 3. On completion, show the confirmation in place. The server is set to
+      //    `redirect_on_completion="never"`, so the buyer stays on /billing
+      //    instead of being bounced to the session's `return_url`.
+      checkout.on("onComplete", () => setSubmitted(true));
     } catch (exc) {
       setError(
         exc instanceof Error ? exc.message : "Checkout couldn't start; please try again.",

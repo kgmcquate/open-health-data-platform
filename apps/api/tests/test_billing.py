@@ -87,10 +87,15 @@ def test_session_is_a_subscription_for_the_buyer(
 
     (session,) = stripe
     assert session["mode"] == "subscription"
+    # Embedded Checkout page (`initEmbeddedCheckout`) needs a session created with
+    # `ui_mode="embedded_page"`. That mode is redirect-based, so `return_url` is
+    # required — but redirects are disabled so the buyer stays on /billing and the
+    # frontend's `onComplete` handler confirms the purchase in place.
     assert session["ui_mode"] == "embedded_page"
-    # Embedded sessions default to redirect-based (and need a return_url); this
-    # form confirms in-page, so redirects are explicitly disabled.
     assert session["redirect_on_completion"] == "never"
+    assert session["return_url"].startswith(
+        "https://ohdp.example/billing/return?session_id="
+    )
     assert session["line_items"] == [{"price": PRICE, "quantity": 1}]
     # The trusted email comes from the session, never from the caller.
     assert session["customer_email"] == "buyer@example.org"

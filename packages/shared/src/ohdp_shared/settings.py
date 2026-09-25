@@ -266,10 +266,9 @@ class Settings(BaseSettings):
     )
     # Pinned API version — Stripe's documented best practice is to pin to the
     # version your integration was written and tested against. This one carries
-    # the preview flag that the embedded Checkout form (`ui_mode="embedded_page"`,
-    # `saved_payment_method_options`) and the client-side Checkout Form SDK beta
-    # are gated behind. Keep it in lock-step with apps/web's
-    # `custom_checkout_payment_form_1` beta flag.
+    # the preview flag that `saved_payment_method_options` needs on the embedded
+    # Checkout page (`ui_mode="embedded_page"`). Keep it in lock-step with the
+    # js.stripe.com build loaded in apps/web/index.html.
     stripe_api_version: str = "2026-03-25.dahlia; custom_checkout_payment_form_preview=v1"
 
     @property
