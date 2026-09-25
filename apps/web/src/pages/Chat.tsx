@@ -26,7 +26,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
@@ -35,10 +35,12 @@ import { useHubChatRuntime, type HubChatRuntime } from "../chat/runtime";
 import {
   archiveThread,
   deleteThread,
+  fetchChatAllowance,
   fetchModels,
   fetchThreads,
   renameThread,
   unarchiveThread,
+  type ChatAllowance,
   type ChatModel,
   type PendingAsk,
   type ThreadSummary,
@@ -510,7 +512,30 @@ function ModelPicker({ models, model, onModelChange }: ModelPickerProps) {
   );
 }
 
-function Composer({ models, model, onModelChange }: ModelPickerProps) {
+/** The token line next to the model picker — the same numbers the Settings
+ * dropdown shows (`Navbar.tsx`'s `UsageRow`), but live on the surface that
+ * actually burns them, and refreshed after every turn rather than only at
+ * sign-in. Renders nothing until the first fetch lands, same reasoning as
+ * `Navbar`'s own allowance display. */
+function TokenUsage({ allowance }: { allowance: ChatAllowance | null }) {
+  if (!allowance) return null;
+  const exhausted = allowance.tokens_used_today >= allowance.tokens_allowed_per_day;
+  return (
+    <span
+      className={`hidden shrink-0 text-xs tabular-nums sm:inline ${exhausted ? "text-error" : "text-base-content/50"}`}
+    >
+      {allowance.tokens_used_today.toLocaleString()} / {allowance.tokens_allowed_per_day.toLocaleString()} tokens
+      today
+    </span>
+  );
+}
+
+function Composer({
+  models,
+  model,
+  onModelChange,
+  allowance,
+}: ModelPickerProps & { allowance: ChatAllowance | null }) {
   return (
     <ComposerPrimitive.Root className="flex w-full flex-col gap-2 rounded-box border border-base-300 bg-base-100 px-3.5 pt-3 pb-2.5 shadow-sm">
       <ComposerPrimitive.Input
@@ -526,6 +551,7 @@ function Composer({ models, model, onModelChange }: ModelPickerProps) {
           <ImagePlusIcon className="size-4" />
         </ComposerPrimitive.AddAttachment>
         <ModelPicker models={models} model={model} onModelChange={onModelChange} />
+        <TokenUsage allowance={allowance} />
         <div className="ml-auto flex items-center gap-1">
           <AuiIf condition={(s) => s.thread.isRunning}>
             <ComposerPrimitive.Cancel
@@ -629,9 +655,11 @@ function ChatThread({
   answerPendingAsk,
   isRunning,
   initialQuestion,
+  allowance,
 }: ModelPickerProps &
   Pick<HubChatRuntime, "suggestions" | "pendingAsk" | "answerPendingAsk" | "isRunning"> & {
     initialQuestion?: string;
+    allowance: ChatAllowance | null;
   }) {
   return (
     <ThreadPrimitive.Root className="flex h-full flex-col">
@@ -647,7 +675,7 @@ function ChatThread({
               number traces back to the semantic layer. Population-level data
               only; not medical advice.
             </p>
-            <Composer models={models} model={model} onModelChange={onModelChange} />
+            <Composer models={models} model={model} onModelChange={onModelChange} allowance={allowance} />
             {initialQuestion && (
               <div className="hidden" aria-hidden>
                 <ThreadPrimitive.Suggestion
@@ -717,7 +745,7 @@ function ChatThread({
               ))}
             </div>
           )}
-          <Composer models={models} model={model} onModelChange={onModelChange} />
+          <Composer models={models} model={model} onModelChange={onModelChange} allowance={allowance} />
           {initialQuestion && (
             <div className="hidden" aria-hidden>
               <ThreadPrimitive.Suggestion
@@ -747,6 +775,7 @@ export default function Chat() {
   const [model, setModel] = useState("");
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [allowance, setAllowance] = useState<ChatAllowance | null>(null);
 
   const upsertThread = (thread: ThreadSummary) =>
     setThreads((prev) => {
@@ -783,6 +812,24 @@ export default function Chat() {
   useEffect(() => {
     if (user) fetchThreads().then(setThreads).catch(() => setThreads([]));
   }, [user]);
+
+  useEffect(() => {
+    if (user) fetchChatAllowance().then(setAllowance).catch(() => setAllowance(null));
+  }, [user]);
+
+  // Re-read the allowance once a turn finishes — it just spent tokens against
+  // it, and the Settings dropdown's own copy (`Navbar.tsx`) only refreshes on
+  // sign-in, so this is the one place the number is live. Tracks the previous
+  // value itself rather than depending on `isRunning`'s edge in a cleanup,
+  // since a plain "fetch when isRunning" effect would also fire when a turn
+  // *starts*.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (wasRunning.current && !isRunning && user) {
+      fetchChatAllowance().then(setAllowance).catch(() => {});
+    }
+    wasRunning.current = isRunning;
+  }, [isRunning, user]);
 
   if (user === undefined) {
     return (
@@ -833,6 +880,7 @@ export default function Chat() {
             answerPendingAsk={answerPendingAsk}
             isRunning={isRunning}
             initialQuestion={initialQuestion}
+            allowance={allowance}
           />
         </AssistantRuntimeProvider>
       </div>
