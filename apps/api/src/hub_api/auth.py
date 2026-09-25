@@ -217,14 +217,8 @@ async def callback(request: Request) -> RedirectResponse:
     if not email:
         # An IdP that will not verify an email is not one we can quota against.
         raise HTTPException(400, "The identity provider did not return an email.")
-    allowed = settings.allowed_emails_list
-    if allowed and email.lower() not in allowed:
-        # The access control oauth2-proxy-app.yaml's `authenticatedEmailsFile`
-        # used to provide, before the hub did its own OIDC. Model API spend is
-        # metered per verified email (chat.py), so this is what stands between
-        # that quota and a public sign-up page until billing (M4) exists.
-        log.warning("login_rejected_not_allowlisted", email=email)
-        raise HTTPException(403, "This deployment is not open to new sign-ins yet.")
+    # No allowlist here: who may sign in is governed by the Google OAuth
+    # client's own audience settings (consent-screen test users), not the hub.
     tier = "free"
     engine: Engine | None = getattr(request.app.state, "engine", None)
     if engine is not None:

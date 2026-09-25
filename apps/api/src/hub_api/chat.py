@@ -10,8 +10,8 @@ limit costs us an index scan rather than an Opus call (§6, ARCHITECTURE.md §10
 **Identity comes from the hub's own signed session cookie, never from the
 request body.** `app.open-health-data-platform.org` reaches hub-api's Ingress
 directly — there is no oauth2-proxy wall in front of it any more (hub_api.auth
-does its own OIDC, ARCHITECTURE.md §5, gated by `settings.allowed_emails_list`
-until billing (M4) can meter strangers). `tier` comes from that same session,
+does its own OIDC, ARCHITECTURE.md §5, with sign-in gated by the Google OAuth
+client's audience rather than an allowlist in the hub). `tier` comes from that same session,
 via `hub_api.auth.get_user_tier` — `users.tier` as of the caller's last
 login (`auth._upsert_user`), bumped by the billing webhook once M4 exists.
 """

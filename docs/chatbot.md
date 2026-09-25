@@ -532,8 +532,8 @@ Each step should be demoable and independently reviewable.
 
 **Deployed as:** `app.open-health-data-platform.org`, served by `charts/hub-api`'s own
 Ingress. There is no oauth2-proxy wall in front any more — the hub does its own OIDC
-sign-in (`hub_api.auth`), gated by `settings.allowed_emails_list` while this is a
-single-operator surface. `settings.admin_emails_list` names who additionally holds
+sign-in (`hub_api.auth`); who may sign in is governed by the Google OAuth client's
+audience (consent-screen test users), not by an allowlist in the hub. `settings.admin_emails_list` names who additionally holds
 the admin role, whose one power is deleting a published dashboard — the escape hatch
 for a chart that should never have been on the public page, since voting only hides
 one after visitors have already seen it. Everyone who signs in is tier `free` — ARCHITECTURE.md §5's real

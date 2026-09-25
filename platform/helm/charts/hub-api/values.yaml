@@ -24,9 +24,9 @@ service:
   port: 8000
 
 # Owns app.open-health-data-platform.org directly — there is no oauth2-proxy
-# wall in front any more (hub_api.auth does its own OIDC). The endpoint still
-# spends money per request, so `settings.allowed_emails_list` is what guards
-# it now instead of an external allowlist file.
+# wall in front any more (hub_api.auth does its own OIDC). Who may sign in is
+# governed by the Google OAuth client's audience (consent-screen test users),
+# not by an allowlist in the hub.
 ingress:
   enabled: true
   className: traefik
@@ -115,11 +115,6 @@ env:
   # Base URL the OAuth redirect_uri is built from (hub_api.auth). Not a secret,
   # but wrong here means every sign-in fails with redirect_uri_mismatch.
   OHDP_HUB_BASE_URL: https://app.open-health-data-platform.org
-  # The access control oauth2-proxy-app.yaml's `authenticatedEmailsFile` used to
-  # provide. Empty means "allow any verified email" — deliberately not empty
-  # while this is a single-operator surface (see OHDP_FREE_MONTHLY_QUESTIONS
-  # above). Widening this is the one edit that makes sign-in public.
-  OHDP_ALLOWED_EMAILS: kgmcquate@gmail.com,fuzzh3d@gmail.com,atinklenberg@gmail.com
   # Who holds the admin role (hub_api.auth's `is_admin`). Admins can delete a
   # published dashboard — row, stored render and votes, irreversibly — which is
   # the escape hatch for a chart that should never have been on the public page

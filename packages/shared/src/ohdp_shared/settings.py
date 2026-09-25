@@ -218,12 +218,6 @@ class Settings(BaseSettings):
     oidc_issuer: str = "https://accounts.google.com"
     # Public base URL of the hub, used to build the OAuth redirect URI.
     hub_base_url: str = "http://localhost:8000"
-    # Comma-separated allowlist, checked at /auth/callback. Empty means "allow
-    # any verified email" — the state ARCHITECTURE.md §10 plans for once
-    # billing (M4) can meter strangers. Until then this is the single control
-    # that used to live in oauth2-proxy-app.yaml's `authenticatedEmailsFile`,
-    # now that the hub does its own OIDC instead of sitting behind that wall.
-    allowed_emails: str = ""
     # Comma-separated list of emails that get the admin role (hub_api.auth's
     # `is_admin`). Config, not a database column, on purpose: an admin can
     # delete published dashboards, so the set of them should be something a
@@ -232,10 +226,6 @@ class Settings(BaseSettings):
     # the role is derived per request instead of being frozen into the session
     # cookie the way `tier` is. Empty means nobody is an admin.
     admin_emails: str = ""
-
-    @property
-    def allowed_emails_list(self) -> list[str]:
-        return [e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()]
 
     @property
     def admin_emails_list(self) -> list[str]:
