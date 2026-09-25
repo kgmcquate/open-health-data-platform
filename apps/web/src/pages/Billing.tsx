@@ -177,12 +177,18 @@ export default function Billing() {
               <strong>It activates once your payment is confirmed</strong> (the
               plan-upgrade webhook is the next step for this project).
             </p>
-          ) : loading ? (
-            <div className="flex justify-center py-10">
-              <span className="loading loading-spinner loading-lg" />
-            </div>
           ) : (
-            <div id="checkout-form" className="w-full min-h-[400px]" />
+            <div className="relative min-h-[400px]">
+              {/* Always in the DOM while the modal is open so Stripe's
+                  mount("#checkout-form") has something to attach to — it's
+                  called mid-`start()`, before `loading` flips back to false. */}
+              <div id="checkout-form" className="w-full min-h-[400px]" />
+              {loading && (
+                <div className="absolute inset-0 flex justify-center items-center py-10">
+                  <span className="loading loading-spinner loading-lg" />
+                </div>
+              )}
+            </div>
           )}
           {error && <p className="text-error text-sm mt-2">{error}</p>}
         </div>
