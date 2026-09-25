@@ -170,7 +170,7 @@ class Settings(BaseSettings):
     # A second, independent gate alongside the question count: a handful of
     # questions can burn very different amounts of model spend, so the thing
     # worth capping is tokens too, not just questions.
-    free_daily_tokens: int = 50_000
+    free_daily_tokens: int = 200_000
     paid_daily_tokens: int = 2_000_000
     # `render_dashboard`/`save_dashboard` cost a live Cube query apiece (and a
     # save also costs a catalog publish), on top of whatever tokens the turn
