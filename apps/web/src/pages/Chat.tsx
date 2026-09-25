@@ -728,10 +728,6 @@ function ChatThread({
               />
             </div>
           )}
-          <p className="pt-2 text-center text-[11px] opacity-50">
-            Locked-down agent: curated tools only, server-side token limits,
-            every turn logged.
-          </p>
         </div>
       </AuiIf>
     </ThreadPrimitive.Root>
