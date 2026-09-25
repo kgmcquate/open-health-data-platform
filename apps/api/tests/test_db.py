@@ -330,3 +330,43 @@ def test_ensure_schema_adds_missing_columns_to_a_pre_existing_table(tmp_path: Pa
     assert db.thread_turns(fresh_engine, thread_id=thread_id, user_email=USER)[0]["feedback"] == (
         "positive"
     )
+
+
+def test_ensure_schema_adds_cancel_at_to_a_pre_existing_subscriptions_table(
+    tmp_path: Path,
+) -> None:
+    """Same migration path as the `chat_turns` case above, for `subscriptions`
+    (`hub_api.billing`): a deployment that already has the table from before
+    `cancel_at` was added to the Python schema.
+    """
+    from hub_api import billing
+
+    url = f"sqlite:///{tmp_path}/legacy_subscriptions.db"
+    engine = create_engine(url)
+    legacy_metadata = db.metadata.__class__()
+    legacy_columns = [
+        c._copy() for c in billing.subscriptions.columns if c.name != "cancel_at"
+    ]
+    Table("subscriptions", legacy_metadata, *legacy_columns)
+    legacy_metadata.create_all(engine)
+
+    fresh_engine = db.make_engine(url)
+    db.ensure_schema(fresh_engine)
+
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with fresh_engine.begin() as connection:
+        connection.execute(
+            billing.subscriptions.insert().values(
+                user_email=USER,
+                stripe_customer_id="cus_1",
+                stripe_subscription_id="sub_1",
+                status="active",
+                price_id="price_1",
+                cancel_at_period_end=True,
+                cancel_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        row = connection.execute(billing.subscriptions.select()).one()
+    assert row.cancel_at is not None

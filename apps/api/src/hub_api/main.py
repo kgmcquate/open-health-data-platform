@@ -20,6 +20,7 @@ image and one Deployment.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -46,6 +47,28 @@ from ohdp_shared import configure_logging, get_logger, settings
 
 configure_logging(json=settings.log_json, level=settings.log_level)
 log = get_logger(__name__)
+
+
+class _HealthzAccessFilter(logging.Filter):
+    """Drops uvicorn's access-log line for a *successful* `/healthz` hit.
+
+    The kubelet's liveness/readiness probes poll it continuously
+    (`platform/helm/charts/hub-api/values.yaml`), and a 200 there is never
+    signal — it is pure volume. A failing healthz (any other status) still
+    logs: that's an actual outage, which is exactly what this endpoint exists
+    to surface. `record.args` here is uvicorn's own positional tuple
+    (`(client_addr, method, path, http_version, status)` — h11_impl.py's
+    `access_logger.info(...)` call), not something we control the shape of.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not isinstance(record.args, tuple) or len(record.args) != 5:
+            return True
+        _client_addr, _method, path, _http_version, status = record.args
+        return not (str(path).split("?", 1)[0] == "/healthz" and status == 200)
+
+
+logging.getLogger("uvicorn.access").addFilter(_HealthzAccessFilter())
 
 
 @asynccontextmanager

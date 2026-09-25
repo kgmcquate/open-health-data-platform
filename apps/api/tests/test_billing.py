@@ -464,9 +464,16 @@ def test_subscription_updated_changes_status_and_tier(engine: Engine) -> None:
             {
                 "id": "sub_1",
                 "status": "past_due",
-                "current_period_end": 1893456000,
                 "cancel_at_period_end": False,
-                "items": {"data": [{"price": {"id": PRICE}}]},
+                # `current_period_end` lives on the item, not the subscription
+                # itself, in the pinned API version — see the comment in
+                # `_handle_subscription_updated`. This fixture mirrors what
+                # Stripe actually sends; an older, top-level
+                # `"current_period_end": ...` here would silently pass this
+                # test while the handler stored `NULL` for it in production.
+                "items": {
+                    "data": [{"price": {"id": PRICE}, "current_period_end": 1893456000}]
+                },
             },
         )
     )
@@ -480,14 +487,85 @@ def test_subscription_updated_changes_status_and_tier(engine: Engine) -> None:
         user_tier = connection.execute(
             select(auth.users.c.tier).where(auth.users.c.email == "buyer@example.org")
         ).scalar_one()
-        status = connection.execute(
-            select(billing.subscriptions.c.status).where(
+        sub_row = connection.execute(
+            select(billing.subscriptions).where(
                 billing.subscriptions.c.stripe_subscription_id == "sub_1"
             )
-        ).scalar_one()
+        ).one()
     # past_due is still a plus tier — Stripe's dunning grace period.
     assert user_tier == "plus"
-    assert status == "past_due"
+    assert sub_row.status == "past_due"
+    # SQLite doesn't round-trip tzinfo, so the read-back value comes back
+    # naive even though it was written as UTC (`db.py`'s engine, not
+    # something worth fixing just for this assertion).
+    assert sub_row.current_period_end.replace(tzinfo=UTC) == datetime(2030, 1, 1, tzinfo=UTC)
+
+
+def test_subscription_updated_derives_cancel_at_period_end_under_flexible_billing_mode(
+    engine: Engine,
+) -> None:
+    """Under `billing_mode: "flexible"`, canceling "at end of billing period"
+    through the Dashboard or Portal sets only `cancel_at` (a timestamp) —
+    Stripe's own `cancel_at_period_end` field stays `false` the whole time.
+    This is the exact payload shape a real cancellation sent (minus the
+    fields this handler doesn't read), confirmed against a live account.
+    """
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with engine.begin() as connection:
+        connection.execute(
+            auth.users.insert().values(
+                email="buyer@example.org", name="", tier="plus", created_at=now, last_login_at=now
+            )
+        )
+        connection.execute(
+            billing.subscriptions.insert().values(
+                user_email="buyer@example.org",
+                stripe_customer_id="cus_1",
+                stripe_subscription_id="sub_1",
+                status="active",
+                price_id=PRICE,
+                cancel_at_period_end=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    payload, signature = _sign_payload(
+        _event(
+            "evt_updated_cancel_1",
+            "customer.subscription.updated",
+            {
+                "id": "sub_1",
+                "status": "active",
+                "cancel_at_period_end": False,
+                "cancel_at": 1792966786,
+                "canceled_at": 1790375467,
+                "cancellation_details": {"reason": "cancellation_requested"},
+                "items": {
+                    "data": [{"price": {"id": PRICE}, "current_period_end": 1792966786}]
+                },
+            },
+        )
+    )
+
+    response = TestClient(app).post(
+        "/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature}
+    )
+
+    assert response.status_code == 200
+    with engine.connect() as connection:
+        sub_row = connection.execute(
+            select(billing.subscriptions).where(
+                billing.subscriptions.c.stripe_subscription_id == "sub_1"
+            )
+        ).one()
+    # Still active (and so still Plus) until the actual
+    # `customer.subscription.deleted` — but our derived flag reflects the
+    # pending cancellation even though Stripe's own boolean does not.
+    assert sub_row.status == "active"
+    assert sub_row.cancel_at_period_end is True
+    assert sub_row.cancel_at.replace(tzinfo=UTC) == datetime.fromtimestamp(
+        1792966786, tz=UTC
+    )
 
 
 def test_subscription_deleted_drops_the_buyer_to_free(engine: Engine) -> None:

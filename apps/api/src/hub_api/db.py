@@ -157,6 +157,19 @@ def _add_missing_columns(engine: Engine) -> None:
         if "timeline" not in existing:
             connection.execute(text("ALTER TABLE chat_turns ADD COLUMN timeline JSON"))
 
+    # `subscriptions` postdates this function (hub_api.billing, M4); guarded on
+    # `has_table` because db.py doesn't import billing.py and so can't assume
+    # that table is registered on `metadata` the way chat_turns always is.
+    if inspector.has_table("subscriptions"):
+        sub_existing = {col["name"] for col in inspector.get_columns("subscriptions")}
+        if "cancel_at" not in sub_existing:
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE subscriptions ADD COLUMN cancel_at TIMESTAMP WITH TIME ZONE")
+                    if engine.dialect.name == "postgresql"
+                    else text("ALTER TABLE subscriptions ADD COLUMN cancel_at TIMESTAMP")
+                )
+
 
 def ensure_schema(engine: Engine) -> None:
     metadata.create_all(engine)

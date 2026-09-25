@@ -65,7 +65,10 @@ readinessProbe:
     path: /healthz
     port: http
   initialDelaySeconds: 5
-  periodSeconds: 10
+  # Was 10s — with the default failureThreshold of 3, 30s still pulls a
+  # broken pod out of rotation within ~90s, and cuts probe traffic (and the
+  # access-log volume it drove) to a third.
+  periodSeconds: 30
 
 podSecurityContext:
   runAsNonRoot: true

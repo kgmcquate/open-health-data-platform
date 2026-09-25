@@ -88,7 +88,19 @@ subscriptions = Table(
     Column("status", String(32), nullable=False),
     Column("price_id", String(64), nullable=False, default=""),
     Column("current_period_end", DateTime(timezone=True), nullable=True),
+    # Derived, not Stripe's `cancel_at_period_end` verbatim — see `cancel_at`
+    # just below for why that field can't be trusted alone.
     Column("cancel_at_period_end", Boolean, nullable=False, default=False),
+    # Stripe's own `cancel_at`: the timestamp a *scheduled* (not yet final)
+    # cancellation will take effect, or null. Under `billing_mode: "flexible"`
+    # (this account's), the Dashboard/Portal's "cancel at end of billing
+    # period" action sets only this field — `cancel_at_period_end` stays
+    # `false` the whole time, which is the legacy flag from before `cancel_at`
+    # existed and apparently isn't set by that flow anymore. So
+    # `cancel_at_period_end` above is derived as "`cancel_at` is set and the
+    # subscription hasn't actually ended yet", not read off Stripe's field of
+    # the same name — see `_handle_subscription_updated`.
+    Column("cancel_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
@@ -315,7 +327,22 @@ def _handle_subscription_updated(engine: Engine, sub_obj: dict[str, Any]) -> Non
     status = sub_obj.get("status", "")
     items = ((sub_obj.get("items") or {}).get("data")) or []
     price_id = (items[0].get("price") or {}).get("id", "") if items else ""
-    period_end = sub_obj.get("current_period_end")
+    # Not `sub_obj["current_period_end"]` — Stripe moved period tracking onto
+    # each subscription item (to support items on different billing cycles),
+    # so the pinned API version's `Subscription` object no longer carries it
+    # at the top level at all. Every item shares one price/cycle here (we
+    # never sell more than one), so the first item's value is the
+    # subscription's.
+    period_end = items[0].get("current_period_end") if items else None
+    # Stripe's own `cancel_at_period_end` stays `false` for a Dashboard/Portal
+    # "cancel at end of billing period" under `billing_mode: "flexible"` — it
+    # only sets `cancel_at` (a timestamp) instead, so trusting the boolean
+    # alone missed every one of those cancellations. `cancel_at` is null once
+    # there is nothing scheduled, so "set" is exactly "will end later, not
+    # yet" — and the legacy boolean is OR'd in for any account/flow that still
+    # sends it.
+    cancel_at = sub_obj.get("cancel_at")
+    cancel_at_period_end = bool(sub_obj.get("cancel_at_period_end")) or cancel_at is not None
     now = datetime.now(UTC)
 
     with engine.begin() as connection:
@@ -339,7 +366,8 @@ def _handle_subscription_updated(engine: Engine, sub_obj: dict[str, Any]) -> Non
                 current_period_end=(
                     datetime.fromtimestamp(period_end, tz=UTC) if period_end else None
                 ),
-                cancel_at_period_end=bool(sub_obj.get("cancel_at_period_end", False)),
+                cancel_at_period_end=cancel_at_period_end,
+                cancel_at=(datetime.fromtimestamp(cancel_at, tz=UTC) if cancel_at else None),
                 updated_at=now,
             )
         )
@@ -347,7 +375,13 @@ def _handle_subscription_updated(engine: Engine, sub_obj: dict[str, Any]) -> Non
 
     set_user_tier(engine, email=email, tier=_tier_for_status(status))
     log.info(
-        "stripe_subscription_updated", email=email, status=status, subscription_id=subscription_id
+        "stripe_subscription_updated",
+        email=email,
+        status=status,
+        subscription_id=subscription_id,
+        cancel_at_period_end=cancel_at_period_end,
+        cancel_at=cancel_at,
+        current_period_end=period_end,
     )
 
 
