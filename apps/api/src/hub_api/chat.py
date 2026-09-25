@@ -172,6 +172,7 @@ def me(
     tokens_used = db.tokens_today(engine, user_email)
     renders_used = db.tool_calls_today(engine, user_email, "render_dashboard")
     saves_used = db.tool_calls_today(engine, user_email, "save_dashboard")
+    issues_used = db.issues_today(engine, user_email)
     return {
         "email": user_email,
         "tier": tier,
@@ -183,6 +184,8 @@ def me(
         "renders_allowed_per_day": render_allowance(tier),
         "saves_used_today": saves_used,
         "saves_allowed_per_day": save_allowance(tier),
+        "issues_used_today": issues_used,
+        "issues_allowed_per_day": issue_allowance(tier),
     }
 
 
@@ -561,3 +564,10 @@ def render_allowance(tier: str) -> int:
 
 def save_allowance(tier: str) -> int:
     return settings.paid_daily_saves if tier == "paid" else settings.free_daily_saves
+
+
+def issue_allowance(tier: str) -> int:
+    """A tier's daily cap on *new* GitHub issues (hub_api.issues), public for
+    the same reason `question_allowance` is: `hub_api.admin`'s user list and
+    `hub_api.issues.report_issue` both need the number and must not drift."""
+    return settings.paid_daily_issues if tier == "paid" else settings.free_daily_issues

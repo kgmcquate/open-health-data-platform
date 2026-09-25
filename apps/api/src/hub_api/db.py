@@ -115,6 +115,21 @@ chat_turns = Table(
     sqlite_autoincrement=True,
 )
 
+# One row per *new* GitHub issue a signed-in reporter has had filed on their
+# behalf (`hub_api.issues.report_issue`) — a duplicate report doesn't add a
+# row, since nothing new was created. This is its own table rather than a
+# `chat_turns` tool call because a report can come from the browser Support
+# page directly, with no chat turn to attach it to.
+filed_issues = Table(
+    "filed_issues",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, index=True),
+    Column("user_email", String(320), nullable=False, index=True),
+    Column("github_number", Integer, nullable=False),
+    sqlite_autoincrement=True,
+)
+
 
 def make_engine(url: str) -> Engine:
     """A pooled engine with pre-ping — the Postgres pod restarts on upgrades.
@@ -228,6 +243,30 @@ def tool_calls_today(engine: Engine, user_email: str, tool_name: str) -> int:
         for call in calls or []
         if call.get("name") == tool_name
     )
+
+
+def issues_today(engine: Engine, user_email: str) -> int:
+    """New GitHub issues filed on `user_email`'s behalf since midnight
+    America/Los_Angeles — `hub_api.issues.report_issue`'s daily cap. A COUNT
+    over `filed_issues`, same shape as `questions_today`, for the same reason:
+    the log is the only source of truth."""
+    statement = (
+        select(func.count())
+        .select_from(filed_issues)
+        .where(filed_issues.c.user_email == user_email)
+        .where(filed_issues.c.created_at >= _start_of_today_la())
+    )
+    with engine.connect() as connection:
+        return int(connection.execute(statement).scalar_one())
+
+
+def record_filed_issue(engine: Engine, *, user_email: str, github_number: int) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            filed_issues.insert().values(
+                created_at=datetime.now(UTC), user_email=user_email, github_number=github_number
+            )
+        )
 
 
 def record_turn(

@@ -286,6 +286,8 @@ export interface ChatAllowance {
   renders_allowed_per_day: number;
   saves_used_today: number;
   saves_allowed_per_day: number;
+  issues_used_today: number;
+  issues_allowed_per_day: number;
 }
 
 export const fetchChatAllowance = () => getJson<ChatAllowance>("/api/me");
@@ -414,6 +416,23 @@ export interface AdminUser {
   renders_allowed_per_day: number;
   saves_used_today: number;
   saves_allowed_per_day: number;
+  issues_used_today: number;
+  issues_allowed_per_day: number;
 }
 
 export const fetchAdminUsers = () => getJson<AdminUser[]>("/api/admin/users");
+
+/** The Support page's own request/response — mirrors `hub_api.issues`'s
+ * `IssueRequest`/`IssueResponse`. The same route also backs the chat
+ * assistant's "file an issue" tool, so a report from either surface can
+ * come back `duplicate: true` if one matching it is already open. */
+export type IssueKind = "bug" | "data-quality" | "feature";
+
+export interface IssueResponse {
+  number: number;
+  url: string;
+  duplicate: boolean;
+}
+
+export const submitIssue = (title: string, body: string, kind: IssueKind) =>
+  sendJson<IssueResponse>("/api/support/issue", "POST", { title, body, kind });

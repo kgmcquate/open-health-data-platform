@@ -6,6 +6,7 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
   useAuiState,
+  type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,6 +15,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ClipboardIcon,
+  FlagIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   PanelLeftIcon,
@@ -24,12 +26,12 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type FC } from "react";
-import { useLocation } from "react-router-dom";
+import { createContext, useContext, useEffect, useRef, useState, type FC } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
 import LogoMark from "../components/icons/LogoMark";
-import { useHubChatRuntime, type HubChatRuntime } from "../chat/runtime";
+import { textOf, useHubChatRuntime, type HubChatRuntime } from "../chat/runtime";
 import {
   archiveThread,
   deleteThread,
@@ -58,6 +60,67 @@ const SUGGESTIONS = [
 
 const actionButtonClassName =
   "flex size-7 items-center justify-center rounded-field text-base-content/60 transition-colors hover:bg-base-300 hover:text-base-content";
+
+// ---------------------------------------------------------------------------
+// Report an issue, from an assistant message's action bar — quotes the
+// conversation leading up to that answer into the Support page's body
+// (apps/web/src/pages/Support.tsx), so a reader doesn't have to retype what
+// they just asked. The runtime's own `messages` (chat/runtime.ts), not
+// assistant-ui's internal thread state: those are already the exact
+// `ThreadMessageLike` shape this needs, and reaching into the runtime's own
+// state tree instead would mean depending on its internal message-part types
+// for no benefit.
+// ---------------------------------------------------------------------------
+
+const TRANSCRIPT_LINE_LIMIT = 40;
+const REPORT_PLACEHOLDER = "Describe what went wrong here.";
+
+const TranscriptContext = createContext<readonly ThreadMessageLike[]>([]);
+
+function messageLines(message: ThreadMessageLike): string[] {
+  const content = message.content;
+  const text = typeof content === "string" ? content : textOf(content);
+  if (!text.trim()) return [];
+  const speaker = message.role === "user" ? "You" : "Assistant";
+  return text.split("\n").map((line) => `${speaker}: ${line}`);
+}
+
+/** The last `maxLines` lines of the conversation up to and including
+ * `messageId` — tool calls and reasoning are skipped, since a maintainer
+ * reading the report wants what was said, not the agent's scratch work. */
+function transcriptUpTo(
+  messages: readonly ThreadMessageLike[],
+  messageId: string,
+  maxLines: number,
+): string {
+  const index = messages.findIndex((m) => m.id === messageId);
+  const upToHere = index === -1 ? messages : messages.slice(0, index + 1);
+  return upToHere.flatMap(messageLines).slice(-maxLines).join("\n");
+}
+
+function ReportIssueButton() {
+  const messageId = useAuiState((s) => s.message.id);
+  const messages = useContext(TranscriptContext);
+  const navigate = useNavigate();
+
+  return (
+    <button
+      type="button"
+      className={actionButtonClassName}
+      aria-label="Report a problem with this answer"
+      title="Report a problem with this answer"
+      onClick={() => {
+        const transcript = transcriptUpTo(messages, messageId, TRANSCRIPT_LINE_LIMIT);
+        const body = transcript
+          ? `${REPORT_PLACEHOLDER}\n\n---\nRecent chat context (edit or remove before submitting):\n\n${transcript}`
+          : "";
+        navigate("/support", { state: { prefillKind: "bug", prefillBody: body } });
+      }}
+    >
+      <FlagIcon className="size-3.5" />
+    </button>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Sidebar — hand-rolled against hub-api's own /api/threads REST endpoints
@@ -438,6 +501,7 @@ function AssistantMessage() {
         <ActionBarPrimitive.Reload className={actionButtonClassName}>
           <RefreshCwIcon className="size-3.5" />
         </ActionBarPrimitive.Reload>
+        <ReportIssueButton />
       </ActionBarPrimitive.Root>
     </MessagePrimitive.Root>
   );
@@ -512,7 +576,7 @@ function Composer({
   return (
     <ComposerPrimitive.Root className="flex w-full flex-col gap-2 rounded-box border border-base-300 bg-base-100 px-3.5 pt-3 pb-2.5 shadow-sm">
       <ComposerPrimitive.Input
-        placeholder="Ask about air quality, chronic disease, drug safety…"
+        placeholder="Ask about chronic disease, air quality, drug safety…"
         rows={1}
         className="block max-h-60 min-h-6 w-full resize-none bg-transparent outline-none placeholder:text-base-content/40"
       />
@@ -618,109 +682,111 @@ function ChatThread({
   isRunning,
   initialQuestion,
   allowance,
+  messages,
 }: ModelPickerProps &
-  Pick<HubChatRuntime, "suggestions" | "pendingAsk" | "answerPendingAsk" | "isRunning"> & {
+  Pick<HubChatRuntime, "suggestions" | "pendingAsk" | "answerPendingAsk" | "isRunning" | "messages"> & {
     initialQuestion?: string;
     allowance: ChatAllowance | null;
   }) {
   return (
-    <ThreadPrimitive.Root className="flex h-full flex-col">
-      <AuiIf condition={(s) => s.thread.isEmpty}>
-        <div className="flex grow flex-col items-center justify-center px-4">
-          <div className="mx-auto flex w-full max-w-5xl flex-col items-stretch gap-5">
-            <p className="flex items-center justify-center gap-3 text-2xl font-bold sm:text-3xl">
-              <LogoMark className="h-14 w-14" />
-              <span>Ask the platform anything</span>
-            </p>
-            <p className="text-center text-sm opacity-70">
-              Answers come only from curated metrics and literature — every
-              number traces back to the semantic layer. Population-level data
-              only; not medical advice.
-            </p>
+    <TranscriptContext.Provider value={messages}>
+      <ThreadPrimitive.Root className="flex h-full flex-col">
+        <AuiIf condition={(s) => s.thread.isEmpty}>
+          <div className="flex grow flex-col items-center justify-center px-4">
+            <div className="mx-auto flex w-full max-w-5xl flex-col items-stretch gap-5">
+              <p className="flex items-center justify-center gap-3 text-2xl font-bold sm:text-3xl">
+                <LogoMark className="h-14 w-14" />
+                <span>Ask the platform anything</span>
+              </p>
+              <p className="text-center text-sm opacity-70">
+                This chatbot is on guardrails, only using curated datasets to answer your questions.
+                Chat is informational only, not medical advice.
+              </p>
+              <Composer models={models} model={model} onModelChange={onModelChange} allowance={allowance} />
+              {initialQuestion && (
+                <div className="hidden" aria-hidden>
+                  <ThreadPrimitive.Suggestion
+                    key={`initial-${initialQuestion}`}
+                    prompt={initialQuestion}
+                    method="replace"
+                    autoSend
+                  />
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {SUGGESTIONS.map((s) => (
+                  <ThreadPrimitive.Suggestion
+                    key={s}
+                    prompt={s}
+                    method="replace"
+                    autoSend
+                    className="btn btn-outline btn-sm normal-case"
+                  >
+                    {s}
+                  </ThreadPrimitive.Suggestion>
+                ))}
+              </div>
+            </div>
+          </div>
+        </AuiIf>
+
+        <AuiIf condition={(s) => !s.thread.isEmpty}>
+          <ThreadPrimitive.Viewport className="flex grow flex-col overflow-y-auto px-4 pt-6">
+            <div className="mx-auto w-full max-w-5xl">
+              <ThreadPrimitive.Messages
+                components={{
+                  UserMessage,
+                  AssistantMessage,
+                  EditComposer,
+                }}
+              />
+            </div>
+          </ThreadPrimitive.Viewport>
+          <div className="sticky bottom-0 mx-auto w-full max-w-5xl bg-gradient-to-b from-transparent via-base-100/90 to-base-100 px-4 pt-4 pb-3">
+            {/* The agent waiting on an answer (`ask_user`). Never shows at the
+                same time as the follow-up chips below — those only appear once
+                a turn has finished, and this only exists while one is running. */}
+            {pendingAsk && (
+              <AskPanel
+                key={pendingAsk.ask_id}
+                ask={pendingAsk}
+                onAnswer={(answer) => void answerPendingAsk(answer)}
+              />
+            )}
+            {/* Follow-ups for the answer that just landed — same chips as the
+                welcome screen, but proposed by the model about its own answer
+                (the `done` event's `suggestions`). Hidden while a turn runs so
+                they never dangle under a streaming draft. */}
+            {!isRunning && suggestions.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-2 pb-2">
+                {suggestions.map((s) => (
+                  <ThreadPrimitive.Suggestion
+                    key={s}
+                    prompt={s}
+                    method="replace"
+                    autoSend
+                    className="btn btn-outline btn-sm normal-case"
+                  >
+                    {s}
+                  </ThreadPrimitive.Suggestion>
+                ))}
+              </div>
+            )}
             <Composer models={models} model={model} onModelChange={onModelChange} allowance={allowance} />
             {initialQuestion && (
               <div className="hidden" aria-hidden>
                 <ThreadPrimitive.Suggestion
-                  key={`initial-${initialQuestion}`}
+                  key={`initial-${initialQuestion}-2`}
                   prompt={initialQuestion}
                   method="replace"
                   autoSend
                 />
               </div>
             )}
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {SUGGESTIONS.map((s) => (
-                <ThreadPrimitive.Suggestion
-                  key={s}
-                  prompt={s}
-                  method="replace"
-                  autoSend
-                  className="btn btn-outline btn-sm normal-case"
-                >
-                  {s}
-                </ThreadPrimitive.Suggestion>
-              ))}
-            </div>
           </div>
-        </div>
-      </AuiIf>
-
-      <AuiIf condition={(s) => !s.thread.isEmpty}>
-        <ThreadPrimitive.Viewport className="flex grow flex-col overflow-y-auto px-4 pt-6">
-          <div className="mx-auto w-full max-w-5xl">
-            <ThreadPrimitive.Messages
-              components={{
-                UserMessage,
-                AssistantMessage,
-                EditComposer,
-              }}
-            />
-          </div>
-        </ThreadPrimitive.Viewport>
-        <div className="sticky bottom-0 mx-auto w-full max-w-5xl bg-gradient-to-b from-transparent via-base-100/90 to-base-100 px-4 pt-4 pb-3">
-          {/* The agent waiting on an answer (`ask_user`). Never shows at the
-              same time as the follow-up chips below — those only appear once
-              a turn has finished, and this only exists while one is running. */}
-          {pendingAsk && (
-            <AskPanel
-              key={pendingAsk.ask_id}
-              ask={pendingAsk}
-              onAnswer={(answer) => void answerPendingAsk(answer)}
-            />
-          )}
-          {/* Follow-ups for the answer that just landed — same chips as the
-              welcome screen, but proposed by the model about its own answer
-              (the `done` event's `suggestions`). Hidden while a turn runs so
-              they never dangle under a streaming draft. */}
-          {!isRunning && suggestions.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-2 pb-2">
-              {suggestions.map((s) => (
-                <ThreadPrimitive.Suggestion
-                  key={s}
-                  prompt={s}
-                  method="replace"
-                  autoSend
-                  className="btn btn-outline btn-sm normal-case"
-                >
-                  {s}
-                </ThreadPrimitive.Suggestion>
-              ))}
-            </div>
-          )}
-          <Composer models={models} model={model} onModelChange={onModelChange} allowance={allowance} />
-          {initialQuestion && (
-            <div className="hidden" aria-hidden>
-              <ThreadPrimitive.Suggestion
-                key={`initial-${initialQuestion}-2`}
-                prompt={initialQuestion}
-                method="replace"
-                autoSend
-              />
-            </div>
-          )}
-        </div>
-      </AuiIf>
-    </ThreadPrimitive.Root>
+        </AuiIf>
+      </ThreadPrimitive.Root>
+    </TranscriptContext.Provider>
   );
 }
 
@@ -753,6 +819,7 @@ export default function Chat() {
     newThread,
     switchThread,
     suggestions,
+    messages,
     pendingAsk,
     answerPendingAsk,
     isRunning,
@@ -808,8 +875,7 @@ export default function Chat() {
           <div className="max-w-md">
             <h1 className="text-3xl font-bold">Sign in to chat</h1>
             <p className="py-4 opacity-70">
-              The chatbot burns real tokens, so it sits behind sign-in with a
-              daily question budget. Free tier included.
+              This chatbot burns real tokens, please sign in to use it. Free tier included.
             </p>
             <button className="btn btn-primary" onClick={signIn}>
               Sign in
@@ -838,6 +904,7 @@ export default function Chat() {
             model={model}
             onModelChange={setModel}
             suggestions={suggestions}
+            messages={messages}
             pendingAsk={pendingAsk}
             answerPendingAsk={answerPendingAsk}
             isRunning={isRunning}

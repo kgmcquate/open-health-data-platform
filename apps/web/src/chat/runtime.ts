@@ -129,7 +129,7 @@ function turnToMessages(turn: ThreadTurn): ThreadMessageLike[] {
   return messages;
 }
 
-function textOf(content: readonly { type: string; text?: string }[]): string {
+export function textOf(content: readonly { type: string; text?: string }[]): string {
   return content
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
     .map((p) => p.text)
@@ -251,6 +251,12 @@ export interface HubChatRuntime {
   /** Answer the pending question and let the agent continue. */
   answerPendingAsk: (answer: string) => Promise<void>;
   isRunning: boolean;
+  /** The active thread's messages, in the same `ThreadMessageLike` shape the
+   * store holds them in — exposed so `Chat.tsx` can quote recent turns into a
+   * Support report (`transcriptUpTo`) without reaching into assistant-ui's
+   * own runtime state, whose message-part types this module doesn't otherwise
+   * depend on. */
+  messages: readonly ThreadMessageLike[];
 }
 
 /** `model` is a GET /api/models id. The UI falls back to the first model
@@ -545,6 +551,7 @@ export function useHubChatRuntime(
     newThread,
     switchThread,
     suggestions,
+    messages,
     pendingAsk,
     answerPendingAsk,
     isRunning,

@@ -21,6 +21,7 @@ from sqlalchemy.engine import Engine
 
 from hub_api import auth, db
 from hub_api.chat import (
+    issue_allowance,
     question_allowance,
     render_allowance,
     save_allowance,
@@ -44,6 +45,8 @@ class AdminUser(BaseModel):
     renders_allowed_per_day: int
     saves_used_today: int
     saves_allowed_per_day: int
+    issues_used_today: int
+    issues_allowed_per_day: int
 
 
 def get_engine(request: Request) -> Engine:
@@ -81,6 +84,8 @@ def list_users(
             renders_allowed_per_day=render_allowance(tier),
             saves_used_today=db.tool_calls_today(engine, str(row["email"]), "save_dashboard"),
             saves_allowed_per_day=save_allowance(tier),
+            issues_used_today=db.issues_today(engine, str(row["email"])),
+            issues_allowed_per_day=issue_allowance(tier),
         )
         for row in auth.list_users(engine)
     ]

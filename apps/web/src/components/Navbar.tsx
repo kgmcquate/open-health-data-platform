@@ -155,6 +155,11 @@ export default function Navbar() {
                     used={allowance.saves_used_today}
                     allowed={allowance.saves_allowed_per_day}
                   />
+                  <UsageRow
+                    label="Issue reports"
+                    used={allowance.issues_used_today}
+                    allowed={allowance.issues_allowed_per_day}
+                  />
                 </div>
                 <div className="divider my-1" />
               </>

@@ -180,6 +180,17 @@ class Settings(BaseSettings):
     paid_daily_renders: int = 300
     free_daily_saves: int = 2
     paid_daily_saves: int = 20
+    # A signed-in reporter's daily cap on *new* issues (hub_api.issues,
+    # hub_api.db.issues_today) — separate from `_rate_limited`'s in-process
+    # hourly spam ceiling below, which is unauthenticated-safe but too coarse
+    # to express "one free report a day": it caps request rate, not identity.
+    # A duplicate report (one that matches an already-open issue) doesn't
+    # consume this, since it creates nothing new. Anonymous chatbot reporters
+    # have no email to key this on, so only the signed-in web path is gated by
+    # it — that's fine, they're already the sole occupants of the hourly
+    # ceiling's shared "chatbot" bucket.
+    free_daily_issues: int = 1
+    paid_daily_issues: int = 3
 
     # Issue reporting (hub_api.issues). The token is a fine-grained PAT with
     # issues:write on `github_issues_repo` and nothing else — it is handed to a
@@ -191,10 +202,10 @@ class Settings(BaseSettings):
         default="",
         description="owner/name of the repository issues are filed in.",
     )
-    # Bearer token Open WebUI presents to /tools. Distinct from the browser path,
-    # which is identified by oauth2-proxy's X-Forwarded-Email instead — see
-    # hub_api.issues.get_reporter for why those are two different identities and
-    # not one.
+    # Bearer token the chat surface's tool connection presents to /tools.
+    # Distinct from the browser path, which is identified by the hub's own
+    # signed session cookie instead — see hub_api.issues.get_reporter for why
+    # those are two different identities and not one.
     tools_auth_token: str = ""
 
     # Hub sign-in (hub_api.auth). The hub does its own OIDC — there is no

@@ -44,6 +44,7 @@ export default function Admin() {
                 <th>Tokens</th>
                 <th>Renders</th>
                 <th>Saves</th>
+                <th>Issues</th>
                 <th>Joined</th>
                 <th>Last login</th>
               </tr>
@@ -75,6 +76,9 @@ export default function Admin() {
                   </td>
                   <td>
                     <UsageCell used={user.saves_used_today} allowed={user.saves_allowed_per_day} />
+                  </td>
+                  <td>
+                    <UsageCell used={user.issues_used_today} allowed={user.issues_allowed_per_day} />
                   </td>
                   <td className="whitespace-nowrap opacity-70">{formatDate(user.created_at)}</td>
                   <td className="whitespace-nowrap opacity-70">{formatDate(user.last_login_at)}</td>

@@ -10,13 +10,15 @@ public repository.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from hub_api import issues
+from hub_api import db, issues
 from hub_api.main import app
 
 TOKEN = "tools-token"
@@ -66,8 +68,21 @@ def github(monkeypatch: pytest.MonkeyPatch) -> FakeGitHub:
 
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(app)
+def client(tmp_path: Path) -> Iterator[TestClient]:
+    # `report_issue`'s daily cap (issues.get_engine) reads real rows, the same
+    # way test_chat_threads.py's fixture backs chat.get_engine — a sqlite file
+    # rather than a mock, since the thing under test is the COUNT query itself.
+    # Overridden on both `app` (the Support page's route) and `issues.tools_app`
+    # (the chat surface's route): two FastAPI instances, two override dicts.
+    engine = db.make_engine(f"sqlite:///{tmp_path}/test.db")
+    db.ensure_schema(engine)
+    app.dependency_overrides[issues.get_engine] = lambda: engine
+    issues.tools_app.dependency_overrides[issues.get_engine] = lambda: engine
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+        issues.tools_app.dependency_overrides.clear()
 
 
 REPORT = {
@@ -186,6 +201,72 @@ def test_rate_limit_stops_a_flood(client: TestClient, github: FakeGitHub) -> Non
     )
     assert refused.status_code == 429
     assert len(github.created) == issues.RATE_LIMIT
+
+
+def _report_as(client: TestClient, *, email: str, tier: str, title: str) -> Any:
+    issues.tools_app.dependency_overrides[issues.get_reporter] = lambda: issues.Reporter(
+        source="web", email=email, tier=tier
+    )
+    try:
+        return client.post("/tools/report_issue", json={**REPORT, "title": title})
+    finally:
+        del issues.tools_app.dependency_overrides[issues.get_reporter]
+
+
+def test_daily_cap_limits_a_free_reporter_to_one(client: TestClient, github: FakeGitHub) -> None:
+    first = _report_as(client, email="a@example.org", tier="free", title="Distinct problem one")
+    assert first.status_code == 200
+
+    second = _report_as(client, email="a@example.org", tier="free", title="Distinct problem two")
+    assert second.status_code == 429
+    assert len(github.created) == 1
+
+    # A different reporter has their own, untouched allowance.
+    other = _report_as(client, email="b@example.org", tier="free", title="Distinct problem three")
+    assert other.status_code == 200
+
+
+def test_daily_cap_is_higher_for_a_paid_reporter(client: TestClient, github: FakeGitHub) -> None:
+    for n in range(issues.settings.paid_daily_issues):
+        response = _report_as(client, email="a@example.org", tier="paid", title=f"Paid problem {n}")
+        assert response.status_code == 200
+
+    refused = _report_as(
+        client, email="a@example.org", tier="paid", title="One paid problem too many"
+    )
+    assert refused.status_code == 429
+    assert len(github.created) == issues.settings.paid_daily_issues
+
+
+def test_duplicate_report_does_not_consume_the_daily_cap(
+    client: TestClient, github: FakeGitHub
+) -> None:
+    github.existing = [
+        {
+            "number": 7,
+            "title": "Air-quality averages look wrong for Montana!",
+            "html_url": f"https://github.com/{REPO}/issues/7",
+        }
+    ]
+    duplicate = _report_as(client, email="a@example.org", tier="free", title=REPORT["title"])
+    assert duplicate.status_code == 200
+    assert duplicate.json()["duplicate"] is True
+
+    fresh = _report_as(client, email="a@example.org", tier="free", title="A genuinely new problem")
+    assert fresh.status_code == 200
+    assert len(github.created) == 1
+
+
+def test_daily_cap_does_not_apply_to_anonymous_chatbot_reports(
+    client: TestClient, github: FakeGitHub
+) -> None:
+    """A chatbot reporter has no email to key the daily cap on — it stays
+    covered by the hourly rate limit alone (test_rate_limit_stops_a_flood)."""
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    for n in range(issues.settings.free_daily_issues + 1):
+        body = {**REPORT, "title": f"Anonymous problem {n}"}
+        assert client.post("/tools/report_issue", json=body, headers=headers).status_code == 200
+    assert len(github.created) == issues.settings.free_daily_issues + 1
 
 
 def test_unconfigured_deployment_refuses_instead_of_half_working(

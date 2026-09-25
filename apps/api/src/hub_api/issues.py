@@ -19,6 +19,11 @@ afterthought:
     most prone to: filing the same report on each retry.
   - `_rate_limited` is a spam ceiling, not a quota. See its docstring for what
     the shared chatbot bucket does and does not protect.
+  - `report_issue`'s daily-cap check (`OHDP_FREE_DAILY_ISSUES`/
+    `OHDP_PAID_DAILY_ISSUES`) is the actual per-user quota, on top of that
+    ceiling — one free report a day, a few more on a paid tier. It only
+    applies to a reporter we can name, which today means the browser Support
+    page; a chat-initiated report is always anonymous (see `get_reporter`).
   - Titles and bodies are truncated rather than rejected, so a long transcript
     still produces a usable report instead of an error the model will retry.
 
@@ -37,9 +42,12 @@ from dataclasses import dataclass
 from typing import Annotated
 
 import httpx
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.engine import Engine
 
+from hub_api import db
+from hub_api.chat import issue_allowance
 from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
@@ -109,6 +117,11 @@ class Reporter:
 
     source: str
     email: str | None
+    # "free" for a chatbot reporter (no session to read a tier from) — never
+    # read for one anyway, since `report_issue`'s daily cap only applies when
+    # `email` is set. See that check for why an anonymous reporter isn't
+    # given the benefit of the doubt on tier.
+    tier: str = "free"
 
     @property
     def rate_key(self) -> str:
@@ -147,7 +160,7 @@ def get_reporter(
     """
     user = request.session.get("user")
     if user and user.get("email"):
-        return Reporter(source="web", email=str(user["email"]))
+        return Reporter(source="web", email=str(user["email"]), tier=str(user.get("tier", "free")))
 
     token = settings.tools_auth_token
     scheme, _, presented = (authorization or "").partition(" ")
@@ -155,6 +168,17 @@ def get_reporter(
         return Reporter(source="chatbot", email=None)
 
     raise HTTPException(401, "Not signed in.")
+
+
+def get_engine(request: Request) -> Engine:
+    """`request.app.state.engine` — resolves to `tools_app.state.engine` for
+    the chat surface's route and `app.state.engine` for the browser's, same
+    mechanism `hub_api.main`'s lifespan comment describes: a mounted app
+    resets `scope["app"]` to itself, and both are set to the same pool."""
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        raise HTTPException(503, "The database is not available.")
+    return engine
 
 
 def _redact(text: str) -> str:
@@ -223,7 +247,7 @@ def _compose_body(body: str, reporter: Reporter, kind: str) -> str:
     )
 
 
-async def report_issue(body: IssueRequest, reporter: Reporter) -> IssueResponse:
+async def report_issue(body: IssueRequest, reporter: Reporter, engine: Engine) -> IssueResponse:
     """Create the issue, or return the open one it duplicates."""
     repo = settings.github_issues_repo
     if not repo or not settings.github_token:
@@ -235,6 +259,20 @@ async def report_issue(body: IssueRequest, reporter: Reporter) -> IssueResponse:
             "Too many issues reported recently. Please try again later, or open "
             f"one directly at https://github.com/{repo}/issues.",
         )
+
+    # A per-identity daily cap, on top of the hourly ceiling above — that one
+    # is a spam brake shared by every anonymous chatbot caller, this one is
+    # "how many *new* issues can this person file today." Only a reporter we
+    # can actually name gets one; an anonymous chatbot report has no email to
+    # key it on, so it stays covered by the hourly ceiling alone.
+    if reporter.email is not None:
+        allowed = issue_allowance(reporter.tier)
+        if db.issues_today(engine, reporter.email) >= allowed:
+            raise HTTPException(
+                429,
+                f"Daily limit of {allowed} issue report(s) reached. Try again tomorrow, "
+                f"or open one directly at https://github.com/{repo}/issues.",
+            )
 
     title = _truncate(_redact(body.title), MAX_TITLE)
     detail = _truncate(_redact(body.body), MAX_BODY)
@@ -276,7 +314,31 @@ async def report_issue(body: IssueRequest, reporter: Reporter) -> IssueResponse:
 
     created = response.json()
     log.info("issue_filed", number=created["number"], source=reporter.source, kind=body.kind)
+    if reporter.email is not None:
+        db.record_filed_issue(engine, user_email=reporter.email, github_number=created["number"])
     return IssueResponse(number=created["number"], url=created["html_url"], duplicate=False)
+
+
+# --- the surface the browser sees ------------------------------------------
+#
+# The hub's own Support page (apps/web/src/pages/Support.tsx) posts here
+# directly, on the main app rather than the `/tools` sub-app below — this is a
+# normal `/api` route for a signed-in human, not an operation the chat model
+# should ever see in its narrowed spec. `get_reporter` already handles a
+# plain browser session (source="web"), so it is reused as-is: the same
+# guardrails (rate limit, daily cap, dedup, redaction, truncation) apply to
+# both callers.
+
+router = APIRouter(prefix="/api", tags=["support"])
+
+
+@router.post("/support/issue", summary="Report a problem")
+async def submit_issue(
+    body: IssueRequest,
+    reporter: Annotated[Reporter, Depends(get_reporter)],
+    engine: Annotated[Engine, Depends(get_engine)],
+) -> IssueResponse:
+    return await report_issue(body, reporter, engine)
 
 
 # --- the surface the chat sees --------------------------------------------
@@ -303,6 +365,7 @@ tools_app = FastAPI(
 async def report_issue_tool(
     body: IssueRequest,
     reporter: Annotated[Reporter, Depends(get_reporter)],
+    engine: Annotated[Engine, Depends(get_engine)],
 ) -> IssueResponse:
     """File a GitHub issue about a problem with this platform.
 
@@ -320,4 +383,4 @@ async def report_issue_tool(
     true, this was already reported and the existing issue is returned — tell
     the user that rather than filing again.
     """
-    return await report_issue(body, reporter)
+    return await report_issue(body, reporter, engine)

@@ -37,6 +37,7 @@ from hub_api.chat import router as chat_router
 from hub_api.content import ensure_columns_and_indexes
 from hub_api.content import router as content_router
 from hub_api.dashboards import dashboards_router
+from hub_api.issues import router as issues_router
 from hub_api.issues import tools_app
 from hub_api.models import build_agents, discover_openai_models
 from hub_api.tool_connections import build_local_openapi_toolset, load_tool_connections
@@ -131,6 +132,10 @@ app.include_router(builder_router)
 # on `auth.require_admin`, the same dependency `content.delete_dashboard`
 # already uses — this just adds a second surface behind it.
 app.include_router(admin_router)
+# The Support page's own route (`hub_api.issues.router`): a thin browser-facing
+# wrapper around `report_issue`, the same function `tools_app.report_issue`
+# below calls for the chat surface.
+app.include_router(issues_router)
 
 # Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
 # its own routes. That narrow spec is what the chat model's "ohdp-tools"

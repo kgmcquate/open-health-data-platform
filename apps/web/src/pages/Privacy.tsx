@@ -37,12 +37,13 @@ export default function Privacy() {
           diagnose problems.
         </li>
         <li>
-          <span className="font-semibold">Issue reports.</span> If you ask
-          the assistant to file feedback or a bug report, the relevant part
-          of that chat is filed as a public issue in our GitHub repository.
-          We strip anything that looks like a secret or credential first, but
-          please don't paste sensitive personal information into a report you
-          ask us to file publicly.
+          <span className="font-semibold">Issue reports.</span> If you submit
+          a report through the Support page, or ask the assistant to file
+          feedback or a bug report, that content is filed as a public issue in
+          our GitHub repository, along with your account email. We strip
+          anything that looks like a secret or credential first, but please
+          don't paste sensitive personal information into a report you ask us
+          to file publicly.
         </li>
       </ul>
       <p className="opacity-80 mt-4">

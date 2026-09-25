@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import Home from "./pages/Home";
@@ -12,10 +12,14 @@ const DashboardDetail = lazy(() => import("./pages/DashboardDetail"));
 const DashboardBuilder = lazy(() => import("./pages/DashboardBuilder"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Privacy = lazy(() => import("./pages/Privacy"));
+const Support = lazy(() => import("./pages/Support"));
 const Search = lazy(() => import("./pages/Search"));
 const Admin = lazy(() => import("./pages/Admin"));
 
 export default function App() {
+  const location = useLocation();
+  const isChat = location.pathname === "/chat";
+
   return (
     <div className="min-h-screen flex flex-col bg-base-100 text-base-content">
       <Navbar />
@@ -40,6 +44,7 @@ export default function App() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/search" element={<Search />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/support" element={<Support />} />
             <Route path="/admin" element={<Admin />} />
             <Route
               path="*"
@@ -57,7 +62,7 @@ export default function App() {
           </Routes>
         </Suspense>
       </main>
-      <Footer />
+      {!isChat && <Footer />}
     </div>
   );
 }
