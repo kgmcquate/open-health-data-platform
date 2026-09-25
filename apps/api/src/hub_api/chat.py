@@ -550,24 +550,24 @@ async def _stream(
 
 def question_allowance(tier: str) -> int:
     """A tier's daily question cap. Public — `hub_api.admin`'s user list reuses
-    this rather than re-encoding the free/paid numbers a second place."""
-    return settings.paid_daily_questions if tier == "paid" else settings.free_daily_questions
+    this rather than re-encoding the free/plus numbers a second place."""
+    return settings.plus_daily_questions if tier == "plus" else settings.free_daily_questions
 
 
 def token_allowance(tier: str) -> int:
-    return settings.paid_daily_tokens if tier == "paid" else settings.free_daily_tokens
+    return settings.plus_daily_tokens if tier == "plus" else settings.free_daily_tokens
 
 
 def render_allowance(tier: str) -> int:
-    return settings.paid_daily_renders if tier == "paid" else settings.free_daily_renders
+    return settings.plus_daily_renders if tier == "plus" else settings.free_daily_renders
 
 
 def save_allowance(tier: str) -> int:
-    return settings.paid_daily_saves if tier == "paid" else settings.free_daily_saves
+    return settings.plus_daily_saves if tier == "plus" else settings.free_daily_saves
 
 
 def issue_allowance(tier: str) -> int:
     """A tier's daily cap on *new* GitHub issues (hub_api.issues), public for
     the same reason `question_allowance` is: `hub_api.admin`'s user list and
     `hub_api.issues.report_issue` both need the number and must not drift."""
-    return settings.paid_daily_issues if tier == "paid" else settings.free_daily_issues
+    return settings.plus_daily_issues if tier == "plus" else settings.free_daily_issues

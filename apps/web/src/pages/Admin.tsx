@@ -59,8 +59,8 @@ export default function Admin() {
                     </div>
                   </td>
                   <td>
-                    {user.tier === "paid" ? (
-                      <span className="badge badge-accent badge-sm">pro</span>
+                    {user.tier === "plus" ? (
+                      <span className="badge badge-accent badge-sm">plus</span>
                     ) : (
                       <span className="badge badge-outline badge-sm">free</span>
                     )}

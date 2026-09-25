@@ -51,7 +51,7 @@ users = Table(
     # The IdP-verified email. Unique, because tier is attached to it.
     Column("email", String(320), nullable=False, unique=True, index=True),
     Column("name", String(320), nullable=False, default=""),
-    # "free" | "paid". Bumped by the billing webhook (M4); "free" until then.
+    # "free" | "plus". Bumped by the billing webhook (M4); "free" until then.
     Column("tier", String(16), nullable=False, default="free"),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("last_login_at", DateTime(timezone=True), nullable=False),

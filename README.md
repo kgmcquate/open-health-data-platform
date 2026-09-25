@@ -2,7 +2,7 @@
 
 A self-hosted analytics platform over **public** health data (OpenAQ, CDC, openFDA,
 CMS, WHO GHO). Batch-materialized once, served read-only to dashboards, a chatbot,
-and alerting through a single semantic layer. Free and paid ($5/mo) tiers.
+and alerting through a single semantic layer. Free and Plus ($5/mo) tiers.
 
 Every component is intentionally user-visible — this is a portfolio project as much
 as a product.

@@ -61,19 +61,19 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
 
 
 def test_me_reports_the_authenticated_tiers_allowances(client: TestClient) -> None:
-    """`/api/me` reads `chat.get_user_tier`, not a hardcoded constant — a paid
-    session must see the paid daily caps, not the free ones."""
+    """`/api/me` reads `chat.get_user_tier`, not a hardcoded constant — a plus
+    session must see the plus daily caps, not the free ones."""
     free = client.get("/api/me").json()
     assert free["tier"] == "free"
     assert free["questions_allowed_per_day"] == settings.free_daily_questions
 
-    app.dependency_overrides[chat.get_user_tier] = lambda: "paid"
-    paid = client.get("/api/me").json()
-    assert paid["tier"] == "paid"
-    assert paid["questions_allowed_per_day"] == settings.paid_daily_questions
-    assert paid["tokens_allowed_per_day"] == settings.paid_daily_tokens
-    assert paid["renders_allowed_per_day"] == settings.paid_daily_renders
-    assert paid["saves_allowed_per_day"] == settings.paid_daily_saves
+    app.dependency_overrides[chat.get_user_tier] = lambda: "plus"
+    plus = client.get("/api/me").json()
+    assert plus["tier"] == "plus"
+    assert plus["questions_allowed_per_day"] == settings.plus_daily_questions
+    assert plus["tokens_allowed_per_day"] == settings.plus_daily_tokens
+    assert plus["renders_allowed_per_day"] == settings.plus_daily_renders
+    assert plus["saves_allowed_per_day"] == settings.plus_daily_saves
 
 
 def test_create_list_and_get_thread(client: TestClient) -> None:

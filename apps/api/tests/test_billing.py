@@ -121,7 +121,7 @@ def test_session_is_a_subscription_for_the_buyer(
     assert session["line_items"] == [{"price": PRICE, "quantity": 1}]
     # The trusted email comes from the session, never from the caller.
     assert session["customer_email"] == "buyer@example.org"
-    assert session["metadata"] == {"email": "buyer@example.org", "tier": "paid"}
+    assert session["metadata"] == {"email": "buyer@example.org", "tier": "plus"}
     # Every fixed_by_ui field intent is present exactly as specified.
     assert session["billing_address_collection"] == "auto"
     assert session["phone_number_collection"] == {"enabled": False}
@@ -233,7 +233,7 @@ def test_checkout_completed_activates_the_buyer(engine: Engine) -> None:
                 "customer": "cus_1",
                 "subscription": "sub_1",
                 "customer_email": "buyer@example.org",
-                "metadata": {"email": "buyer@example.org", "tier": "paid"},
+                "metadata": {"email": "buyer@example.org", "tier": "plus"},
             },
         )
     )
@@ -252,7 +252,7 @@ def test_checkout_completed_activates_the_buyer(engine: Engine) -> None:
                 billing.subscriptions.c.stripe_subscription_id == "sub_1"
             )
         ).one()
-    assert user_tier == "paid"
+    assert user_tier == "plus"
     assert sub_row.user_email == "buyer@example.org"
     assert sub_row.stripe_customer_id == "cus_1"
     assert sub_row.status == "active"
@@ -281,7 +281,9 @@ def test_webhook_ignores_a_redelivered_event(engine: Engine) -> None:
     )
     client = TestClient(app)
     payload, signature = _sign_payload(raw)
-    client.post("/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature})
+    client.post(
+        "/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature}
+    )
     # Between the two deliveries, an operator manually reverts the tier — a
     # redelivery of the same event id must not silently reapply the change.
     with engine.begin() as connection:
@@ -307,7 +309,7 @@ def test_subscription_updated_changes_status_and_tier(engine: Engine) -> None:
     with engine.begin() as connection:
         connection.execute(
             auth.users.insert().values(
-                email="buyer@example.org", name="", tier="paid", created_at=now, last_login_at=now
+                email="buyer@example.org", name="", tier="plus", created_at=now, last_login_at=now
             )
         )
         connection.execute(
@@ -350,8 +352,8 @@ def test_subscription_updated_changes_status_and_tier(engine: Engine) -> None:
                 billing.subscriptions.c.stripe_subscription_id == "sub_1"
             )
         ).scalar_one()
-    # past_due is still a paid tier — Stripe's dunning grace period.
-    assert user_tier == "paid"
+    # past_due is still a plus tier — Stripe's dunning grace period.
+    assert user_tier == "plus"
     assert status == "past_due"
 
 
@@ -360,7 +362,7 @@ def test_subscription_deleted_drops_the_buyer_to_free(engine: Engine) -> None:
     with engine.begin() as connection:
         connection.execute(
             auth.users.insert().values(
-                email="buyer@example.org", name="", tier="paid", created_at=now, last_login_at=now
+                email="buyer@example.org", name="", tier="plus", created_at=now, last_login_at=now
             )
         )
         connection.execute(

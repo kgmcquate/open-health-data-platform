@@ -1,7 +1,7 @@
 """Stripe Checkout (M4) — session creation plus the subscription-events webhook
-that activates and maintains the paid tier.
+that activates and maintains the Plus tier.
 
-Sells the $5/mo Pro subscription through Stripe's **embedded Checkout** page:
+Sells the $5/mo Plus subscription through Stripe's **embedded Checkout** page:
 the server creates a Checkout Session and returns only its `client_secret`; the
 browser (apps/web) loads Stripe.js and mounts the Stripe-hosted Checkout page
 in-page via `stripe.initEmbeddedCheckout({ clientSecret })`. No card details
@@ -74,7 +74,7 @@ subscriptions = Table(
     # later event should update rather than insert a duplicate of.
     Column("stripe_subscription_id", String(64), nullable=False, unique=True, index=True),
     # Stripe's own status string verbatim (active/trialing/past_due/canceled/
-    # unpaid/incomplete/incomplete_expired/paused) — not our "free"/"paid",
+    # unpaid/incomplete/incomplete_expired/paused) — not our "free"/"plus",
     # which `_tier_for_status` below derives from it.
     Column("status", String(32), nullable=False),
     Column("price_id", String(64), nullable=False, default=""),
@@ -96,14 +96,14 @@ stripe_events = Table(
     Column("received_at", DateTime(timezone=True), nullable=False),
 )
 
-# past_due keeps Pro live through Stripe's dunning retries — a grace period,
+# past_due keeps Plus live through Stripe's dunning retries — a grace period,
 # not a loophole; Stripe has already emailed the buyer and will retry the card
 # a few times before giving up. Every other status is not currently paying.
-_PAID_STATUSES = {"active", "trialing", "past_due"}
+_PLUS_STATUSES = {"active", "trialing", "past_due"}
 
 
 def _tier_for_status(status: str) -> str:
-    return "paid" if status in _PAID_STATUSES else "free"
+    return "plus" if status in _PLUS_STATUSES else "free"
 
 
 class CheckoutStart(BaseModel):
@@ -125,7 +125,7 @@ def _require_stripe() -> None:
         )
 
 
-@router.post("/checkout", summary="Start a Pro subscription Checkout")
+@router.post("/checkout", summary="Start a Plus subscription Checkout")
 def start_checkout(user: Annotated[User, Depends(get_current_user)]) -> CheckoutStart:
     """Create an embedded Checkout Session for this signed-in user and return
     its `client_secret`. The frontend hands that secret to Stripe.js' embedded
@@ -166,7 +166,7 @@ def start_checkout(user: Annotated[User, Depends(get_current_user)]) -> Checkout
             # `checkout.session.completed` handler maps it back to `users.email`
             # without trusting a page redirect.
             customer_email=user.email,
-            metadata={"email": user.email, "tier": "paid"},
+            metadata={"email": user.email, "tier": "plus"},
         )
     except stripe.StripeError as exc:
         log.warning("checkout_session_failed", email=user.email, error=str(exc))
@@ -193,7 +193,7 @@ def _record_event_once(engine: Engine, *, event_id: str, event_type: str) -> boo
 
 def _handle_checkout_completed(engine: Engine, session_obj: dict[str, Any]) -> None:
     """`checkout.session.completed` — the buyer finished paying. Creates the
-    `subscriptions` row and grants Pro immediately; the authoritative status,
+    `subscriptions` row and grants Plus immediately; the authoritative status,
     price, and period end are filled in by the `customer.subscription.*`
     events Stripe sends alongside it, since this session object doesn't carry
     them without an `expand` we didn't ask for.
@@ -233,7 +233,7 @@ def _handle_checkout_completed(engine: Engine, session_obj: dict[str, Any]) -> N
                 .where(subscriptions.c.stripe_subscription_id == subscription_id)
                 .values(user_email=email, stripe_customer_id=customer_id, updated_at=now)
             )
-    set_user_tier(engine, email=email, tier="paid")
+    set_user_tier(engine, email=email, tier="plus")
     log.info("stripe_subscription_activated", email=email, subscription_id=subscription_id)
 
 
@@ -284,8 +284,8 @@ def _handle_subscription_updated(engine: Engine, sub_obj: dict[str, Any]) -> Non
 
 def _handle_subscription_deleted(engine: Engine, sub_obj: dict[str, Any]) -> None:
     """`customer.subscription.deleted` — the subscription is gone for good
-    (as opposed to `past_due`, which is still `_tier_for_status`-paid). Marks
-    the row canceled and drops the buyer back to free.
+    (as opposed to `past_due`, which `_tier_for_status` still treats as
+    plus). Marks the row canceled and drops the buyer back to free.
     """
     subscription_id = sub_obj.get("id")
     now = datetime.now(UTC)

@@ -44,8 +44,8 @@ def _client(handler: object) -> CubeClient:
 def test_service_token_carries_the_tier() -> None:
     from jose import jwt
 
-    claims = jwt.decode(mint_service_token(SECRET, tier="paid"), SECRET, algorithms=["HS256"])
-    assert claims["tier"] == "paid"
+    claims = jwt.decode(mint_service_token(SECRET, tier="plus"), SECRET, algorithms=["HS256"])
+    assert claims["tier"] == "plus"
     assert claims["exp"] > claims["iat"]
 
 

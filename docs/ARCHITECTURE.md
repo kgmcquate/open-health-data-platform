@@ -1,6 +1,6 @@
 # Open Health Data Platform — Architecture
 
-A self-hosted SaaS platform over public health data. Free and paid ($5/mo) tiers.
+A self-hosted SaaS platform over public health data. Free and Plus ($5/mo) tiers.
 Every platform component is intentionally user-visible: this is a portfolio project as
 much as a product.
 
@@ -265,7 +265,7 @@ cube, ...) will otherwise take down the node.
 One hosted OIDC provider (Clerk, Auth0, or WorkOS free tier). Self-hosted Keycloak
 was considered and rejected: ~1 GB of RAM for no user-visible benefit at this scale.
 
-Tokens carry a `tier` claim (`free` | `paid`).
+Tokens carry a `tier` claim (`free` | `plus`).
 
 | Surface | Authn | Authz |
 |---|---|---|
@@ -484,7 +484,7 @@ Flag these rather than deciding unilaterally:
    toward clinical decision support. Framing must stay explicitly population-level and
    non-clinical, with disclaimers on every generated output. Worth a lawyer's hour
    before launch.
-3. **Free-tier chat quota.** Starting proposal: 20 questions/day free, 500 paid.
+3. **Free-tier chat quota.** Starting proposal: 20 questions/day free, 500 on Plus.
 4. **Which persona leads.** Clinicians and business users want different defaults from
    the same data; this affects the metrics modeled first.
 

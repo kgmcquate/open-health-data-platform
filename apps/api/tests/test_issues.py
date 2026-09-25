@@ -226,16 +226,16 @@ def test_daily_cap_limits_a_free_reporter_to_one(client: TestClient, github: Fak
     assert other.status_code == 200
 
 
-def test_daily_cap_is_higher_for_a_paid_reporter(client: TestClient, github: FakeGitHub) -> None:
-    for n in range(issues.settings.paid_daily_issues):
-        response = _report_as(client, email="a@example.org", tier="paid", title=f"Paid problem {n}")
+def test_daily_cap_is_higher_for_a_plus_reporter(client: TestClient, github: FakeGitHub) -> None:
+    for n in range(issues.settings.plus_daily_issues):
+        response = _report_as(client, email="a@example.org", tier="plus", title=f"Plus problem {n}")
         assert response.status_code == 200
 
     refused = _report_as(
-        client, email="a@example.org", tier="paid", title="One paid problem too many"
+        client, email="a@example.org", tier="plus", title="One plus problem too many"
     )
     assert refused.status_code == 429
-    assert len(github.created) == issues.settings.paid_daily_issues
+    assert len(github.created) == issues.settings.plus_daily_issues
 
 
 def test_duplicate_report_does_not_consume_the_daily_cap(

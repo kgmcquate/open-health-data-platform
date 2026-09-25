@@ -12,7 +12,7 @@ from dotenv import dotenv_values
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-Tier = Literal["free", "paid"]
+Tier = Literal["free", "plus"]
 
 # Absolute, not "./.env": every app in this monorepo is run from its own
 # subdirectory (`cd apps/api && uv run ...`, per each app's README), and a
@@ -166,20 +166,20 @@ class Settings(BaseSettings):
 
     # Chat quotas (ARCHITECTURE.md §10 open decision 3 — provisional)
     free_daily_questions: int = 10
-    paid_daily_questions: int = 50
+    plus_daily_questions: int = 50
     # A second, independent gate alongside the question count: a handful of
     # questions can burn very different amounts of model spend, so the thing
     # worth capping is tokens too, not just questions.
     free_daily_tokens: int = 200_000
-    paid_daily_tokens: int = 2_000_000
+    plus_daily_tokens: int = 2_000_000
     # `render_dashboard`/`save_dashboard` cost a live Cube query apiece (and a
     # save also costs a catalog publish), on top of whatever tokens the turn
     # itself burns — capped separately so a chart-heavy session can't dodge
     # the token gate by asking the model to draw the same query forty times.
     free_daily_renders: int = 30
-    paid_daily_renders: int = 300
+    plus_daily_renders: int = 300
     free_daily_saves: int = 2
-    paid_daily_saves: int = 20
+    plus_daily_saves: int = 20
     # A signed-in reporter's daily cap on *new* issues (hub_api.issues,
     # hub_api.db.issues_today) — separate from `_rate_limited`'s in-process
     # hourly spam ceiling below, which is unauthenticated-safe but too coarse
@@ -190,7 +190,7 @@ class Settings(BaseSettings):
     # it — that's fine, they're already the sole occupants of the hourly
     # ceiling's shared "chatbot" bucket.
     free_daily_issues: int = 1
-    paid_daily_issues: int = 3
+    plus_daily_issues: int = 3
 
     # Issue reporting (hub_api.issues). The token is a fine-grained PAT with
     # issues:write on `github_issues_repo` and nothing else — it is handed to a
@@ -242,7 +242,7 @@ class Settings(BaseSettings):
         return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
 
     # --- Stripe billing (hub_api.billing) ----------------------------------
-    # The paid tier is a $5/mo Stripe subscription, sold through hosted
+    # The Plus tier is a $5/mo Stripe subscription, sold through hosted
     # Checkout (M4). `stripe_secret_key` is deliberately NOT read under the
     # usual OHDP_ prefix: the deployment already injects it as a bare
     # `STRIPE_SECRET_KEY` (platform/helm + .github/workflows/deploy-platform.yml),

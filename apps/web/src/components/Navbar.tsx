@@ -112,7 +112,7 @@ export default function Navbar() {
               <div className="flex flex-col gap-1 pb-1">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-medium truncate">{user.name || user.email}</span>
-                  {user.tier === "paid" && <span className="badge badge-accent badge-sm">pro</span>}
+                  {user.tier === "plus" && <span className="badge badge-accent badge-sm">plus</span>}
                   {/* So it is never a surprise that this session can delete things. */}
                   {user.is_admin && <span className="badge badge-outline badge-sm">admin</span>}
                 </div>
@@ -125,17 +125,17 @@ export default function Navbar() {
             {user && (
               <div className="flex items-center justify-between text-xs pb-1">
                 <span className="opacity-70">Plan</span>
-                <span className="font-medium">{user.tier === "paid" ? "Pro" : "Free"}</span>
+                <span className="font-medium">{user.tier === "plus" ? "Plus" : "Free"}</span>
               </div>
             )}
 
-            {user && user.tier !== "paid" && (
+            {user && user.tier !== "plus" && (
               <div className="flex flex-col gap-1 py-1">
                 {/* The embedded Checkout form lives on /billing (the server hands
                     back a client_secret, not a redirect URL), so this is a link
                     rather than a one-click POST. */}
                 <Link to="/billing" className="btn btn-primary btn-sm justify-start">
-                  Upgrade to Pro — $5/mo
+                  Upgrade to Plus — $5/mo
                 </Link>
               </div>
             )}

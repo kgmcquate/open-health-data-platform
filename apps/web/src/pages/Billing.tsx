@@ -34,17 +34,17 @@ type StripeCheckout = {
   destroy: () => void;
 };
 
-/** The Pro plans page (`hub_api.billing`): a $5/mo Stripe subscription sold via
+/** The Plus plans page (`hub_api.billing`): a $5/mo Stripe subscription sold via
  * Stripe's **embedded Checkout** page. The server hands back a `client_secret`;
  * `initEmbeddedCheckout` mounts the Stripe-hosted Checkout page into the modal
  * below and the purchase completes on this origin (the server disables the
  * post-payment redirect, so the `onComplete` option is what flips the UI to the
  * "Thanks" state).
  *
- * The numbers in `FEATURES` are the paid-tier caps the server enforces — the
+ * The numbers in `FEATURES` are the plus-tier caps the server enforces — the
  * public plan copy, not a quota source of truth. */
 export default function Billing() {
-  const { user, signIn } = useAuth();
+  const { user, signIn, signOut } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -58,6 +58,17 @@ export default function Billing() {
 
   // Tear down any lingering checkout iframe if the page unmounts first.
   useEffect(() => () => checkoutRef.current?.destroy(), []);
+
+  // `users.tier` is stamped onto the session cookie at login (hub_api.auth),
+  // and the Stripe webhook that flips it to "plus" writes straight to the
+  // table — it doesn't touch any already-issued cookie. So a buyer who just
+  // paid still reads as "free" everywhere in the app until their next
+  // sign-in; this re-runs that sign-in for them instead of leaving it to
+  // happen (or not) whenever the 14-day cookie next expires.
+  const refreshSession = async () => {
+    await signOut();
+    signIn();
+  };
 
   const handleClose = () => {
     isOpenRef.current = false;
@@ -121,7 +132,7 @@ export default function Billing() {
     <div className="max-w-3xl mx-auto px-4 py-12">
       <section className="card bg-base-200 shadow">
         <div className="card-body gap-4">
-          <h1 className="card-title text-3xl">Pro</h1>
+          <h1 className="card-title text-3xl">Plus</h1>
           <p className="text-5xl font-bold">
             $5<span className="text-xl opacity-70">/mo</span>
           </p>
@@ -137,13 +148,13 @@ export default function Billing() {
             <button className="btn btn-primary" onClick={signIn}>
               Sign in to subscribe
             </button>
-          ) : user.tier === "paid" ? (
+          ) : user.tier === "plus" ? (
             <p>
-              <span className="badge badge-accent badge-lg">You&apos;re on Pro</span>
+              <span className="badge badge-accent badge-lg">You&apos;re on Plus</span>
             </p>
           ) : (
             <button className="btn btn-primary" onClick={openCheckout}>
-              Subscribe to Pro
+              Subscribe to Plus
             </button>
           )}
         </div>
@@ -162,7 +173,7 @@ export default function Billing() {
         <div className="modal-box w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h3 className="text-lg font-bold">Subscribe to Pro</h3>
+              <h3 className="text-lg font-bold">Subscribe to Plus</h3>
             </div>
             <form method="dialog">
               <button
@@ -175,10 +186,22 @@ export default function Billing() {
           </div>
 
           {submitted ? (
-            <p className="text-sm">
-              Thanks — your subscription is being set up.{" "}
-              <strong>It activates once your payment is confirmed</strong>
-            </p>
+            <div className="text-sm flex flex-col gap-3">
+              <p>
+                Thanks — your subscription is being set up.{" "}
+                <strong>It activates once your payment is confirmed.</strong>
+              </p>
+              <p className="opacity-70">
+                Your account still shows the old plan until you sign in again
+                — sign back in to see Plus reflected everywhere.
+              </p>
+              <button
+                className="btn btn-primary btn-sm self-start"
+                onClick={refreshSession}
+              >
+                Sign out &amp; back in
+              </button>
+            </div>
           ) : (
             <div className="relative min-h-[500px]">
               {/* Always in the DOM while the modal is open so Stripe's

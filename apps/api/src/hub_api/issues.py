@@ -20,8 +20,8 @@ afterthought:
   - `_rate_limited` is a spam ceiling, not a quota. See its docstring for what
     the shared chatbot bucket does and does not protect.
   - `report_issue`'s daily-cap check (`OHDP_FREE_DAILY_ISSUES`/
-    `OHDP_PAID_DAILY_ISSUES`) is the actual per-user quota, on top of that
-    ceiling — one free report a day, a few more on a paid tier. It only
+    `OHDP_PLUS_DAILY_ISSUES`) is the actual per-user quota, on top of that
+    ceiling — one free report a day, a few more on a plus tier. It only
     applies to a reporter we can name, which today means the browser Support
     page; a chat-initiated report is always anonymous (see `get_reporter`).
   - Titles and bodies are truncated rather than rejected, so a long transcript
