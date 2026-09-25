@@ -88,6 +88,9 @@ def test_session_is_a_subscription_for_the_buyer(
     (session,) = stripe
     assert session["mode"] == "subscription"
     assert session["ui_mode"] == "embedded_page"
+    # Embedded sessions default to redirect-based (and need a return_url); this
+    # form confirms in-page, so redirects are explicitly disabled.
+    assert session["redirect_on_completion"] == "never"
     assert session["line_items"] == [{"price": PRICE, "quantity": 1}]
     # The trusted email comes from the session, never from the caller.
     assert session["customer_email"] == "buyer@example.org"

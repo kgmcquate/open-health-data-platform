@@ -87,6 +87,12 @@ def start_checkout(user: Annotated[User, Depends(get_current_user)]) -> Checkout
         session = stripe.checkout.Session.create(
             mode="subscription",
             ui_mode="embedded_page",
+            # With `ui_mode="embedded_page"`, Stripe's default is a redirect-based
+            # session, which therefore *requires* a `return_url` (Stripe errors
+            # otherwise). This form never redirects — it confirms in-page via the
+            # Checkout Form SDK (`actions.confirm`) — so opt out of the redirect so
+            # Stripe knows the session completes on-page instead of bouncing to a URL.
+            redirect_on_completion="never",
             line_items=[{"price": settings.stripe_price_id, "quantity": 1}],
             billing_address_collection="auto",
             phone_number_collection={"enabled": False},
