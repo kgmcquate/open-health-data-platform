@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { createCheckoutSession } from "../lib/api";
 
@@ -26,19 +26,20 @@ type StripeGlobal = {
 type StripeSdk = {
   initEmbeddedCheckout: (options: {
     clientSecret: string;
+    onComplete?: () => void;
   }) => Promise<StripeCheckout>;
 };
 type StripeCheckout = {
   mount: (selector: string) => void;
-  on: (event: "onComplete", handler: () => void) => void;
+  destroy: () => void;
 };
 
 /** The Pro plans page (`hub_api.billing`): a $5/mo Stripe subscription sold via
  * Stripe's **embedded Checkout** page. The server hands back a `client_secret`;
- * `initEmbeddedCheckout` mounts the Stripe-hosted Checkout page into
- * `#checkout-form` below and the purchase completes on this origin (the server
- * disables the post-payment redirect, so `onComplete` is what flips the UI to
- * the "Thanks" state).
+ * `initEmbeddedCheckout` mounts the Stripe-hosted Checkout page into the modal
+ * below and the purchase completes on this origin (the server disables the
+ * post-payment redirect, so the `onComplete` option is what flips the UI to the
+ * "Thanks" state).
  *
  * The numbers in `FEATURES` are the paid-tier caps the server enforces — the
  * public plan copy, not a quota source of truth. */
@@ -48,10 +49,34 @@ export default function Billing() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const start = async () => {
+  // The embedded Checkout page lives inside a modal. These book-keep the modal
+  // and the mounted checkout so we create one session per open, mount it once,
+  // and tear the iframe down when the modal is dismissed.
+  const modalRef = useRef<HTMLDialogElement>(null);
+  const checkoutRef = useRef<StripeCheckout | null>(null);
+  const isOpenRef = useRef(false);
+
+  // Tear down any lingering checkout iframe if the page unmounts first.
+  useEffect(() => () => checkoutRef.current?.destroy(), []);
+
+  const handleClose = () => {
+    isOpenRef.current = false;
+    checkoutRef.current?.destroy();
+    checkoutRef.current = null;
+    setLoading(false);
+    setSubmitted(false);
+    setError(null);
+  };
+
+  const openCheckout = () => {
     setError(null);
     setSubmitted(false);
+    isOpenRef.current = true;
+    modalRef.current?.showModal();
+    void start();
+  };
 
+  const start = async () => {
     const { Stripe } = window as unknown as StripeGlobal;
     if (!PUBLISHABLE_KEY) {
       setError("Stripe isn't configured on this deployment.");
@@ -66,16 +91,23 @@ export default function Billing() {
     try {
       // 1. Ask the server for an embedded Checkout Session (client_secret).
       const { client_secret } = await createCheckoutSession();
-      // 2. Mount the embedded Checkout page in-page (Stripe-hosted iframe).
+      // 2. Mount the embedded Checkout page into the modal. `onComplete` is an
+      //    option to `initEmbeddedCheckout` (not an `.on()` method on the
+      //    checkout object). The server disables the redirect, so `onComplete`
+      //    is what flips the UI to the "Thanks" state in place.
       const stripe = Stripe(PUBLISHABLE_KEY);
       const checkout = await stripe.initEmbeddedCheckout({
         clientSecret: client_secret,
+        onComplete: () => setSubmitted(true),
       });
+      // If the modal was dismissed while we were creating the session, don't
+      // mount into the now-hidden container.
+      if (!isOpenRef.current) {
+        checkout.destroy();
+        return;
+      }
+      checkoutRef.current = checkout;
       checkout.mount("#checkout-form");
-      // 3. On completion, show the confirmation in place. The server is set to
-      //    `redirect_on_completion="never"` (and passes no `return_url`), so the
-      //    buyer stays on /billing instead of being redirected anywhere.
-      checkout.on("onComplete", () => setSubmitted(true));
     } catch (exc) {
       setError(
         exc instanceof Error ? exc.message : "Checkout couldn't start; please try again.",
@@ -110,28 +142,54 @@ export default function Billing() {
               <span className="badge badge-accent badge-lg">You&apos;re on Pro</span>
             </p>
           ) : (
-            <>
+            <button className="btn btn-primary" onClick={openCheckout}>
+              Subscribe to Pro
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* Embedded Checkout, mounted in a modal. The Stripe page stays in-page —
+          the server disables the post-payment redirect, so the buyer never
+          leaves /billing. */}
+      <dialog ref={modalRef} className="modal" onClose={handleClose}>
+        <div className="modal-box w-11/12 max-w-2xl">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-lg font-bold">Subscribe to Pro</h3>
+              <p className="text-sm opacity-70">
+                You can stay right here while you pay.
+              </p>
+            </div>
+            <form method="dialog">
               <button
-                className="btn btn-primary"
-                onClick={() => void start()}
-                disabled={loading}
+                className="btn btn-sm btn-circle btn-ghost"
+                aria-label="Close"
               >
-                {loading ? "Loading checkout…" : "Subscribe to Pro"}
+                ✕
               </button>
-              {submitted && (
-                <p className="text-sm opacity-80">
-                  Thanks — your subscription is being set up.{" "}
-                  <strong>It activates once your payment is confirmed</strong> (the
-                  plan-upgrade webhook is the next step for this project).
-                </p>
-              )}
-              {/* Stripe.js mounts the embedded Checkout form here. */}
-              <div id="checkout-form" className="mt-4" />
-            </>
+            </form>
+          </div>
+
+          {submitted ? (
+            <p className="text-sm">
+              Thanks — your subscription is being set up.{" "}
+              <strong>It activates once your payment is confirmed</strong> (the
+              plan-upgrade webhook is the next step for this project).
+            </p>
+          ) : loading ? (
+            <div className="flex justify-center py-10">
+              <span className="loading loading-spinner loading-lg" />
+            </div>
+          ) : (
+            <div id="checkout-form" className="w-full min-h-[400px]" />
           )}
           {error && <p className="text-error text-sm mt-2">{error}</p>}
         </div>
-      </section>
+        <form method="dialog" className="modal-backdrop">
+          <button>close</button>
+        </form>
+      </dialog>
     </div>
   );
 }
