@@ -242,9 +242,7 @@ def test_data_path_injects_rows_at_the_lookup_source() -> None:
                 ],
                 "projection": {"type": "albersUsa"},
                 "mark": "geoshape",
-                "encoding": {
-                    "color": {"field": "ed_visits.avg_percent", "type": "quantitative"}
-                },
+                "encoding": {"color": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
             },
         }
     )
@@ -754,9 +752,7 @@ def test_a_successful_render_returns_an_embeddable_response(
 
     monkeypatch.setattr("ohdp_agent.cube.CubeClient.run_metric_query", fake_query)
 
-    response = authenticated_client.post(
-        "/tools/render_dashboard", json=SPEC
-    )
+    response = authenticated_client.post("/tools/render_dashboard", json=SPEC)
 
     assert response.status_code == 200
     assert response.headers["content-disposition"] == "inline"
@@ -774,9 +770,7 @@ def test_a_rejected_query_returns_cubes_own_reason(
 
     monkeypatch.setattr("ohdp_agent.cube.CubeClient.run_metric_query", fail)
 
-    response = authenticated_client.post(
-        "/tools/render_dashboard", json=SPEC
-    )
+    response = authenticated_client.post("/tools/render_dashboard", json=SPEC)
     assert response.status_code == 400
     assert "ed_visits.nope" in response.json()["detail"]
 
@@ -806,9 +800,7 @@ def test_an_unplottable_spec_returns_an_error_not_an_embed(
 
     monkeypatch.setattr("ohdp_agent.cube.CubeClient.run_metric_query", fake_query)
 
-    response = authenticated_client.post(
-        "/tools/render_dashboard", json=bad_spec
-    )
+    response = authenticated_client.post("/tools/render_dashboard", json=bad_spec)
     assert response.status_code == 422
     assert "ed_visits.avg_percent" in response.json()["detail"]
     assert response.headers.get("content-disposition") != "inline"

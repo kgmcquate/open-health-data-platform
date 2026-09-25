@@ -150,9 +150,7 @@ def _require_stripe() -> None:
     if not settings.stripe_secret_key:
         raise HTTPException(503, "Billing is not configured on this deployment.")
     if not settings.stripe_price_id:
-        raise HTTPException(
-            503, "Checkout is not configured: no subscription price is set."
-        )
+        raise HTTPException(503, "Checkout is not configured: no subscription price is set.")
 
 
 @router.post("/checkout", summary="Start a Plus subscription Checkout")
@@ -224,9 +222,7 @@ def _latest_stripe_customer_id(engine: Engine, *, email: str) -> str | None:
 
 
 @router.post("/portal", summary="Open the Stripe Billing Portal")
-def start_portal(
-    request: Request, user: Annotated[User, Depends(get_current_user)]
-) -> PortalStart:
+def start_portal(request: Request, user: Annotated[User, Depends(get_current_user)]) -> PortalStart:
     """Create a Stripe Billing Portal session for this signed-in user and
     return its URL. The portal is Stripe's own hosted UI for everything past
     the initial purchase — canceling, changing the card on file, and viewing

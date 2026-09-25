@@ -60,9 +60,7 @@ def test_dagster_job_and_schedule_are_registered() -> None:
 
     rd = defs.get_repository_def()
     assert "literature_dataset_sync_job" in {j.name for j in rd.get_all_jobs()}
-    schedule = next(
-        s for s in rd.schedule_defs if s.name == "literature_dataset_sync_schedule"
-    )
+    schedule = next(s for s in rd.schedule_defs if s.name == "literature_dataset_sync_schedule")
     assert schedule.job_name == "literature_dataset_sync_job"
     assert schedule.default_status.value == "STOPPED"
 

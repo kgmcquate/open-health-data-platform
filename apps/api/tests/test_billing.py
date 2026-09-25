@@ -471,9 +471,7 @@ def test_subscription_updated_changes_status_and_tier(engine: Engine) -> None:
                 # Stripe actually sends; an older, top-level
                 # `"current_period_end": ...` here would silently pass this
                 # test while the handler stored `NULL` for it in production.
-                "items": {
-                    "data": [{"price": {"id": PRICE}, "current_period_end": 1893456000}]
-                },
+                "items": {"data": [{"price": {"id": PRICE}, "current_period_end": 1893456000}]},
             },
         )
     )
@@ -540,9 +538,7 @@ def test_subscription_updated_derives_cancel_at_period_end_under_flexible_billin
                 "cancel_at": 1792966786,
                 "canceled_at": 1790375467,
                 "cancellation_details": {"reason": "cancellation_requested"},
-                "items": {
-                    "data": [{"price": {"id": PRICE}, "current_period_end": 1792966786}]
-                },
+                "items": {"data": [{"price": {"id": PRICE}, "current_period_end": 1792966786}]},
             },
         )
     )
@@ -563,9 +559,7 @@ def test_subscription_updated_derives_cancel_at_period_end_under_flexible_billin
     # pending cancellation even though Stripe's own boolean does not.
     assert sub_row.status == "active"
     assert sub_row.cancel_at_period_end is True
-    assert sub_row.cancel_at.replace(tzinfo=UTC) == datetime.fromtimestamp(
-        1792966786, tz=UTC
-    )
+    assert sub_row.cancel_at.replace(tzinfo=UTC) == datetime.fromtimestamp(1792966786, tz=UTC)
 
 
 def test_subscription_deleted_drops_the_buyer_to_free(engine: Engine) -> None:

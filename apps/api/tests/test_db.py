@@ -344,9 +344,7 @@ def test_ensure_schema_adds_cancel_at_to_a_pre_existing_subscriptions_table(
     url = f"sqlite:///{tmp_path}/legacy_subscriptions.db"
     engine = create_engine(url)
     legacy_metadata = db.metadata.__class__()
-    legacy_columns = [
-        c._copy() for c in billing.subscriptions.columns if c.name != "cancel_at"
-    ]
+    legacy_columns = [c._copy() for c in billing.subscriptions.columns if c.name != "cancel_at"]
     Table("subscriptions", legacy_metadata, *legacy_columns)
     legacy_metadata.create_all(engine)
 

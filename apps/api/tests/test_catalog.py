@@ -87,15 +87,11 @@ async def test_call_tool_refuses_a_name_outside_the_allowlist() -> None:
 
 async def test_call_tool_allows_create_context_memory() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return _rpc_ok(
-            {"content": [{"type": "text", "text": "ok"}], "structuredContent": None}
-        )
+        return _rpc_ok({"content": [{"type": "text", "text": "ok"}], "structuredContent": None})
 
     client = CatalogClient("http://om", "jwt", client=_mock(handler))
 
-    result = await client.call_tool(
-        "create_context_memory", {"title": "x", "content": "y"}
-    )
+    result = await client.call_tool("create_context_memory", {"title": "x", "content": "y"})
 
     assert result == "ok"
 

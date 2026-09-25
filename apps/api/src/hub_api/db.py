@@ -251,10 +251,7 @@ def tool_calls_today(engine: Engine, user_email: str, tool_name: str) -> int:
     with engine.connect() as connection:
         turns_tool_calls = connection.execute(statement).scalars().all()
     return sum(
-        1
-        for calls in turns_tool_calls
-        for call in calls or []
-        if call.get("name") == tool_name
+        1 for calls in turns_tool_calls for call in calls or [] if call.get("name") == tool_name
     )
 
 
