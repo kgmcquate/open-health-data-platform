@@ -27,7 +27,7 @@ def test_openai_backends_allows_a_keyless_backend() -> None:
 def test_openai_backends_empty_by_default() -> None:
     # `_env_file=None`: the field default is what is under test, not whatever
     # this developer's own local .env happens to have configured for real use.
-    assert Settings(_env_file=None).openai_backends == []
+    assert Settings(_env_file=None).openai_backends == [] # type: ignore[call-arg]
 
 
 def test_admin_emails_list_is_normalized() -> None:
@@ -41,4 +41,4 @@ def test_nobody_is_an_admin_by_default() -> None:
     """A deployment that was never told who its admins are has none, rather
     than falling back to anyone who can sign in. `_env_file=None` so this tests
     the field default and not the developer's own .env."""
-    assert Settings(_env_file=None).admin_emails_list == []
+    assert Settings(_env_file=None).admin_emails_list == [] # type: ignore[call-arg]

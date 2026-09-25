@@ -15,9 +15,9 @@ from typing import Any
 import httpx
 import pytest
 from fastmcp import Client
+from ohdp_mcp import server
 
 from ohdp_agent.cube import CubeClient
-from ohdp_mcp import server
 
 SECRET = "test-secret"
 

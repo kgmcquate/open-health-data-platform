@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from test_raw_load import _load, _rows, lake  # noqa: F401
 
 from ohdp_ingestion.socrata import ColumnSpec

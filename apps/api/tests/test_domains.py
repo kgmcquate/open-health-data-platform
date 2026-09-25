@@ -474,7 +474,8 @@ async def test_search_filters_on_the_searchable_entity_types_and_topic_domains()
 
     assert seen["q"] == "respiratory*"
     assert '"entityType": ["table", "metric"]' in seen["query_filter"]
-    assert '"domains.displayName.keyword": ["Infectious Disease", "Respiratory"]' in seen["query_filter"]
+    assert '"domains.displayName.keyword": ["Infectious Disease", "Respiratory"]' in \
+        seen["query_filter"]
     assert seen["size"] == "5"
 
 
