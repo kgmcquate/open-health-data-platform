@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from "react";
 import {
-  SimpleImageAttachmentAdapter,
   useExternalStoreRuntime,
   type AppendMessage,
   type AssistantRuntime,
@@ -53,15 +52,12 @@ const localId = () => `pending-${++nextLocalId}`;
 // Module-level, not created inline in the store object passed to
 // useExternalStoreRuntime: that hook's effect that resyncs the runtime
 // (`runtime.setAdapter(...)`) is keyed on that object's *identity*, and a
-// fresh SimpleImageAttachmentAdapter / feedback closure / convertMessage
-// function on every render meant `store` never had a stable reference —
-// every unrelated re-render (every keystroke while editing a message, among
-// others) forced a resync, which was silently closing the edit composer
-// before its `onEdit` ever fired. None of these three need per-render state,
-// so hoisting them is what actually fixes it, not a memo with a chance of a
-// wrong dependency.
-const attachmentAdapter = new SimpleImageAttachmentAdapter();
-
+// fresh feedback closure / convertMessage function on every render meant
+// `store` never had a stable reference — every unrelated re-render (every
+// keystroke while editing a message, among others) forced a resync, which
+// was silently closing the edit composer before its `onEdit` ever fired.
+// Neither needs per-render state, so hoisting them is what actually fixes
+// it, not a memo with a chance of a wrong dependency.
 const feedbackAdapter: FeedbackAdapter = {
   submit: ({ message, type }) => {
     const turnId = turnIdFromMessageId(message.id);
@@ -138,12 +134,6 @@ function textOf(content: readonly { type: string; text?: string }[]): string {
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
     .map((p) => p.text)
     .join("\n");
-}
-
-function imagesOf(content: readonly { type: string; image?: string }[]): string[] {
-  return content
-    .filter((p): p is { type: "image"; image: string } => p.type === "image")
-    .map((p) => p.image);
 }
 
 function appendText(parts: Part[], text: string): Part[] {
@@ -305,11 +295,7 @@ export function useHubChatRuntime(
     setPendingAsk(null);
   };
 
-  const runTurn = async (
-    question: string,
-    images: string[],
-    truncateFromTurnId: number | undefined,
-  ) => {
+  const runTurn = async (question: string, truncateFromTurnId: number | undefined) => {
     if (!question.trim()) return;
     const mySeq = ++runSeqRef.current;
     // The previous answer's follow-ups stop being relevant the moment a new
@@ -333,10 +319,7 @@ export function useHubChatRuntime(
     const userMessage: ThreadMessageLike = {
       id: localId(),
       role: "user",
-      content: [
-        { type: "text", text: question },
-        ...images.map((image): Part => ({ type: "image", image })),
-      ],
+      content: [{ type: "text", text: question }],
     };
     const assistantId = localId();
     const assistantMessage: ThreadMessageLike = {
@@ -366,7 +349,6 @@ export function useHubChatRuntime(
           model,
           thread_id: activeThreadId,
           truncate_from_turn_id: truncateFromTurnId ?? null,
-          images,
         }),
         signal: controller.signal,
       });
@@ -515,12 +497,12 @@ export function useHubChatRuntime(
   };
 
   const onNew = async (message: AppendMessage) => {
-    await runTurn(textOf(message.content), imagesOf(message.content), undefined);
+    await runTurn(textOf(message.content), undefined);
   };
 
   const onEdit = async (message: AppendMessage) => {
     const turnId = message.sourceId ? turnIdFromMessageId(message.sourceId) : undefined;
-    await runTurn(textOf(message.content), imagesOf(message.content), turnId);
+    await runTurn(textOf(message.content), turnId);
   };
 
   const onReload = async (parentId: string | null) => {
@@ -530,7 +512,7 @@ export function useHubChatRuntime(
     const original = messages.find((m) => m.id === parentId);
     const content = original ? original.content : "";
     const question = typeof content === "string" ? content : textOf(content);
-    await runTurn(question, [], turnId);
+    await runTurn(question, turnId);
   };
 
   // Memoized for the same reason the module-level adapters above are hoisted:
@@ -547,10 +529,7 @@ export function useHubChatRuntime(
       onReload,
       onCancel: async () => abortControllerRef.current?.abort(),
       convertMessage,
-      adapters: {
-        attachments: attachmentAdapter,
-        feedback: feedbackAdapter,
-      },
+      adapters: { feedback: feedbackAdapter },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onNew/onEdit/onReload
     // are recreated each render but only ever close over threadId/model/messages,

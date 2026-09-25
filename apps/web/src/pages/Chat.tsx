@@ -1,7 +1,6 @@
 import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
-  AttachmentPrimitive,
   AuiIf,
   ComposerPrimitive,
   MessagePrimitive,
@@ -15,7 +14,6 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ClipboardIcon,
-  ImagePlusIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   PanelLeftIcon,
@@ -257,22 +255,6 @@ const Sidebar: FC<SidebarProps> = ({
 // Messages
 // ---------------------------------------------------------------------------
 
-function ChatAttachment() {
-  return (
-    <AttachmentPrimitive.Root className="group/thumbnail relative">
-      <div className="h-16 w-16 overflow-hidden rounded-field border border-base-300 bg-base-100">
-        <AttachmentPrimitive.unstable_Thumb className="h-full w-full object-cover text-[10px]" />
-      </div>
-      <AttachmentPrimitive.Remove
-        className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-neutral text-neutral-content opacity-0 transition-opacity group-hover/thumbnail:opacity-100"
-        aria-label="Remove attachment"
-      >
-        <XIcon className="size-3" />
-      </AttachmentPrimitive.Remove>
-    </AttachmentPrimitive.Root>
-  );
-}
-
 function EditComposer() {
   return (
     <ComposerPrimitive.Root className="flex w-full max-w-[80%] flex-col gap-2 self-end rounded-box border border-base-300 bg-base-100 px-3 py-2 shadow-sm">
@@ -299,15 +281,6 @@ function UserMessage() {
           {({ part }) => {
             if (part.type === "text") {
               return <span className="whitespace-pre-wrap">{part.text}</span>;
-            }
-            if (part.type === "image") {
-              return (
-                <img
-                  src={part.image}
-                  alt="Attachment"
-                  className="mt-1 max-h-48 rounded-field"
-                />
-              );
             }
             return null;
           }}
@@ -544,12 +517,6 @@ function Composer({
         className="block max-h-60 min-h-6 w-full resize-none bg-transparent outline-none placeholder:text-base-content/40"
       />
       <div className="flex w-full items-center gap-2">
-        <ComposerPrimitive.AddAttachment
-          aria-label="Add image"
-          className={actionButtonClassName}
-        >
-          <ImagePlusIcon className="size-4" />
-        </ComposerPrimitive.AddAttachment>
         <ModelPicker models={models} model={model} onModelChange={onModelChange} />
         <TokenUsage allowance={allowance} />
         <div className="ml-auto flex items-center gap-1">
@@ -571,11 +538,6 @@ function Composer({
           </AuiIf>
         </div>
       </div>
-      <AuiIf condition={(s) => s.composer.attachments.length > 0}>
-        <div className="-mx-1 -mb-1 flex flex-row gap-2 overflow-x-auto pt-1">
-          <ComposerPrimitive.Attachments>{() => <ChatAttachment />}</ComposerPrimitive.Attachments>
-        </div>
-      </AuiIf>
     </ComposerPrimitive.Root>
   );
 }

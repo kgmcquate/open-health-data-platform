@@ -19,8 +19,6 @@ login (`auth._upsert_user`), bumped by the billing webhook once M4 exists.
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
 from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 
@@ -50,7 +48,6 @@ KEEPALIVE = ": keepalive\n\n"
 KEEPALIVE_SECONDS = 15.0
 
 
-MAX_IMAGES_PER_QUESTION = 4
 TITLE_MAX_LENGTH = 60
 
 
@@ -72,9 +69,6 @@ class ChatRequest(BaseModel):
     # survive past that point, the same way editing a message in most chat
     # UIs abandons the branch it replaces.
     truncate_from_turn_id: int | None = None
-    # Data URLs from the composer's image attachments (`data:image/...;base64,...`)
-    # — never a file path or a URL hub-api would have to fetch itself.
-    images: list[str] = Field(default_factory=list, max_length=MAX_IMAGES_PER_QUESTION)
 
 
 class ThreadCreate(BaseModel):
@@ -317,21 +311,6 @@ async def answer_ask(
     return {"ok": True}
 
 
-def _decode_image(data_url: str) -> tuple[bytes, str]:
-    """`data:<media_type>;base64,<payload>` -> the pair `loop.run`'s `images`
-    wants. Raises `HTTPException` rather than a bare parse error — this comes
-    straight from the client, `Depends`-free, so nothing upstream has vetted it.
-    """
-    if not data_url.startswith("data:") or ";base64," not in data_url:
-        raise HTTPException(400, "Attachments must be base64 data URLs.")
-    header, _, payload = data_url.partition(";base64,")
-    media_type = header.removeprefix("data:") or "application/octet-stream"
-    try:
-        return base64.b64decode(payload, validate=True), media_type
-    except binascii.Error as exc:
-        raise HTTPException(400, "An attachment's image data is not valid base64.") from exc
-
-
 @router.post("/chat")
 async def chat(
     body: ChatRequest,
@@ -443,14 +422,12 @@ async def chat(
         )
         db.rename_thread(engine, thread_id=body.thread_id, user_email=user_email, title=title)
 
-    images = [_decode_image(url) for url in body.images]
-
     # Scoped to this user so `/api/chat/answer` can check who is allowed to
     # answer a given question without the browser being trusted to say.
     ask = AskUserChannel(owner=user_email, pending=pending)
 
     return StreamingResponse(
-        _stream(engine, body, user_email, tier, config, images, ask),
+        _stream(engine, body, user_email, tier, config, ask),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -468,7 +445,6 @@ async def _stream(
     user_email: str,
     tier: str,
     config: ModelConfig,
-    images: list[tuple[bytes, str]],
     ask: AskUserChannel,
 ) -> AsyncIterator[str]:
     """Drive the agent, forward its events, and log the turn when it ends."""
@@ -497,7 +473,6 @@ async def _stream(
                 literature=literature,
                 catalog=catalog,
                 system_prompt=config.system_prompt,
-                images=images,
                 include_catalog_tools=config.include_catalog_tools,
                 ask=ask,
             )

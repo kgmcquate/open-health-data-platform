@@ -40,7 +40,6 @@ from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.exceptions import AgentRunError, UsageLimitExceeded
 from pydantic_ai.messages import (
     AgentStreamEvent,
-    BinaryContent,
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     PartDeltaEvent,
@@ -866,7 +865,6 @@ async def run(
     literature: LiteratureClient,
     catalog: CatalogClient | None,
     system_prompt: str = SYSTEM_PROMPT,
-    images: Sequence[tuple[bytes, str]] = (),
     include_catalog_tools: bool = False,
     ask: AskUserChannel | None = None,
 ) -> None:
@@ -881,12 +879,6 @@ async def run(
     but a model configured in `models.yaml` can replace it outright — see that
     file's own comment for why that is an explicit, informed operator choice
     and not merged with the default.
-
-    `images` is `(bytes, media_type)` pairs — already decoded by the caller
-    (hub_api.chat, from the composer's data-URL attachments) — sent to the
-    model as real image content, not described in text. A model without
-    vision support answers however it answers an image it cannot see; that is
-    between the operator and their model choice, not something validated here.
 
     `include_catalog_tools` is True only for a model whose `tools:` list names
     "catalog" (`hub_api.models.build_agents`) — the in-process path, discovered
@@ -927,13 +919,9 @@ async def run(
         if catalog_toolset is not None:
             extra_toolsets.append(catalog_toolset)
 
-    user_prompt: str | list[str | BinaryContent] = question
-    if images:
-        user_prompt = [question, *(BinaryContent(data=data, media_type=mt) for data, mt in images)]
-
     try:
         result = await agent.run(
-            user_prompt,
+            question,
             deps=deps,
             instructions=instructions,
             toolsets=extra_toolsets,
