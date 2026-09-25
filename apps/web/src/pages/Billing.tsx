@@ -73,8 +73,8 @@ export default function Billing() {
       });
       checkout.mount("#checkout-form");
       // 3. On completion, show the confirmation in place. The server is set to
-      //    `redirect_on_completion="never"`, so the buyer stays on /billing
-      //    instead of being bounced to the session's `return_url`.
+      //    `redirect_on_completion="never"` (and passes no `return_url`), so the
+      //    buyer stays on /billing instead of being redirected anywhere.
       checkout.on("onComplete", () => setSubmitted(true));
     } catch (exc) {
       setError(

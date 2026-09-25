@@ -23,9 +23,10 @@ A few choices worth writing down:
   - **Embedded Checkout page (`ui_mode="embedded_page"`).** The client renders the
     Stripe-hosted Checkout page in-page via `stripe.initEmbeddedCheckout({ clientSecret })`
     and surfaces the "subscribed" state through that API's `onComplete` event. An
-    `embedded_page` session is redirect-based by default, so a `return_url` is
-    required — but we also pass `redirect_on_completion="never"` so the customer
-    stays on `/billing` instead of being bounced to `return_url` after paying.
+    `embedded_page` session is redirect-based by default and would then require a
+    `return_url` — but we pass `redirect_on_completion="never"` instead, so the
+    customer stays on `/billing` (and Stripe forbids passing `return_url` when
+    redirects are off, so we don't).
   - **The API version is pinned** to `settings.stripe_api_version`. That version
     carries the preview flag `saved_payment_method_options` needs on the embedded
     Checkout page. Keep it in lock-step with the js.stripe.com build loaded in
@@ -88,15 +89,12 @@ def start_checkout(user: Annotated[User, Depends(get_current_user)]) -> Checkout
             mode="subscription",
             # Embedded Checkout page, mounted in-page via Stripe.js'
             # `initEmbeddedCheckout` (the docs' GA embedded Checkout quickstart).
-            # An `embedded_page` session is redirect-based by default, so `return_url`
-            # is required; we also pass `redirect_on_completion="never"` so the
-            # customer stays on /billing and the frontend's `onComplete` handler
-            # confirms the purchase in place (no bounce to `return_url`).
+            # An `embedded_page` session is redirect-based by default and then
+            # demands a `return_url`; we set `redirect_on_completion="never"` to
+            # keep the customer on /billing (the frontend's `onComplete` handler
+            # confirms the purchase in place). With redirects disabled, Stripe
+            # *forbids* passing `return_url` too — these sessions need neither.
             ui_mode="embedded_page",
-            return_url=(
-                f"{settings.hub_base_url}/billing/return?session_id="
-                "{CHECKOUT_SESSION_ID}"
-            ),
             redirect_on_completion="never",
             line_items=[{"price": settings.stripe_price_id, "quantity": 1}],
             billing_address_collection="auto",
