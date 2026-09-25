@@ -29,7 +29,7 @@ own to carry.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -164,6 +164,14 @@ def _upsert_user(engine: Engine, *, email: str, name: str) -> str:
             users.update().where(users.c.email == email).values(name=name, last_login_at=now)
         )
         return str(row.tier)
+
+
+def list_users(engine: Engine) -> list[dict[str, Any]]:
+    """Every row of `users`, most recently logged-in first — the admin
+    console's roster (`hub_api.admin`)."""
+    statement = select(users).order_by(users.c.last_login_at.desc())
+    with engine.connect() as connection:
+        return [dict(row._mapping) for row in connection.execute(statement)]
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])

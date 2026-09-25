@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from hub_api import db
+from hub_api.admin import router as admin_router
 from hub_api.auth import router as auth_router
 from hub_api.builder import router as builder_router
 from hub_api.chat import router as chat_router
@@ -126,6 +127,10 @@ app.include_router(content_router)
 # has `render_dashboard`/`save_dashboard`, and a second way in would be one
 # more surface carrying a user's session.
 app.include_router(builder_router)
+# The admin console's own routes (`hub_api.admin`): every route gates itself
+# on `auth.require_admin`, the same dependency `content.delete_dashboard`
+# already uses — this just adds a second surface behind it.
+app.include_router(admin_router)
 
 # Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
 # its own routes. That narrow spec is what the chat model's "ohdp-tools"

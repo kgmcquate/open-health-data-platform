@@ -396,3 +396,24 @@ export const voteDashboard = (name: string, value: 1 | 0 | -1) =>
  * whether to offer the button. */
 export const deleteDashboard = (name: string) =>
   sendJson<{ ok: true }>(`/api/dashboards/${encodeURIComponent(name)}`, "DELETE");
+
+/** One row of the admin console's user list (`hub_api.admin`) — a user, their
+ * tier, and what they've used today against it. Admin only; 403 for anyone
+ * else, the same wall `deleteDashboard` sits behind. */
+export interface AdminUser {
+  email: string;
+  name: string;
+  tier: string;
+  created_at: string;
+  last_login_at: string;
+  questions_used_today: number;
+  questions_allowed_per_day: number;
+  tokens_used_today: number;
+  tokens_allowed_per_day: number;
+  renders_used_today: number;
+  renders_allowed_per_day: number;
+  saves_used_today: number;
+  saves_allowed_per_day: number;
+}
+
+export const fetchAdminUsers = () => getJson<AdminUser[]>("/api/admin/users");

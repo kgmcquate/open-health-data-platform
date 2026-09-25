@@ -39,6 +39,10 @@ export default function Navbar() {
     if (user) fetchChatAllowance().then(setAllowance).catch(() => setAllowance(null));
   }, [user]);
 
+  // A display-only addition to the bar, same as the `is_admin` badge below —
+  // the real wall is server-side (`hub_api.admin`'s own `require_admin`).
+  const navItems = user?.is_admin ? [...NAV_ITEMS, { to: "/admin", label: "Admin" }] : NAV_ITEMS;
+
   return (
     <div className="navbar bg-base-100/90 backdrop-blur border-b border-base-300 sticky top-0 z-40 px-4">
       <div className="flex-1 min-w-0 flex items-center gap-4">
@@ -58,7 +62,7 @@ export default function Navbar() {
 
       <nav className="hidden lg:flex">
         <ul className="menu menu-horizontal px-1 gap-1">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <li key={item.to}>
               <NavLink
                 to={item.to}
@@ -86,7 +90,7 @@ export default function Navbar() {
             ☰
           </button>
           <ul className="dropdown-content menu bg-base-100 rounded-box z-50 w-52 p-2 shadow border border-base-300">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <li key={item.to}>
                 <NavLink to={item.to} end={item.end}>
                   {item.label}

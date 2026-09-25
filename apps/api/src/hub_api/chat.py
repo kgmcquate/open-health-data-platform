@@ -182,13 +182,13 @@ def me(
         "email": user_email,
         "tier": tier,
         "questions_used_today": used,
-        "questions_allowed_per_day": _daily_question_allowance(tier),
+        "questions_allowed_per_day": question_allowance(tier),
         "tokens_used_today": tokens_used,
-        "tokens_allowed_per_day": _daily_token_allowance(tier),
+        "tokens_allowed_per_day": token_allowance(tier),
         "renders_used_today": renders_used,
-        "renders_allowed_per_day": _daily_render_allowance(tier),
+        "renders_allowed_per_day": render_allowance(tier),
         "saves_used_today": saves_used,
-        "saves_allowed_per_day": _daily_save_allowance(tier),
+        "saves_allowed_per_day": save_allowance(tier),
     }
 
 
@@ -350,7 +350,7 @@ async def chat(
     theoretical; it becomes real when §5's tiers do, and the fix then is a
     reservation row rather than a count.
     """
-    daily_question_allowance = _daily_question_allowance(tier)
+    daily_question_allowance = question_allowance(tier)
     used = db.questions_today(engine, user_email)
     if used >= daily_question_allowance:
         log.info(
@@ -365,7 +365,7 @@ async def chat(
             "Come back after midnight America/Los_Angeles.",
         )
 
-    daily_token_allowance = _daily_token_allowance(tier)
+    daily_token_allowance = token_allowance(tier)
     tokens_used_today = db.tokens_today(engine, user_email)
     if tokens_used_today >= daily_token_allowance:
         log.info(
@@ -386,7 +386,7 @@ async def chat(
     # touches a dashboard still costs the free index scan, and a long turn
     # that renders past the cap mid-turn is bounded by MAX_TURNS the same way
     # a turn can already burn past the token cap mid-turn.
-    daily_render_allowance = _daily_render_allowance(tier)
+    daily_render_allowance = render_allowance(tier)
     renders_used_today = db.tool_calls_today(engine, user_email, "render_dashboard")
     if renders_used_today >= daily_render_allowance:
         log.info(
@@ -401,7 +401,7 @@ async def chat(
             "today. Come back after midnight America/Los_Angeles.",
         )
 
-    daily_save_allowance = _daily_save_allowance(tier)
+    daily_save_allowance = save_allowance(tier)
     saves_used_today = db.tool_calls_today(engine, user_email, "save_dashboard")
     if saves_used_today >= daily_save_allowance:
         log.info(
@@ -570,17 +570,19 @@ async def _stream(
         )
 
 
-def _daily_question_allowance(tier: str) -> int:
+def question_allowance(tier: str) -> int:
+    """A tier's daily question cap. Public — `hub_api.admin`'s user list reuses
+    this rather than re-encoding the free/paid numbers a second place."""
     return settings.paid_daily_questions if tier == "paid" else settings.free_daily_questions
 
 
-def _daily_token_allowance(tier: str) -> int:
+def token_allowance(tier: str) -> int:
     return settings.paid_daily_tokens if tier == "paid" else settings.free_daily_tokens
 
 
-def _daily_render_allowance(tier: str) -> int:
+def render_allowance(tier: str) -> int:
     return settings.paid_daily_renders if tier == "paid" else settings.free_daily_renders
 
 
-def _daily_save_allowance(tier: str) -> int:
+def save_allowance(tier: str) -> int:
     return settings.paid_daily_saves if tier == "paid" else settings.free_daily_saves
