@@ -298,7 +298,9 @@ The mechanics that follow from that:
 - **A process-local registry** (`app.state.pending_asks`, `ohdp_agent.loop`'s
   `AskRegistry`) maps `ask_id` to the future the run is awaiting. It is not a
   database row because it is only meaningful to the event loop still awaiting
-  it. This is safe on the current single-replica `Recreate` deployment and is
+  it. This holds on the current single-replica deployment except across a rollout,
+  whose surge pod briefly overlaps the old one (an answer that lands on the
+  wrong pod 404s — accepted, see `platform/helm/charts/hub-api/values.yaml`); it is
   the thing that would have to change first for a second replica — the answer
   must reach the pod holding the stream, not just any pod.
 - **The `ask_id` is a uuid4 and the entry carries its owner.** Unguessable is

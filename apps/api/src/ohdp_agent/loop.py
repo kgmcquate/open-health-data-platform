@@ -127,8 +127,8 @@ class PendingAsk:
 # `hub_api.chat`) rather than by this module, because the thing that resolves
 # an entry is a *different HTTP request* from the one that created it — the
 # browser POSTing the chosen option while the asking request is still holding
-# its SSE stream open. Process-local, which is what the single-replica
-# `Recreate` deployment makes safe; a second replica would need the answer
+# its SSE stream open. Process-local, which the single-replica deployment
+# makes safe outside the brief surge overlap of a rollout; a second replica would need the answer
 # routed to the pod holding the stream, not just to any pod.
 AskRegistry = dict[str, PendingAsk]
 

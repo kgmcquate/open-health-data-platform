@@ -9,8 +9,8 @@ version: 2
 # Two marts, deliberately: product_safety__recalls is the recall-grain detail
 # (what was recalled, by whom, why) and product_safety__recall_trend_monthly
 # is the pre-aggregated time series. Cube can derive the second from the
-# first, but a Streamlit dashboard querying Snowflake directly (ADR-0015)
-# cannot cheaply, and the trend is the most-asked question of this data.
+# first, but pre-aggregating it once in the pipeline is cheaper than rolling
+# it up per query, and the trend is the most-asked question of this data.
 
 models:
   - name: product_safety__recalls

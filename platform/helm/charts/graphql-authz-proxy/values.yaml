@@ -177,6 +177,9 @@ authz:
             # - field_name: version
             # - field_name: permissions
 
-nodeSelector: {}
+# `heavy` node pool with the Dagster it fronts (platform/terraform/main.tf,
+# np_4_cpu_8gb) — frees room on the small default/ingress node.
+nodeSelector:
+  node-role: heavy
 tolerations: []
 affinity: {}

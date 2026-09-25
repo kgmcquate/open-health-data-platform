@@ -1,7 +1,5 @@
 -- Mart layer: FDA recalls counted by the month they were initiated -- the
--- time series behind the product_safety cube's trend, and the table a
--- Streamlit dashboard querying Snowflake directly (ADR-0015) can read
--- without going through Cube.
+-- time series behind the product_safety cube's trend.
 --
 -- Grain: product_type x classification x status x recall_initiation_month.
 --

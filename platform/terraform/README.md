@@ -17,7 +17,9 @@ DNS lives in Cloudflare (`open-health-data-platform.org` is a Cloudflare zone). 
 | Resource | Notes |
 |---|---|
 | `digitalocean_kubernetes_cluster` | Managed cluster in the chosen region |
-| `digitalocean_kubernetes_node_pool` | Default worker pool (`size`, `node_count`) |
+| `digitalocean_kubernetes_cluster` default pool | `node-role: ingress` — 1× `s-1vcpu-2gb`: Traefik, cert-manager, mcp-cube |
+| `digitalocean_kubernetes_node_pool` `np_services` | `node-role: services` — 1× `s-2vcpu-4gb`, always on: hub-api, Cube, CubeStore, Postgres |
+| `digitalocean_kubernetes_node_pool` `np_4_cpu_8gb` | `node-role: heavy` — `s-4vcpu-8gb`, hand-scaled (`node_count` is ignored): Dagster + its run pods, its oauth2-proxy, gqlproxy and dagster-monitoring; OpenMetadata, OpenSearch |
 | `digitalocean_spaces_bucket` | `ohdp-warehouse` for backups + the mirrored Snowflake credentials |
 | `digitalocean_spaces_bucket_object` | `snowflake-pipeline-private-key.pem` and `snowflake-pipeline-horizon-pat.txt` — the two Snowflake credentials, private objects, readable without Terraform |
 | `cloudflare_dns_record` | One A record per `dns_hostnames` entry under `dns_base`, once `loadbalancer_ip` is set |

@@ -17,6 +17,12 @@ crds:
 
 replicaCount: 1
 
+# Pinned to the default/ingress pool (platform/terraform/main.tf) with Traefik,
+# whose Ingresses it issues certs for. Every component, including the
+# post-install startupapicheck Job, so none of them drift onto `services`.
+nodeSelector:
+  node-role: ingress
+
 # Small footprint — shares the 0.3 GB ingress/cert-manager budget line (§4).
 resources:
   requests:
@@ -27,6 +33,8 @@ resources:
     memory: 128Mi
 
 webhook:
+  nodeSelector:
+    node-role: ingress
   resources:
     requests:
       cpu: 10m
@@ -36,6 +44,8 @@ webhook:
       memory: 64Mi
 
 cainjector:
+  nodeSelector:
+    node-role: ingress
   resources:
     requests:
       cpu: 10m
@@ -43,3 +53,7 @@ cainjector:
     limits:
       cpu: 100m
       memory: 128Mi
+
+startupapicheck:
+  nodeSelector:
+    node-role: ingress

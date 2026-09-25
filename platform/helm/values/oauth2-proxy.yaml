@@ -100,6 +100,11 @@ resources:
     cpu: 50m
     memory: 64Mi
 
+# `heavy` node pool with the Dagster it fronts (platform/terraform/main.tf,
+# np_4_cpu_8gb) — frees room on the small default/ingress node.
+nodeSelector:
+  node-role: heavy
+
 # The chart's default securityContext is already hardened — nonroot uid 2000,
 # drop ALL caps, readOnlyRootFilesystem, seccomp RuntimeDefault — so it is left
 # as-is here.

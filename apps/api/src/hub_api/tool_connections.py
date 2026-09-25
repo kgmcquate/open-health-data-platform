@@ -17,8 +17,8 @@ hub-api's own `/tools` app (`hub_api.issues.tools_app`). That used to be just
 another `tools.yaml` OpenAPI connection (id `ohdp-tools`), fetched over a real
 HTTP call to hub-api's own cluster address. That call cannot succeed —
 `lifespan` (`hub_api.main`) runs it before hub-api is serving any requests at
-all, including its own, and the `Recreate` deploy strategy means there is
-never a second pod up to answer it either. It failed on every single startup,
+all, including its own, and on a first install or a lone pod's restart there
+is no second pod up to answer it either. It failed on every single startup,
 silently (this file's own best-effort-per-connection contract), which meant
 `render_dashboard` and `report_issue` were never actually attached to any
 model. Reading the spec off the app object and dispatching over an ASGI

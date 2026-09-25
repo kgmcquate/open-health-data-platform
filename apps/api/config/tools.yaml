@@ -39,8 +39,8 @@ connections:
   # report_issue) used to be a connection
   # here, pointed at hub-api's own cluster address. That was a self-call —
   # hub-api fetching its own OpenAPI spec from itself over the network during
-  # its own startup, before it was serving any requests, under a single-pod
-  # `Recreate` deploy with no other pod ever up to answer it. It always
+  # its own startup, before it was serving any requests, with (at the time,
+  # under a `Recreate` deploy) no other pod ever up to answer it. It always
   # failed, silently. It is now wired in-process instead, straight off the
   # `tools_app` object, in `hub_api.main`'s `lifespan`
   # (`hub_api.tool_connections.build_local_openapi_toolset`) — there was never

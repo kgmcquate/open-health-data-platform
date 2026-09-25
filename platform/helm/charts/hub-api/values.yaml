@@ -3,6 +3,21 @@
 
 replicaCount: 1
 
+# Surge a second pod and only retire the old one once the new one is Ready, so
+# a deploy is not an outage. Still one replica at steady state — the overlap
+# lasts from the new pod's first successful readiness probe until the old one
+# drains. Was `Recreate`, which took the site down for the old pod's shutdown
+# plus the new one's pull, startup and first passing probe (30-60s).
+# Costs: the surge pod needs its 320Mi request to fit on the node (if it doesn't,
+# the rollout sits Pending with the old pod still serving, which fails safe),
+# and an `ask_user` question open across the cutover can 404 on answer
+# (docs/chatbot.md, "A process-local registry").
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
 image:
   repository: ghcr.io/kgmcquate/ohdp-hub-api
   # Pin a digest or immutable tag in production. "latest" makes rollbacks
@@ -53,18 +68,28 @@ resources:
     cpu: "1"
     memory: 512Mi
 
+# Polls fast only while the pod is starting (lifespan does DB schema, model
+# discovery and tool-connection loading before uvicorn listens), so a new pod
+# is marked started within ~2s of being able to answer instead of waiting for
+# readinessProbe's 30s period. Liveness and readiness don't run until it
+# passes; 30 × 2s = 60s to come up before the kubelet restarts the container.
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 2
+  failureThreshold: 30
+
 livenessProbe:
   httpGet:
     path: /healthz
     port: http
-  initialDelaySeconds: 10
   periodSeconds: 360
 
 readinessProbe:
   httpGet:
     path: /healthz
     port: http
-  initialDelaySeconds: 5
   # Was 10s — with the default failureThreshold of 3, 30s still pulls a
   # broken pod out of rotation within ~90s, and cuts probe traffic (and the
   # access-log volume it drove) to a third.
@@ -154,7 +179,10 @@ envFrom:
     - mcp-cube-secret
   configMaps: []
 
-nodeSelector: {}
+# Always-on `services` node pool (platform/terraform/main.tf, np_services) —
+# off `heavy`, which gets hand-scaled for Dagster.
+nodeSelector:
+  node-role: services
 tolerations: []
 affinity: {}
 podAnnotations: {}

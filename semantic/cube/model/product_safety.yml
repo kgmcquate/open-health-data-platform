@@ -8,9 +8,9 @@
 # Three cubes. The recalls cube is at recall grain and
 # answers everything -- including a monthly trend, since Cube can roll it up
 # on recall_initiation_date. The trend cube is the same counts pre-aggregated
-# to product_type x classification x status x month, and exists for the same
-# reason its mart does: it is the shape a Streamlit dashboard reads straight
-# out of Snowflake (ADR-0015). Prefer the recalls cube whenever the question
+# to product_type x classification x status x month, read straight off its
+# pre-aggregated mart, since the trend is the most-asked question of this
+# data. Prefer the recalls cube whenever the question
 # slices by anything outside the trend's four columns -- firm, state,
 # distribution pattern, free text -- which the trend cube simply does not
 # carry. This is the same deliberate overlap child_welfare.yml has between its

@@ -112,7 +112,12 @@ envFrom:
     - mcp-cube-secret
   configMaps: []
 
-nodeSelector: {}
+# The always-on default/ingress pool (platform/terraform/main.tf) beside
+# Traefik rather than `services`: at 50m/128Mi it fits the small node's
+# headroom once the Dagster-side proxies moved to `heavy`, and it leaves
+# `services` room for hub-api's rolling-update surge pod.
+nodeSelector:
+  node-role: ingress
 tolerations: []
 affinity: {}
 podAnnotations: {}

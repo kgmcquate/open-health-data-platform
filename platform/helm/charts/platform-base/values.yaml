@@ -77,6 +77,10 @@ pipelineConfig:
 
 postgres:
   image: postgres:16.4-bookworm
+  # Always-on `services` pool (platform/terraform/main.tf, np_services) —
+  # hub-api, Cube and Dagster all depend on it, so it must not move with `heavy`.
+  nodeSelector:
+    node-role: services
   # DOKS default StorageClass. k3s used local-path.
   storageClass: do-block-storage
   storageSize: 40Gi

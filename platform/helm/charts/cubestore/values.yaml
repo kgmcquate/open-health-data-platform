@@ -78,7 +78,10 @@ securityContext:
 # single standalone process.
 env: {}
 
-nodeSelector: {}
+# Always-on `services` node pool (platform/terraform/main.tf, np_services) —
+# off `heavy`, which gets hand-scaled for Dagster.
+nodeSelector:
+  node-role: services
 tolerations: []
 affinity: {}
 podAnnotations: {}

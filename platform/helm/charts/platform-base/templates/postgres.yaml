@@ -69,6 +69,10 @@ spec:
       labels:
         app.kubernetes.io/name: postgres
     spec:
+      {{- with .Values.postgres.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsUser: 999
         runAsGroup: 999

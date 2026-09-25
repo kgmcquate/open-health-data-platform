@@ -148,6 +148,10 @@ resources:
     cpu: "2"
     memory: 4Gi
 
+# `heavy` node pool (platform/terraform/main.tf, np_4_cpu_8gb).
+nodeSelector:
+  node-role: heavy
+
 extraEnvs:
   - name: OPENMETADATA_HEAP_OPTS
     value: "-Xmx1400m -Xms1400m"

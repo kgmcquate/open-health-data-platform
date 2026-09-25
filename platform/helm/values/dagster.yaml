@@ -31,8 +31,12 @@ postgresql:
 # oauth2-proxy -> graphql-authz-proxy (§5). Exposing this Service directly
 # would bypass the read-only control entirely.
 # ---------------------------------------------------------------------------
+# Every Dagster pod (webserver, daemon, code location, run pods) is pinned to
+# the `heavy` node pool (platform/terraform/main.tf, np_4_cpu_8gb).
 dagsterWebserver:
   replicaCount: 1
+  nodeSelector:
+    node-role: heavy
   # Sized against measured behaviour, not the result size. A single
   # logsForRun(limit: 1000) costs ~78 MiB of webserver heap even when the run has
   # ~50 events and the response is 17 KB — the cost is in executing the query,
@@ -73,6 +77,8 @@ ingress:
 # ---------------------------------------------------------------------------
 dagsterDaemon:
   enabled: true
+  nodeSelector:
+    node-role: heavy
   resources:
     requests:
       cpu: 100m
@@ -134,6 +140,11 @@ runLauncher:
       runK8sConfig:
         jobSpecConfig:
           ttlSecondsAfterFinished: 3600
+        # Run pods go on `heavy` with the rest of Dagster — they are the
+        # reason that pool exists (up to 4 CPU / 6Gi per run, above).
+        podSpecConfig:
+          node_selector:
+            node-role: heavy
 
 # ---------------------------------------------------------------------------
 # Concurrency. maxConcurrentRuns: 1 is load-bearing — two concurrent dbt builds
@@ -172,6 +183,8 @@ dagster-user-deployments:
         - "--module-name"
         - "ohdp_orchestration.definitions"
       port: 3030
+      nodeSelector:
+        node-role: heavy
       includeConfigInLaunchedRuns:
         enabled: false
       envSecrets:

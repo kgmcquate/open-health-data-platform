@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Every `ask_user` question currently blocking a chat run, keyed by ask_id
     # (hub_api.chat.get_pending_asks). Process-local: the POST that answers one
     # must reach the event loop still awaiting it, which one replica makes true
-    # by construction.
+    # except during a rolling deploy's brief two-pod overlap.
     app.state.pending_asks = {}
     # The same pool, on the mounted sub-app as well: a mounted app resets
     # `scope["app"]` to itself, so `/tools` routes reading `request.app.state`
