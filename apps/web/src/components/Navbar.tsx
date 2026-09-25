@@ -9,9 +9,9 @@ import { fetchChatAllowance, type ChatAllowance } from "../lib/api";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
-  { to: "/topics", label: "Topics" },
-  { to: "/dashboards", label: "Dashboards" },
   { to: "/chat", label: "Chat" },
+  { to: "/dashboards", label: "Dashboards" },
+  { to: "/topics", label: "Topics" },
 ];
 
 /** One row of the Settings dropdown's usage block — `used / allowed`, in red
