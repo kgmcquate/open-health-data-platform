@@ -35,6 +35,10 @@ resource "digitalocean_kubernetes_node_pool" "np_services" {
   labels = {
     node-role = "services"
   }
+
+  lifecycle {
+    ignore_changes = [node_count]
+  }
 }
 
 # resource "digitalocean_kubernetes_node_pool" "np_8_cpu_16gb" {
