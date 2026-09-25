@@ -1,4 +1,5 @@
-"""Stripe Checkout — embedded form — for the paid tier (M4, first half).
+"""Stripe Checkout (M4) — session creation plus the subscription-events webhook
+that activates and maintains the paid tier.
 
 Sells the $5/mo Pro subscription through Stripe's **embedded Checkout** page:
 the server creates a Checkout Session and returns only its `client_secret`; the
@@ -6,12 +7,13 @@ browser (apps/web) loads Stripe.js and mounts the Stripe-hosted Checkout page
 in-page via `stripe.initEmbeddedCheckout({ clientSecret })`. No card details
 ever touch this process, and the customer never leaves `/billing`.
 
-The other half of billing — activating the tier once a customer is *actually*
-paying, i.e. the `checkout.session.completed` webhook that bumps `users.tier` —
-is deliberately deferred (see the per-milestone notes at the bottom of
-`main.py`). Until that webhook exists, charging a card does not by itself grant
-Pro; a `tier` change still takes a manual UPDATE, the same as before billing
-shipped.
+`POST /api/billing/webhook/stripe` is the other half: Stripe's push notifications for
+`checkout.session.completed`, `customer.subscription.updated`, and
+`customer.subscription.deleted` land there, get verified against
+`STRIPE_WEBHOOK_SECRET`, and are recorded into `subscriptions` (one row per
+Stripe subscription id) before `hub_api.auth.set_user_tier` flips the buyer's
+`users.tier`. `stripe_events` is a bare insert-or-skip idempotency log keyed on
+Stripe's event id, because Stripe's delivery guarantee is "at least once."
 
 A few choices worth writing down:
 
@@ -19,7 +21,7 @@ A few choices worth writing down:
     only be reachable by someone who already exists in our own `users` table and
     is signed in. The session is created for *this* request's verified email
     (`customer_email` is stamped from the signed session cookie, never from a
-    request body), so the (future) webhook can reconcile back to `users.email`.
+    request body), so the webhook can reconcile back to `users.email`.
   - **Embedded Checkout page (`ui_mode="embedded_page"`).** The client renders the
     Stripe-hosted Checkout page in-page via `stripe.initEmbeddedCheckout({ clientSecret })`
     and surfaces the "subscribed" state through that API's `onComplete` event. An
@@ -38,18 +40,70 @@ A few choices worth writing down:
 
 from __future__ import annotations
 
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 import stripe
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, select
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
-from hub_api.auth import User, get_current_user
+from hub_api import db
+from hub_api.auth import User, get_current_user, set_user_tier
 from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
+
+# Lives on db.metadata so `db.ensure_schema` (main.py's lifespan) creates it
+# with the rest of the app's tables. Not a foreign key to `auth.users.email`:
+# same reasoning as `chat_turns.user_email` — SQLite in local dev doesn't
+# enforce one anyway, and in Postgres it would only buy a constraint this
+# webhook already keeps consistent by construction.
+subscriptions = Table(
+    "subscriptions",
+    db.metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_email", String(320), nullable=False, index=True),
+    Column("stripe_customer_id", String(64), nullable=False, index=True),
+    # Unique: this row IS the subscription, one per Stripe subscription id.
+    # `customer.subscription.updated`/`.deleted` key off it to find the row a
+    # later event should update rather than insert a duplicate of.
+    Column("stripe_subscription_id", String(64), nullable=False, unique=True, index=True),
+    # Stripe's own status string verbatim (active/trialing/past_due/canceled/
+    # unpaid/incomplete/incomplete_expired/paused) — not our "free"/"paid",
+    # which `_tier_for_status` below derives from it.
+    Column("status", String(32), nullable=False),
+    Column("price_id", String(64), nullable=False, default=""),
+    Column("current_period_end", DateTime(timezone=True), nullable=True),
+    Column("cancel_at_period_end", Boolean, nullable=False, default=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+# One row per processed Stripe event id. Stripe's delivery guarantee is "at
+# least once" (a retried delivery, a redelivered test event, our own 5xx), so
+# insert-or-skip on `id` (Stripe's `evt_...`) is the whole idempotency guard —
+# nothing here is ever updated or read back for its own sake.
+stripe_events = Table(
+    "stripe_events",
+    db.metadata,
+    Column("id", String(64), primary_key=True),
+    Column("type", String(64), nullable=False),
+    Column("received_at", DateTime(timezone=True), nullable=False),
+)
+
+# past_due keeps Pro live through Stripe's dunning retries — a grace period,
+# not a loophole; Stripe has already emailed the buyer and will retry the card
+# a few times before giving up. Every other status is not currently paying.
+_PAID_STATUSES = {"active", "trialing", "past_due"}
+
+
+def _tier_for_status(status: str) -> str:
+    return "paid" if status in _PAID_STATUSES else "free"
 
 
 class CheckoutStart(BaseModel):
@@ -108,8 +162,9 @@ def start_checkout(user: Annotated[User, Depends(get_current_user)]) -> Checkout
             submit_type="auto",
             integration_identifier="custom_embedded_web_0001",
             saved_payment_method_options={"payment_method_save": "enabled"},
-            # Who is paying, stamped on the session so the (future) webhook maps
-            # it back without trusting a page redirect.
+            # Who is paying, stamped on the session so the webhook's
+            # `checkout.session.completed` handler maps it back to `users.email`
+            # without trusting a page redirect.
             customer_email=user.email,
             metadata={"email": user.email, "tier": "paid"},
         )
@@ -118,3 +173,194 @@ def start_checkout(user: Annotated[User, Depends(get_current_user)]) -> Checkout
         raise HTTPException(400, "Stripe could not create a checkout session.") from exc
     log.info("checkout_session_created", email=user.email)
     return CheckoutStart(client_secret=str(session.client_secret))
+
+
+def _record_event_once(engine: Engine, *, event_id: str, event_type: str) -> bool:
+    """Insert `event_id` into `stripe_events`. True the first time we see it;
+    False if a prior delivery already claimed it (Stripe's guarantee is "at
+    least once", so retried/redelivered events are expected, not a bug)."""
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                stripe_events.insert().values(
+                    id=event_id, type=event_type, received_at=datetime.now(UTC)
+                )
+            )
+        return True
+    except IntegrityError:
+        return False
+
+
+def _handle_checkout_completed(engine: Engine, session_obj: dict[str, Any]) -> None:
+    """`checkout.session.completed` — the buyer finished paying. Creates the
+    `subscriptions` row and grants Pro immediately; the authoritative status,
+    price, and period end are filled in by the `customer.subscription.*`
+    events Stripe sends alongside it, since this session object doesn't carry
+    them without an `expand` we didn't ask for.
+    """
+    if session_obj.get("mode") != "subscription":
+        return
+    email = (session_obj.get("metadata") or {}).get("email") or session_obj.get("customer_email")
+    customer_id = session_obj.get("customer")
+    subscription_id = session_obj.get("subscription")
+    if not (email and customer_id and subscription_id):
+        log.warning("stripe_checkout_completed_missing_fields", session_id=session_obj.get("id"))
+        return
+
+    now = datetime.now(UTC)
+    with engine.begin() as connection:
+        existing = connection.execute(
+            select(subscriptions.c.id).where(
+                subscriptions.c.stripe_subscription_id == subscription_id
+            )
+        ).first()
+        if existing is None:
+            connection.execute(
+                subscriptions.insert().values(
+                    user_email=email,
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                    status="active",
+                    price_id=settings.stripe_price_id,
+                    cancel_at_period_end=False,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            connection.execute(
+                subscriptions.update()
+                .where(subscriptions.c.stripe_subscription_id == subscription_id)
+                .values(user_email=email, stripe_customer_id=customer_id, updated_at=now)
+            )
+    set_user_tier(engine, email=email, tier="paid")
+    log.info("stripe_subscription_activated", email=email, subscription_id=subscription_id)
+
+
+def _handle_subscription_updated(engine: Engine, sub_obj: dict[str, Any]) -> None:
+    """`customer.subscription.updated` — a renewal, a status change (e.g. into
+    `past_due` when a card fails), or a plan change. Updates the existing
+    `subscriptions` row and re-derives `users.tier` from the new status.
+    """
+    subscription_id = sub_obj.get("id")
+    status = sub_obj.get("status", "")
+    items = ((sub_obj.get("items") or {}).get("data")) or []
+    price_id = (items[0].get("price") or {}).get("id", "") if items else ""
+    period_end = sub_obj.get("current_period_end")
+    now = datetime.now(UTC)
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            select(subscriptions.c.user_email).where(
+                subscriptions.c.stripe_subscription_id == subscription_id
+            )
+        ).first()
+        if row is None:
+            # Out-of-order delivery: the `checkout.session.completed` that
+            # creates our row hasn't landed yet. Nothing to update here — that
+            # event inserts the row itself; a later update catches it up.
+            log.warning("stripe_subscription_updated_unknown", subscription_id=subscription_id)
+            return
+        connection.execute(
+            subscriptions.update()
+            .where(subscriptions.c.stripe_subscription_id == subscription_id)
+            .values(
+                status=status,
+                price_id=price_id or settings.stripe_price_id,
+                current_period_end=(
+                    datetime.fromtimestamp(period_end, tz=UTC) if period_end else None
+                ),
+                cancel_at_period_end=bool(sub_obj.get("cancel_at_period_end", False)),
+                updated_at=now,
+            )
+        )
+        email = row.user_email
+
+    set_user_tier(engine, email=email, tier=_tier_for_status(status))
+    log.info(
+        "stripe_subscription_updated", email=email, status=status, subscription_id=subscription_id
+    )
+
+
+def _handle_subscription_deleted(engine: Engine, sub_obj: dict[str, Any]) -> None:
+    """`customer.subscription.deleted` — the subscription is gone for good
+    (as opposed to `past_due`, which is still `_tier_for_status`-paid). Marks
+    the row canceled and drops the buyer back to free.
+    """
+    subscription_id = sub_obj.get("id")
+    now = datetime.now(UTC)
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            select(subscriptions.c.user_email).where(
+                subscriptions.c.stripe_subscription_id == subscription_id
+            )
+        ).first()
+        if row is None:
+            log.warning("stripe_subscription_deleted_unknown", subscription_id=subscription_id)
+            return
+        connection.execute(
+            subscriptions.update()
+            .where(subscriptions.c.stripe_subscription_id == subscription_id)
+            .values(status="canceled", updated_at=now)
+        )
+        email = row.user_email
+
+    set_user_tier(engine, email=email, tier="free")
+    log.info("stripe_subscription_canceled", email=email, subscription_id=subscription_id)
+
+
+_EVENT_HANDLERS = {
+    "checkout.session.completed": _handle_checkout_completed,
+    "customer.subscription.updated": _handle_subscription_updated,
+    "customer.subscription.deleted": _handle_subscription_deleted,
+}
+
+
+@router.post(
+    "/webhook/stripe", summary="Stripe subscription/payment events", include_in_schema=False
+)
+async def stripe_webhook(request: Request) -> dict[str, bool]:
+    """Verifies and applies Stripe's push notifications for this account's
+    subscriptions — the other half of `start_checkout`, the part that actually
+    flips `users.tier` once a card is charged, renews, or fails for good.
+
+    Configure this URL (`<hub_base_url>/api/billing/webhook/stripe`) in the Stripe
+    Dashboard's webhook settings, subscribed to at least
+    `checkout.session.completed`, `customer.subscription.updated`, and
+    `customer.subscription.deleted`. Unrecognized event types are accepted
+    and logged, not rejected — Stripe's dashboard lets an account subscribe to
+    more events than this handler acts on, and a 4xx/5xx there just triggers
+    Stripe's retry schedule for no reason.
+    """
+    if not settings.stripe_webhook_secret:
+        raise HTTPException(503, "The billing webhook is not configured on this deployment.")
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        # Stripe retries a non-2xx delivery on a backoff schedule, so 503
+        # (rather than silently 200-ing and losing the event) is the honest
+        # answer to "the database that would record this is down."
+        raise HTTPException(503, "Billing storage is not available.")
+
+    payload = await request.body()
+    signature = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, signature, settings.stripe_webhook_secret)
+    except (ValueError, stripe.SignatureVerificationError) as exc:
+        log.warning("stripe_webhook_signature_invalid", error=str(exc))
+        raise HTTPException(400, "Invalid Stripe signature.") from exc
+
+    if not _record_event_once(engine, event_id=event["id"], event_type=event["type"]):
+        log.info("stripe_webhook_duplicate_delivery", event_id=event["id"], type=event["type"])
+        return {"received": True}
+
+    handler = _EVENT_HANDLERS.get(event["type"])
+    if handler is not None:
+        # `event["data"]["object"]` is a `StripeObject` — subscriptable but
+        # deliberately *not* a dict (it raises on `.get()`, to keep dict-typed
+        # API params from silently accepting one). Handlers below want plain
+        # `.get()` semantics for optional fields, so convert once, up front.
+        handler(engine, event["data"]["object"].to_dict())
+    else:
+        log.info("stripe_webhook_ignored", type=event["type"])
+    return {"received": True}

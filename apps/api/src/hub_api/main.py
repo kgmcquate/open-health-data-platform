@@ -190,6 +190,4 @@ if _web_dist.is_dir():
 
 # Routers to be added per milestone:
 #   M2: /auth, /dashboards
-#   M4: /tickets; and the /billing/webhook that *activates* the tier — billing.py
-#       ships the Checkout half now, but the subscription-events half (webhook
-#       that bumps `users.tier` on checkout.session.completed) is deferred.
+#   M4: /tickets

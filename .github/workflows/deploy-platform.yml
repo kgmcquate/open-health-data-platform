@@ -151,6 +151,10 @@ jobs:
           # (hub_api.billing). Injected into hub-api-secrets as
           # OHDP_STRIPE_PRICE_ID (settings.stripe_price_id).
           STRIPE_PRICE_ID: ${{ secrets.STRIPE_PRICE_ID }}
+          # Signs POST /api/billing/webhook/stripe (settings.stripe_webhook_secret).
+          # From the Dashboard's webhook endpoint config, same bare-name
+          # convention as STRIPE_SECRET_KEY above.
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
           DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
           # hub-api's own OIDC client (hub_api.auth) reuses the same Google
@@ -214,6 +218,7 @@ jobs:
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
             --from-literal=OHDP_STRIPE_PRICE_ID="$STRIPE_PRICE_ID" \
+            --from-literal=STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" \
             --from-literal=OHDP_OIDC_CLIENT_ID="$APP_OIDC_CLIENT_ID" \
             --from-literal=OHDP_OIDC_CLIENT_SECRET="$APP_OIDC_CLIENT_SECRET" \
             --from-literal=OHDP_GITHUB_TOKEN="$HUB_GITHUB_ISSUES_TOKEN" \

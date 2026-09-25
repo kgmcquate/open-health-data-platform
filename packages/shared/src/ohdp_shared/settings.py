@@ -270,6 +270,19 @@ class Settings(BaseSettings):
     # Checkout page (`ui_mode="embedded_page"`). Keep it in lock-step with the
     # js.stripe.com build loaded in apps/web/index.html.
     stripe_api_version: str = "2026-03-25.dahlia; custom_checkout_payment_form_preview=v1"
+    # Signs POST /api/billing/webhook/stripe's payload (`stripe.Webhook.construct_event`).
+    # Per-endpoint, from the Dashboard's webhook config, not the account's secret
+    # key — same "empty means answer 503, not half-work" posture as the other
+    # billing settings. No OHDP_ prefix: it sits next to STRIPE_SECRET_KEY, which
+    # the deploy already injects bare.
+    stripe_webhook_secret: str = Field(
+        default="",
+        description=(
+            "Stripe webhook signing secret. Read from the STRIPE_WEBHOOK_SECRET "
+            "environment variable (no OHDP_ prefix, matching STRIPE_SECRET_KEY)."
+        ),
+        validation_alias="STRIPE_WEBHOOK_SECRET",
+    )
 
     @property
     def horizon_catalog_uri(self) -> str:

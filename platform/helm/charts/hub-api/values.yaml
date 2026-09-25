@@ -140,7 +140,7 @@ envFrom:
   #                   for that pipeline pod to read)
   # hub-api-secrets — external, injected by deploy-platform.yml `secrets` step:
   #                   OHDP_OPENMETADATA_JWT, STRIPE_SECRET_KEY,
-  #                   OHDP_STRIPE_PRICE_ID, OHDP_OIDC_CLIENT_ID,
+  #                   OHDP_STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET, OHDP_OIDC_CLIENT_ID,
   #                   OHDP_OIDC_CLIENT_SECRET, OHDP_GITHUB_TOKEN,
   #                   OHDP_TOOLS_AUTH_TOKEN
   # openrouter-secrets — external, injected by deploy-platform.yml `secrets` step:

@@ -166,6 +166,21 @@ def _upsert_user(engine: Engine, *, email: str, name: str) -> str:
         return str(row.tier)
 
 
+def set_user_tier(engine: Engine, *, email: str, tier: str) -> None:
+    """Bump (or drop) `email`'s tier — the billing webhook's write
+    (`hub_api.billing`) once a subscription activates, renews into a bad
+    status, or cancels. A no-op if the email has no `users` row (e.g. a test
+    subscription against an address that never signed in); the row is created
+    at login, not here, so there is nothing to attach the tier to yet.
+
+    Same lag as the rest of this module: the session cookie's `tier` is stamped
+    at login, so this takes effect for that browser at its next sign-in, not
+    the instant the webhook lands.
+    """
+    with engine.begin() as connection:
+        connection.execute(users.update().where(users.c.email == email).values(tier=tier))
+
+
 def list_users(engine: Engine) -> list[dict[str, Any]]:
     """Every row of `users`, most recently logged-in first — the admin
     console's roster (`hub_api.admin`)."""

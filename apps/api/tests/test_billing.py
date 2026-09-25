@@ -1,30 +1,52 @@
-"""Stripe Checkout session creation (`hub_api.billing`).
+"""Stripe Checkout session creation and the subscription-events webhook
+(`hub_api.billing`).
 
-No network: `stripe.checkout.Session.create` is a fake that records the kwargs
-it is called with. What these tests protect is the contract around the call:
+No network anywhere in this file. `stripe.checkout.Session.create` is a fake
+that records the kwargs it is called with, for the checkout tests. The webhook
+tests go through the *real* `stripe.Webhook.construct_event` — its signature
+check is pure HMAC-SHA256 over the raw body, no network call — signed with
+`_sign_payload` below, which replicates Stripe's `t=...,v1=...` scheme; that
+is deliberate, since the signature check is the security boundary this
+endpoint exists to enforce, and a mocked `construct_event` would not exercise
+it at all.
+
+What these tests protect:
 
   - checkout needs a signed-in user (401 otherwise) — charging a card is only
     meaningful once we know whose subscription to attach it to;
   - an unconfigured deployment answers 503 instead of half-working;
-  - the session we create carries the buyer's *verified* email (the future
-    webhook reconciles on it) and the pinned API version.
+  - the session we create carries the buyer's *verified* email (the webhook
+    reconciles on it) and the pinned API version;
+  - the webhook rejects a bad signature, tolerates a redelivered event id, and
+    turns `checkout.session.completed` / `customer.subscription.updated` /
+    `customer.subscription.deleted` into the right `subscriptions` row and
+    `users.tier`.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import time
 from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
 import stripe as stripe_lib
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.engine import Engine
 
-from hub_api import auth
+from hub_api import auth, billing, db
 from hub_api.main import app
 from ohdp_shared import settings
 
 PRICE = "price_pro_monthly"
 API_VERSION = "2026-03-25.dahlia; custom_checkout_payment_form_preview=v1"
+WEBHOOK_SECRET = "whsec_test_000"
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +55,7 @@ def _configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "stripe_price_id", PRICE, raising=False)
     monkeypatch.setattr(settings, "stripe_api_version", API_VERSION, raising=False)
     monkeypatch.setattr(settings, "hub_base_url", "https://ohdp.example", raising=False)
+    monkeypatch.setattr(settings, "stripe_webhook_secret", WEBHOOK_SECRET, raising=False)
 
 
 @pytest.fixture
@@ -131,3 +154,254 @@ def test_unconfigured_billing_is_a_503(
 
     assert response.status_code == 503
     assert stripe == []
+
+
+# --- Webhook -----------------------------------------------------------------
+
+
+def _sign_payload(payload: bytes, secret: str = WEBHOOK_SECRET) -> tuple[bytes, str]:
+    """Replicates Stripe's `Stripe-Signature` header scheme
+    (`t=<timestamp>,v1=<hex hmac-sha256>` over `f"{t}.{payload}"`) so the
+    webhook tests exercise the real `stripe.Webhook.construct_event`, not a
+    mock of it."""
+    timestamp = int(time.time())
+    signed = f"{timestamp}.".encode() + payload
+    digest = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return payload, f"t={timestamp},v1={digest}"
+
+
+def _event(event_id: str, event_type: str, obj: dict[str, Any]) -> bytes:
+    return json.dumps(
+        {"id": event_id, "type": event_type, "object": "event", "data": {"object": obj}}
+    ).encode()
+
+
+@pytest.fixture
+def engine(tmp_path: Path) -> Iterator[Engine]:
+    made = db.make_engine(f"sqlite:///{tmp_path}/billing.db")
+    db.ensure_schema(made)
+    app.state.engine = made
+    try:
+        yield made
+    finally:
+        app.state.engine = None
+
+
+def test_webhook_rejects_a_bad_signature(engine: Engine) -> None:
+    payload = _event("evt_1", "checkout.session.completed", {"mode": "subscription"})
+
+    response = TestClient(app).post(
+        "/api/billing/webhook/stripe",
+        content=payload,
+        headers={"stripe-signature": "t=1,v1=not-the-right-signature"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_webhook_unconfigured_is_a_503(monkeypatch: pytest.MonkeyPatch, engine: Engine) -> None:
+    monkeypatch.setattr(settings, "stripe_webhook_secret", "", raising=False)
+    payload, signature = _sign_payload(
+        _event("evt_1", "checkout.session.completed", {"mode": "subscription"})
+    )
+
+    response = TestClient(app).post(
+        "/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature}
+    )
+
+    assert response.status_code == 503
+
+
+def test_checkout_completed_activates_the_buyer(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            auth.users.insert().values(
+                email="buyer@example.org",
+                name="A Buyer",
+                tier="free",
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                last_login_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        )
+    payload, signature = _sign_payload(
+        _event(
+            "evt_checkout_1",
+            "checkout.session.completed",
+            {
+                "id": "cs_test_1",
+                "mode": "subscription",
+                "customer": "cus_1",
+                "subscription": "sub_1",
+                "customer_email": "buyer@example.org",
+                "metadata": {"email": "buyer@example.org", "tier": "paid"},
+            },
+        )
+    )
+
+    response = TestClient(app).post(
+        "/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature}
+    )
+
+    assert response.status_code == 200
+    with engine.connect() as connection:
+        user_tier = connection.execute(
+            select(auth.users.c.tier).where(auth.users.c.email == "buyer@example.org")
+        ).scalar_one()
+        sub_row = connection.execute(
+            select(billing.subscriptions).where(
+                billing.subscriptions.c.stripe_subscription_id == "sub_1"
+            )
+        ).one()
+    assert user_tier == "paid"
+    assert sub_row.user_email == "buyer@example.org"
+    assert sub_row.stripe_customer_id == "cus_1"
+    assert sub_row.status == "active"
+
+
+def test_webhook_ignores_a_redelivered_event(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            auth.users.insert().values(
+                email="buyer@example.org",
+                name="A Buyer",
+                tier="free",
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                last_login_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        )
+    raw = _event(
+        "evt_checkout_2",
+        "checkout.session.completed",
+        {
+            "mode": "subscription",
+            "customer": "cus_1",
+            "subscription": "sub_1",
+            "metadata": {"email": "buyer@example.org"},
+        },
+    )
+    client = TestClient(app)
+    payload, signature = _sign_payload(raw)
+    client.post("/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature})
+    # Between the two deliveries, an operator manually reverts the tier — a
+    # redelivery of the same event id must not silently reapply the change.
+    with engine.begin() as connection:
+        connection.execute(
+            auth.users.update().where(auth.users.c.email == "buyer@example.org").values(tier="free")
+        )
+
+    payload, signature = _sign_payload(raw)
+    response = client.post(
+        "/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature}
+    )
+
+    assert response.status_code == 200
+    with engine.connect() as connection:
+        user_tier = connection.execute(
+            select(auth.users.c.tier).where(auth.users.c.email == "buyer@example.org")
+        ).scalar_one()
+    assert user_tier == "free"
+
+
+def test_subscription_updated_changes_status_and_tier(engine: Engine) -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with engine.begin() as connection:
+        connection.execute(
+            auth.users.insert().values(
+                email="buyer@example.org", name="", tier="paid", created_at=now, last_login_at=now
+            )
+        )
+        connection.execute(
+            billing.subscriptions.insert().values(
+                user_email="buyer@example.org",
+                stripe_customer_id="cus_1",
+                stripe_subscription_id="sub_1",
+                status="active",
+                price_id=PRICE,
+                cancel_at_period_end=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    payload, signature = _sign_payload(
+        _event(
+            "evt_updated_1",
+            "customer.subscription.updated",
+            {
+                "id": "sub_1",
+                "status": "past_due",
+                "current_period_end": 1893456000,
+                "cancel_at_period_end": False,
+                "items": {"data": [{"price": {"id": PRICE}}]},
+            },
+        )
+    )
+
+    response = TestClient(app).post(
+        "/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature}
+    )
+
+    assert response.status_code == 200
+    with engine.connect() as connection:
+        user_tier = connection.execute(
+            select(auth.users.c.tier).where(auth.users.c.email == "buyer@example.org")
+        ).scalar_one()
+        status = connection.execute(
+            select(billing.subscriptions.c.status).where(
+                billing.subscriptions.c.stripe_subscription_id == "sub_1"
+            )
+        ).scalar_one()
+    # past_due is still a paid tier — Stripe's dunning grace period.
+    assert user_tier == "paid"
+    assert status == "past_due"
+
+
+def test_subscription_deleted_drops_the_buyer_to_free(engine: Engine) -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with engine.begin() as connection:
+        connection.execute(
+            auth.users.insert().values(
+                email="buyer@example.org", name="", tier="paid", created_at=now, last_login_at=now
+            )
+        )
+        connection.execute(
+            billing.subscriptions.insert().values(
+                user_email="buyer@example.org",
+                stripe_customer_id="cus_1",
+                stripe_subscription_id="sub_1",
+                status="active",
+                price_id=PRICE,
+                cancel_at_period_end=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    payload, signature = _sign_payload(
+        _event("evt_deleted_1", "customer.subscription.deleted", {"id": "sub_1"})
+    )
+
+    response = TestClient(app).post(
+        "/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature}
+    )
+
+    assert response.status_code == 200
+    with engine.connect() as connection:
+        user_tier = connection.execute(
+            select(auth.users.c.tier).where(auth.users.c.email == "buyer@example.org")
+        ).scalar_one()
+        status = connection.execute(
+            select(billing.subscriptions.c.status).where(
+                billing.subscriptions.c.stripe_subscription_id == "sub_1"
+            )
+        ).scalar_one()
+    assert user_tier == "free"
+    assert status == "canceled"
+
+
+def test_unknown_event_type_is_accepted_and_ignored(engine: Engine) -> None:
+    payload, signature = _sign_payload(_event("evt_other_1", "invoice.paid", {"id": "in_1"}))
+
+    response = TestClient(app).post(
+        "/api/billing/webhook/stripe", content=payload, headers={"stripe-signature": signature}
+    )
+
+    assert response.status_code == 200
