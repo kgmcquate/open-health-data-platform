@@ -153,13 +153,16 @@ export default function Billing() {
           the server disables the post-payment redirect, so the buyer never
           leaves /billing. */}
       <dialog ref={modalRef} className="modal" onClose={handleClose}>
-        <div className="modal-box w-11/12 max-w-2xl">
+        {/* Wide and tall: the embedded Checkout page is Stripe's own
+            responsive layout, not ours — a narrow container forces it into a
+            single stacked column (order summary above payment form) that
+            runs long. Past ~900px it lays those two out side by side
+            instead, which is most of the fix; max-h/overflow-y-auto is the
+            fallback for whatever's still too tall for a short viewport. */}
+        <div className="modal-box w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h3 className="text-lg font-bold">Subscribe to Pro</h3>
-              <p className="text-sm opacity-70">
-                You can stay right here while you pay.
-              </p>
             </div>
             <form method="dialog">
               <button
@@ -174,15 +177,14 @@ export default function Billing() {
           {submitted ? (
             <p className="text-sm">
               Thanks — your subscription is being set up.{" "}
-              <strong>It activates once your payment is confirmed</strong> (the
-              plan-upgrade webhook is the next step for this project).
+              <strong>It activates once your payment is confirmed</strong>
             </p>
           ) : (
-            <div className="relative min-h-[400px]">
+            <div className="relative min-h-[500px]">
               {/* Always in the DOM while the modal is open so Stripe's
                   mount("#checkout-form") has something to attach to — it's
                   called mid-`start()`, before `loading` flips back to false. */}
-              <div id="checkout-form" className="w-full min-h-[400px]" />
+              <div id="checkout-form" className="w-full min-h-[500px]" />
               {loading && (
                 <div className="absolute inset-0 flex justify-center items-center py-10">
                   <span className="loading loading-spinner loading-lg" />
