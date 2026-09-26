@@ -715,11 +715,6 @@ export default function DashboardBuilder() {
 
       {tab === "published" && (
         <section className="space-y-3">
-          <p className="text-sm opacity-70">
-            Public, and ranked by readers' votes like every other dashboard. Load one back to
-            correct it — publishing the same name again replaces it and keeps its votes. Deleting
-            one removes it and its votes for good.
-          </p>
           {mine.length === 0 && (
             <div className="card bg-base-200 border border-dashed border-base-300">
               <div className="card-body items-center text-center py-12">
