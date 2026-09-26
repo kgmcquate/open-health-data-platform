@@ -94,7 +94,7 @@ def main() -> None:
     # Native MotherDuck storage for Cube's originalSql pre-aggregations
     # (cube/values.yaml connects Cube to md:cache, making this its default
     # database, so they land in cache.prod_pre_aggregations).
-    con.execute(f"CREATE DATABASE IF NOT EXISTS {CACHE_DATABASE}")
+    con.execute(f"CREATE DATABASE IF NOT EXISTS {CACHE_DATABASE};")
     print(f"database {CACHE_DATABASE}: present")
 
     # Smoke test: fail the deploy here rather than in Cube's readiness probe.

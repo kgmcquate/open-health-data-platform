@@ -20,16 +20,19 @@ resource "digitalocean_kubernetes_cluster" "cluster" {
 }
 
 # Always-on serving path: hub-api, cube, cubestore and the platform
-# Postgres they all read from. Kept off `heavy` so hand-scaling that pool for
-# Dagster never takes the user-facing API or its dependencies with it. Pods
+# Postgres they all read from, plus the catalog (OpenMetadata + OpenSearch).
+# Kept off `heavy` so hand-scaling that pool for Dagster never takes the
+# user-facing API or its dependencies with it. Pods
 # are placed here by `nodeSelector: {node-role: services}` in each chart's
 # values — no taint, so an unpinned pod can still land here.
-# Sized for ~1.5Gi of requests plus hub-api's rolling-update surge pod.
+# Sized for ~5.2Gi of requests (OpenMetadata + OpenSearch are ~2.8Gi of that,
+# with fixed JVM heaps) plus hub-api's rolling-update surge pod. DOKS can't
+# resize a pool in place — changing `size` replaces the node.
 # (mcp-cube, also on the serving path, sits on the default/ingress pool.)
 resource "digitalocean_kubernetes_node_pool" "np_services" {
   cluster_id = digitalocean_kubernetes_cluster.cluster.id
   name       = "${var.name}-services"
-  size       = "s-2vcpu-4gb"
+  size       = "s-4vcpu-8gb"
   node_count = 1
   auto_scale = false
   labels = {

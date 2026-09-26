@@ -148,9 +148,10 @@ resources:
     cpu: "2"
     memory: 4Gi
 
-# `heavy` node pool (platform/terraform/main.tf, np_4_cpu_8gb).
+# `services` node pool (platform/terraform/main.tf, np_services) — always on,
+# so the catalog doesn't depend on the heavy pool being scaled up.
 nodeSelector:
-  node-role: heavy
+  node-role: services
 
 extraEnvs:
   - name: OPENMETADATA_HEAP_OPTS
