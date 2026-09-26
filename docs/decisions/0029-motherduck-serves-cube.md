@@ -28,8 +28,18 @@ therefore every cube model — resolve unchanged.
 `platform/scripts/motherduck_bootstrap.py` owns that attachment. It stores the
 pipeline's Horizon PAT in MotherDuck as an `ICEBERG` secret (`IN MOTHERDUCK`),
 with the same empty-client-id + `session:role:<ROLE>` scope the dbt profile
-uses, and creates the database if it's missing. `deploy-platform.yml` runs it
-before every Cube deploy, which also covers PAT rotation.
+uses, and creates the database if it's missing. Run it once for a new
+workspace.
+
+**Amended 2026-09-26:** the attach turned out to hold the OAuth access token
+the secret had when the database was created, not the PAT, and Horizon
+issues those tokens for one hour. Nothing refreshes them, so an hour after the
+attach every CURATED read fails with a 401. Replacing the secret doesn't fix
+an existing attach, and an open MotherDuck session keeps the attach it
+connected with. So Cube re-creates the secret and `CURATED` itself.
+`MotherDuckSessionDriver` in `semantic/cube/cube.js` opens a new session
+every 45 minutes and runs the re-create before that session serves any query.
+That also covers PAT rotation.
 
 ADR-0024's `originalSql` pre-aggregations are persisted in the source
 database, not Cube Store (Cube's documented behaviour for that type). On
@@ -42,8 +52,11 @@ are orphaned by this change and can be dropped.
 
 ## Consequences
 
-- Cube holds no Snowflake credential; the `cube-snowflake` Secret is replaced
-  by `cube-motherduck`. The Horizon PAT gains a second copy, in MotherDuck.
+- The `cube-snowflake` Secret is replaced by `cube-motherduck`. Cube still
+  reads the Horizon PAT (from `ohdp-pipeline-secrets`) to re-create the attach
+  (amendment above). The PAT also has a copy in MotherDuck.
+- Queries still running on the old session while a new one re-creates
+  `CURATED`, about every 45 minutes, can fail.
 - `OHDP_WH` and the RSA key pair are now unused by anything we run. They stay
   in Terraform for a cheap rollback (revert the Cube chart values and the
   secret) until this has run in production for a while, then they can go.

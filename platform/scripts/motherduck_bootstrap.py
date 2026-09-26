@@ -18,10 +18,15 @@ The database is named CURATED on purpose: the cube models' `sql_table` comes
 from the dbt manifest as "CURATED"."<SCHEMA>"."<TABLE>", which then resolves in
 MotherDuck unchanged.
 
-The secret is replaced on every run, so rotating the PAT (snowflake.tf) is just
-a redeploy. The database is only created when missing: MotherDuck can't ALTER
-its endpoint/warehouse/read_only options, so pass --recreate after changing
-any of those below.
+The attach holds a one-hour OAuth token, not the PAT, so a database created
+here stops working an hour later. Deployed Cube re-creates the secret and
+CURATED itself every 45 minutes (MotherDuckSessionDriver in
+semantic/cube/cube.js, which duplicates the SQL below). This script is for
+setting up a new workspace and for local development.
+
+The database is only created when missing: MotherDuck can't ALTER its
+endpoint/warehouse/read_only options, so pass --recreate after changing any of
+those below. Pass it too if the attach has gone stale (a 401 from /v1/config).
 
 Horizon quirks carried over from data/dbt/profiles.yml, where they are
 explained: CLIENT_ID must be empty, and OAUTH2_SCOPE must name the role.
@@ -94,7 +99,8 @@ def main() -> None:
     # Native MotherDuck storage for Cube's originalSql pre-aggregations
     # (cube/values.yaml connects Cube to md:cache, making this its default
     # database, so they land in cache.prod_pre_aggregations).
-    con.execute(f"CREATE DATABASE IF NOT EXISTS {CACHE_DATABASE};")
+    # Quoted: CACHE is a DuckDB keyword.
+    con.execute(f'CREATE DATABASE IF NOT EXISTS "{CACHE_DATABASE}";')
     print(f"database {CACHE_DATABASE}: present")
 
     # Smoke test: fail the deploy here rather than in Cube's readiness probe.

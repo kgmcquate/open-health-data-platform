@@ -53,7 +53,7 @@ cube-dev: dbt-parse ## Run Cube Core locally, wired to the dbt manifest + Mother
 	  cubejs/cube:v1.7.46
 
 motherduck-bootstrap: ## Attach Horizon's CURATED Iceberg catalog to MotherDuck (ADR-0029)
-	uv run platform/scripts/motherduck_bootstrap.py
+	uv run platform/scripts/motherduck_bootstrap.py $(ARGS)
 
 # --- Deploy (see docs/deploying.md) ----------------------------------------
 

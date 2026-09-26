@@ -126,20 +126,10 @@ env:
   # reads it from `motherduck_token` in secretEnv below instead.
   CUBEJS_DB_TYPE: duckdb
   CUBEJS_DB_DUCKDB_DATABASE_PATH: "md:cache"
-  # The DuckDB driver runs every query() on ONE shared connection
-  # (DuckDBDriver.query -> defaultConnection.all), and node-duckdb executes
-  # each call on the libuv threadpool — so with Cube's default queue
-  # concurrency, refresh-key and pre-aggregation queries run on that
-  # connection at the same time. Against the attached Iceberg catalog that
-  # corrupts binding: "Referenced column "ingest_ts" not found ... Candidate
-  # bindings: "__"" and "INTERNAL Error: Attempted to dereference unique_ptr
-  # that is NULL", for queries that succeed when run alone. One at a time.
-  #
-  # Not sufficient on its own: this is applied per queue, and the query and
-  # pre-aggregation queues each get their own 1, so they still overlapped on
-  # the shared connection. The actual guarantee is the mutex around
-  # DuckDBDriver.query() in semantic/cube/cube.js; this just keeps the queues
-  # from stacking work up behind it.
+  # Set when the stock driver ran every query on one shared connection, where
+  # overlapping queries corrupted each other's binding. cube.js's
+  # MotherDuckSessionDriver now gives each query its own connection, so
+  # this is no longer needed for correctness. Raising it is a separate change.
   CUBEJS_CONCURRENCY: "1"
   # DuckDB downloads the motherduck extension into $HOME/.duckdb on first
   # connect. The base image leaves HOME=/, which uid 10001 can't write, so
@@ -158,13 +148,29 @@ secretEnv:
     secretName: cube-secret
     secretKey: OHDP_CUBE_API_SECRET
   # Mirrored by deploy-platform.yml's `secrets` step from the MOTHERDUCK_TOKEN
-  # repo secret (ADR-0029). Cube holds no Snowflake credential any more — the
-  # Horizon PAT lives in MotherDuck's own stored secret.
+  # repo secret (ADR-0029).
   # Read by the MotherDuck extension itself; this is what authenticates the
   # md:cache connection above.
   - name: motherduck_token
     secretName: cube-motherduck
     secretKey: OHDP_MOTHERDUCK_TOKEN
+  # The Horizon PAT. cube.js re-creates MotherDuck's `ohdp_horizon` secret and
+  # the CURATED attach from it every 45 minutes, because the OAuth token the
+  # attach holds expires after an hour (see MotherDuckSessionDriver).
+  - name: OHDP_SNOWFLAKE_PAT
+    secretName: ohdp-pipeline-secrets
+    secretKey: OHDP_SNOWFLAKE_PAT
+
+# Non-secret values read from another chart's ConfigMap, so there is one source
+# of truth. platform-base's ohdp-pipeline-config holds the Horizon endpoint's
+# account and the role in the OAuth scope.
+configEnv:
+  - name: OHDP_SNOWFLAKE_ACCOUNT
+    configMapName: ohdp-pipeline-config
+    configMapKey: OHDP_SNOWFLAKE_ACCOUNT
+  - name: OHDP_SNOWFLAKE_ROLE
+    configMapName: ohdp-pipeline-config
+    configMapKey: OHDP_SNOWFLAKE_ROLE
 
 # Always-on `services` node pool (platform/terraform/main.tf, np_services) —
 # off `heavy`, which gets hand-scaled for Dagster.

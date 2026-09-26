@@ -20,7 +20,10 @@ invalidation. Locally, `CUBEJS_DEV_MODE=true` auto-spawns an embedded Cube
 Store, so `make cube-dev` below already exercises this — no separate local
 Cube Store setup needed.
 
-- `cube.js` — config: `queryRewrite` for tier limits + hard safety caps.
+- `cube.js` — config: `queryRewrite` for tier limits + hard safety caps, and
+  `MotherDuckSessionDriver`, which opens a new MotherDuck session every 45
+  minutes and re-creates the `CURATED` attach from it, because the attach's
+  Horizon token expires after an hour.
 - `model/` — cubes: measures, dimensions, joins. Each cube reads a **dbt mart**,
   never a raw or staging table.
 - `model/globals.py` — loads the dbt manifest and exposes `dbt_model()` /
@@ -63,9 +66,10 @@ loudly instead of quietly reading the wrong table.
 
 Cube queries MotherDuck, which reads the lakehouse through the attached
 `CURATED` catalog. Export a `MOTHERDUCK_TOKEN` for a workspace that has it
-attached — the deployed one does after any Cube deploy; for a fresh
-workspace, run `make motherduck-bootstrap` once with `OHDP_SNOWFLAKE_PAT`,
-`OHDP_SNOWFLAKE_ACCOUNT` and `OHDP_SNOWFLAKE_ROLE` set too. `make cube-dev`
+attached. Local Cube doesn't get the Snowflake variables, so it doesn't
+re-create the attach itself. If the attach is more than an hour old (401 from
+`/v1/config`), run `make motherduck-bootstrap ARGS=--recreate` with
+`OHDP_SNOWFLAKE_PAT`, `OHDP_SNOWFLAKE_ACCOUNT` and `OHDP_SNOWFLAKE_ROLE` set. `make cube-dev`
 runs `dbt parse` first (no warehouse needed — it just compiles the manifest
 cube-dbt reads) and mounts `data/dbt/target/` read-only into the container at
 `dbt/`:
