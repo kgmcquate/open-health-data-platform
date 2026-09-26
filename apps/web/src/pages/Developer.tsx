@@ -158,6 +158,8 @@ export default function Developer() {
         </section>
       )}
 
+      <hr/>
+
       <section className="flex flex-col gap-3">
         <h2 className="text-xl font-semibold">API keys</h2>
 

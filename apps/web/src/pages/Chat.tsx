@@ -31,6 +31,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DashboardEmbed } from "../components/DashboardEmbed";
 import LogoMark from "../components/icons/LogoMark";
+import UsageMeter from "../components/UsageMeter";
 import { textOf, useHubChatRuntime, type HubChatRuntime } from "../chat/runtime";
 import {
   archiveThread,
@@ -619,21 +620,21 @@ function ModelPicker({ models, model, onModelChange }: ModelPickerProps) {
   );
 }
 
-/** The token line next to the model picker — the same numbers the Settings
+/** The token meter next to the model picker — the same numbers the Settings
  * dropdown shows (`Navbar.tsx`'s `UsageRow`), but live on the surface that
  * actually burns them, and refreshed after every turn rather than only at
  * sign-in. Renders nothing until the first fetch lands, same reasoning as
  * `Navbar`'s own allowance display. */
 function TokenUsage({ allowance }: { allowance: ChatAllowance | null }) {
   if (!allowance) return null;
-  const exhausted = allowance.tokens_used_today >= allowance.tokens_allowed_per_day;
   return (
-    <span
-      className={`hidden shrink-0 text-xs tabular-nums sm:inline ${exhausted ? "text-error" : "text-base-content/50"}`}
-    >
-      {allowance.tokens_used_today.toLocaleString()} / {allowance.tokens_allowed_per_day.toLocaleString()} tokens
-      today
-    </span>
+    <UsageMeter
+      label="Tokens used today"
+      used={allowance.tokens_used_today}
+      allowed={allowance.tokens_allowed_per_day}
+      suffix="tokens today"
+      className="hidden h-5 w-56 shrink-0 sm:block"
+    />
   );
 }
 

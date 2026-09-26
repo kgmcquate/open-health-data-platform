@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import GearIcon from "./icons/GearIcon";
 import LogoMark from "./icons/LogoMark";
 import SearchBar from "./SearchBar";
+import UsageMeter from "./UsageMeter";
 import { fetchChatAllowance, type ChatAllowance } from "../lib/api";
 
 const NAV_ITEMS = [
@@ -14,18 +15,16 @@ const NAV_ITEMS = [
   { to: "/topics", label: "Topics" },
 ];
 
-/** One row of the Settings dropdown's usage block — `used / allowed`, in red
- * once the cap is hit. Renders nothing while `allowance` hasn't loaded yet
- * rather than a misleading "0 / 0" (`Navbar`'s effect only fetches it for a
- * signed-in user, and the fetch can still be in flight or have failed). */
+/** One row of the Settings dropdown's usage block — a label over a
+ * `UsageMeter`. The block as a whole is skipped while `allowance` hasn't
+ * loaded yet rather than showing a misleading "0 / 0" (`Navbar`'s effect only
+ * fetches it for a signed-in user, and the fetch can still be in flight or
+ * have failed). */
 function UsageRow({ label, used, allowed }: { label: string; used: number; allowed: number }) {
-  const exhausted = used >= allowed;
   return (
-    <div className="flex items-center justify-between text-xs">
+    <div className="flex flex-col gap-0.5 text-xs">
       <span className="opacity-70">{label}</span>
-      <span className={`tabular-nums ${exhausted ? "text-error" : ""}`}>
-        {used.toLocaleString()} / {allowed.toLocaleString()}
-      </span>
+      <UsageMeter label={label} used={used} allowed={allowed} />
     </div>
   );
 }
@@ -133,7 +132,7 @@ export default function Navbar() {
             )}
 
             {user && user.tier !== "plus" && (
-              <div className="flex flex-col gap-1 py-1">
+              <div className="flex flex-col gap-1.5 py-1">
                 {/* The embedded Checkout form lives on /billing (the server hands
                     back a client_secret, not a redirect URL), so this is a link
                     rather than a one-click POST. */}
@@ -144,7 +143,7 @@ export default function Navbar() {
             )}
 
             {user && user.tier === "plus" && (
-              <div className="flex flex-col gap-1 py-1">
+              <div className="flex flex-col gap-1.5 py-1">
                 {/* "Manage subscription" itself opens Stripe's hosted Billing
                     Portal (a POST, not a link) — that button lives on /billing
                     next to the rest of the plan details, so this just gets
@@ -152,7 +151,7 @@ export default function Navbar() {
                 <Link to="/billing" className="btn btn-outline btn-sm justify-start">
                   Manage subscription
                 </Link>
-                <Link to="/developer" className="btn btn-ghost btn-sm justify-start">
+                <Link to="/developer" className="btn btn-outline btn-sm justify-start">
                   API keys
                 </Link>
               </div>
@@ -161,7 +160,7 @@ export default function Navbar() {
             {user && allowance && (
               <>
                 <div className="divider my-1" />
-                <div className="flex flex-col gap-1 py-1">
+                <div className="flex flex-col gap-1.5 py-1">
                   <div className="label pb-0">
                     <span className="label-text">Usage today</span>
                   </div>
