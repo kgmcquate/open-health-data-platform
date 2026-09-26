@@ -487,6 +487,15 @@ async def search(
     this is a public surface, and an unreachable catalog should cost the
     catalog results, not the whole dropdown.
     """
+    return await search_results(request, q, limit=limit, viewer_email=viewer_email)
+
+
+async def search_results(
+    request: Request, q: str, *, limit: int = SEARCH_LIMIT, viewer_email: str | None = None
+) -> dict[str, Any]:
+    """`search`'s body, callable without going through the route — the search
+    page's AI summary (`hub_api.search_summary`) grounds itself on exactly
+    what the page is showing rather than on a second, drifting query."""
     terms = [word for word in q.lower().split() if word]
     if not terms:
         return {"query": q, "topics": [], "assets": [], "dashboards": [], "literature": []}

@@ -170,6 +170,11 @@ class Settings(BaseSettings):
         keys = [k.strip() for k in self.openai_api_keys.split(";")]
         return [(url, keys[i] if i < len(keys) else "") for i, url in enumerate(urls)]
 
+    # The search page's AI summary (hub_api.search_summary). Its model is set
+    # in apps/api/config/models.yaml's `search_summary_model:`, not here.
+    # Per-user ceiling on summaries that miss the cache, per rolling hour.
+    search_summaries_per_hour: int = 30
+
     # Chat quotas (ARCHITECTURE.md §10 open decision 3 — provisional)
     free_daily_questions: int = 10
     plus_daily_questions: int = 50

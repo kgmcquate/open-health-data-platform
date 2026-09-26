@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { fetchDashboards, fetchTopics } from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 import GraphBackground from "../components/GraphBackground";
+import SearchBar from "../components/SearchBar";
 
 const HIGHLIGHTS = [
   {
@@ -66,10 +67,16 @@ export default function Home() {
 
   return (
     <div>
-      <section className="hero relative overflow-hidden bg-gradient-to-br from-primary/15 via-base-100 to-accent/10 min-h-[32rem]">
-        <GraphBackground className="opacity-70" />
-        <div className="hero-content relative z-10 text-center max-w-3xl py-16">
-          <div className="card bg-base-100/50 backdrop-blur-sm shadow-xl px-6 py-10 ">
+      {/* `overflow-hidden` is on the background's own wrapper, not the
+          section: the search dropdown has to be free to hang past the hero's
+          bottom edge rather than be clipped by it. `z-20` keeps that dropdown
+          over the highlights section below. */}
+      <section className="hero relative z-20 bg-gradient-to-br from-primary/15 via-base-100 to-accent/10 min-h-[32rem]">
+        <div className="absolute inset-0 overflow-hidden">
+          <GraphBackground className="opacity-70" />
+        </div>
+        <div className="hero-content relative z-10 text-center w-full max-w-4xl py-16">
+          <div className="card w-full bg-base-100/50 backdrop-blur-sm shadow-xl px-6 py-10 sm:px-10">
             {/* <div className="badge badge-primary badge-outline mb-4">
               Built in the open · Visible from the source, through the plumbing, and into the dashboard
             </div> */}
@@ -81,14 +88,7 @@ export default function Home() {
             <p className="py-6 text-lg opacity-80">
               An open analytics platform for public health data.
             </p>
-            <div className="flex gap-3 justify-center">
-              <Link to="/chat" className="btn btn-primary">
-                Try the chatbot
-              </Link>
-              <Link to="/topics" className="btn btn-outline">
-                What's inside?
-              </Link>
-            </div>
+            <SearchBar size="lg" />
           </div>
         </div>
       </section>

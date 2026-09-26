@@ -4,7 +4,6 @@ import { THEMES, applyTheme, storedTheme } from "../theme";
 import { useEffect, useState } from "react";
 import GearIcon from "./icons/GearIcon";
 import LogoMark from "./icons/LogoMark";
-import SearchBar from "./SearchBar";
 import UsageMeter from "./UsageMeter";
 import { fetchChatAllowance, type ChatAllowance } from "../lib/api";
 
@@ -51,12 +50,6 @@ export default function Navbar() {
             Open Health <span className="text-primary">Data Platform</span>
           </span>
         </Link>
-        {/* On every width: it is the only search input anywhere now that the
-            /search page has none of its own. The wordmark gives up its text
-            below `sm` to make the room. */}
-        <div className="flex grow min-w-0 mr-2">
-          <SearchBar />
-        </div>
       </div>
 
       <nav className="hidden lg:flex">

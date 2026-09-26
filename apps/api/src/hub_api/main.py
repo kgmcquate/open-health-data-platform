@@ -45,7 +45,8 @@ from hub_api.content import router as content_router
 from hub_api.dashboards import dashboards_router
 from hub_api.issues import router as issues_router
 from hub_api.issues import tools_app
-from hub_api.models import build_agents, discover_openai_models
+from hub_api.models import build_agents, build_search_summary_model, discover_openai_models
+from hub_api.search_summary import router as search_summary_router
 from hub_api.tool_connections import build_local_openapi_toolset, load_tool_connections
 from ohdp_shared import configure_logging, get_logger, settings
 
@@ -152,6 +153,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         headers={"Authorization": f"Bearer {settings.tools_auth_token}"},
     )
     app.state.agents = build_agents(openai_models, tool_connections)
+    app.state.search_summary = build_search_summary_model(openai_models)
     # The paid Cube MCP endpoint's session manager (hub_api.gateway). A mounted
     # app never receives lifespan events, so its lifespan runs inside this one.
     async with gateway.cube_mcp_app.router.lifespan_context(gateway.cube_mcp_app):
@@ -182,6 +184,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(content_router)
+app.include_router(search_summary_router)
 # The builder's own routes (`hub_api.builder`): preview, drafts, publish, and
 # the semantic-layer reference the editor's field panel reads. On the hub's own
 # app rather than the `/tools` sub-app below, because these are the browser's

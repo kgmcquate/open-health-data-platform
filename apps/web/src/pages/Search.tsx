@@ -1,5 +1,9 @@
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { fetchSearch, type SearchResults } from "../lib/api";
+import { MessageSquare, Sparkles } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
+import SearchBar from "../components/SearchBar";
+import { fetchSearch, fetchSearchSummary, type SearchResults, type SearchSummary } from "../lib/api";
 import { useFetch } from "../lib/useFetch";
 
 /** Per-section cap for this page — more than the header dropdown's default,
@@ -106,6 +110,95 @@ function Section({
   );
 }
 
+/** The model-written overview above the results, and three questions that
+ * open the chat with that question already sent (`/chat?q=`).
+ *
+ * Its own fetch rather than a field on `/api/search`: the results should not
+ * wait on a model call, and a failed summary should cost only this card. Signed
+ * out, it is a sign-in prompt instead — the summary route is signed-in only,
+ * because every uncached call is a model call. */
+function AiSummary({ query }: { query: string }) {
+  const { user, signIn } = useAuth();
+  const [summary, setSummary] = useState<SearchSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Reset per query, which `useFetch` does not do — a stale summary under a
+    // new heading would read as being about the new query.
+    setSummary(null);
+    setError(null);
+    if (!user) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchSearchSummary(query)
+      .then((value) => !cancelled && setSummary(value))
+      .catch((exc: Error) => !cancelled && setError(exc.message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [query, user]);
+
+  // Still finding out who is signed in: say nothing yet rather than flash the
+  // sign-in prompt at someone who is.
+  if (user === undefined) return null;
+
+  return (
+    <section className="card bg-gradient-to-br from-primary/10 to-accent/10 border border-primary/20 mb-10">
+      <div className="card-body p-5 gap-3">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <Sparkles className="h-5 w-5 text-primary" aria-hidden />
+          AI summary
+        </h2>
+
+        {user === null ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="opacity-80 grow">
+              Sign in for an AI overview of these results and questions to explore them in chat.
+            </p>
+            <button type="button" className="btn btn-primary btn-sm" onClick={signIn}>
+              Sign in
+            </button>
+          </div>
+        ) : loading ? (
+          <div className="flex flex-col gap-2" aria-label="Loading summary">
+            <div className="skeleton h-4 w-full" />
+            <div className="skeleton h-4 w-5/6" />
+            <div className="skeleton h-4 w-2/3" />
+          </div>
+        ) : error ? (
+          <p className="text-sm opacity-70">The AI summary is unavailable right now.</p>
+        ) : summary ? (
+          <>
+            <p className="leading-relaxed">{summary.summary}</p>
+            {summary.prompts.length > 0 && (
+              <div className="flex flex-col gap-2 pt-1">
+                <span className="text-xs uppercase tracking-wide opacity-60">Ask the chat</span>
+                <div className="flex flex-wrap gap-2">
+                  {summary.prompts.map((prompt) => (
+                    <Link
+                      key={prompt}
+                      to={`/chat?q=${encodeURIComponent(prompt)}`}
+                      className="btn btn-sm btn-outline normal-case h-auto min-h-8 py-1 text-left"
+                    >
+                      <MessageSquare className="h-4 w-4 shrink-0" aria-hidden />
+                      {prompt}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-xs opacity-50">
+              Generated from the results below — open them to check the details.
+            </p>
+          </>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 /** A result that lives on the hub — an internal route. */
 function HitCard({
   to,
@@ -170,16 +263,13 @@ function ExternalHitCard({
   );
 }
 
-/** The `/search?q=` page the header's "search everything" row lands on.
+/** The `/search?q=` page the search box's "search everything" row lands on.
  *
  * Same endpoint as the dropdown, just a bigger `limit` and room to show each
  * result's description — the dropdown is for a hit you can already name, this
  * is for browsing what matched. */
 export default function Search() {
   const [params, setParams] = useSearchParams();
-  // The only text input is the header's search bar, which is on every page — a
-  // second box here would be two places to type the same query, and the one
-  // in the header already has the dropdown.
   const query = (params.get("q") ?? "").trim();
   // `null` for an empty `?q=`: the page says what to do instead of asking the
   // server to match nothing. Note the deps: the type filter is not in them,
@@ -237,6 +327,12 @@ export default function Search() {
       )}
 
       <div className="min-w-0 grow">
+        {/* Keyed on the query so the box re-fills when the URL changes under
+            it — back/forward, or a new search submitted from this box. */}
+        <div className="mb-8 max-w-3xl">
+          <SearchBar key={query} initialQuery={query} autoFocus={!query} />
+        </div>
+
         <h1 className="text-4xl font-bold mb-8">
           {query ? (
             <>
@@ -248,10 +344,12 @@ export default function Search() {
         </h1>
 
         {!query && (
-          <div className="alert">Search from the box in the header to see results here.</div>
+          <div className="alert">Type a search above to see results here.</div>
         )}
         {loading && query && <span className="loading loading-spinner loading-lg" />}
         {error && <div className="alert alert-error">{error}</div>}
+
+        {query && <AiSummary query={query} />}
 
         {data && (
           <>

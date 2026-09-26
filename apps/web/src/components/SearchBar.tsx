@@ -56,14 +56,31 @@ function flatten(results: SearchResults): Hit[] {
   ];
 }
 
-/** The header's search box: one debounced call to `/api/search`, results
- * grouped in a dropdown, and Enter on the query itself falling through to the
- * full `/search` page for anything the dropdown's per-section cap cut off. */
-export default function SearchBar() {
+/** The platform's search box — the Home page's hero and the top of `/search`.
+ * One debounced call to `/api/search`, results grouped in a dropdown, and
+ * Enter on the query itself falling through to the full `/search` page for
+ * anything the dropdown's per-section cap cut off.
+ *
+ * `size="lg"` is the hero's version: the same box a size step up (about 25%
+ * taller), so it reads as the page's first thing to do. `initialQuery`
+ * pre-fills the box, which is how `/search` shows the query it is displaying
+ * results for. */
+export default function SearchBar({
+  size = "md",
+  initialQuery = "",
+  autoFocus = false,
+}: {
+  size?: "md" | "lg";
+  initialQuery?: string;
+  autoFocus?: boolean;
+}) {
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
+  const large = size === "lg";
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
+  // Closed on mount even with an `initialQuery`: on `/search` the results are
+  // already the page, and a dropdown repeating them would only cover them.
   const [open, setOpen] = useState(false);
   // Which row Enter would follow: -1 is "none", and submits the query instead.
   const [active, setActive] = useState(-1);
@@ -109,9 +126,8 @@ export default function SearchBar() {
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, []);
 
-  // ⌘K / Ctrl-K from anywhere on the page. Unadvertised now that the hint in
-  // the box is a Search button instead — a shortcut for people who already
-  // expect it, not the documented way in.
+  // ⌘K / Ctrl-K from anywhere on a page that has this box. Unadvertised — a
+  // shortcut for people who already expect it, not the documented way in.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
@@ -173,15 +189,24 @@ export default function SearchBar() {
   let lastGroup = "";
 
   return (
-    <div ref={container} className="relative w-full max-w-md">
+    <div ref={container} className={`relative w-full ${large ? "max-w-2xl mx-auto" : "max-w-2xl"}`}>
       <div className="flex items-center gap-1">
-        <label className="input input-sm input-bordered flex items-center gap-2 grow">
-          <Search className="h-4 w-4 opacity-60" aria-hidden />
+        <label
+          className={`input input-bordered flex items-center grow ${
+            large ? "gap-2 shadow" : "input-sm gap-2"
+          }`}
+        >
+          <Search className={`${large ? "h-5 w-5" : "h-4 w-4"} opacity-60`} aria-hidden />
           <input
             ref={input}
             type="search"
             className="grow"
-            placeholder="Search topics, dashboards, data…"
+            autoFocus={autoFocus}
+            placeholder={
+              large
+                ? "Search diseases, metrics, dashboards, papers…"
+                : "Search topics, dashboards, data…"
+            }
             aria-label="Search the platform"
             value={query}
             onChange={(event) => {
@@ -191,7 +216,9 @@ export default function SearchBar() {
             onFocus={() => setOpen(true)}
             onKeyDown={onKeyDown}
           />
-          {loading && <span className="loading loading-spinner loading-xs" />}
+          {loading && (
+            <span className={`loading loading-spinner ${large ? "loading-sm" : "loading-xs"}`} />
+          )}
         </label>
         {/* The pointer's version of pressing Enter — same `submit`, so the
             button and the key cannot drift apart. Outside the `<label>`: a
@@ -199,18 +226,18 @@ export default function SearchBar() {
             steal this one. */}
         <button
           type="button"
-          className="btn btn-sm btn-primary btn-square"
+          className={`btn btn-primary ${large ? "btn-square shadow" : "btn-sm btn-square"}`}
           aria-label="Search"
           title="Search"
           disabled={!trimmed}
           onClick={submit}
         >
-          <CornerDownLeft className="h-4 w-4" />
+          <CornerDownLeft className={large ? "h-5 w-5" : "h-4 w-4"} />
         </button>
       </div>
 
       {open && trimmed.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-2 max-h-[70vh] overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-xl z-50">
+        <div className="absolute left-0 right-0 top-full mt-2 max-h-[60vh] overflow-y-auto rounded-box border border-base-300 bg-base-100 text-left shadow-xl z-50">
           <ul className="menu w-full p-2">
             {hits.map((hit, index) => {
               const heading = hit.group !== lastGroup ? hit.group : null;

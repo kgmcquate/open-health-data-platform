@@ -11,7 +11,13 @@ from pathlib import Path
 from pydantic_ai.toolsets import FunctionToolset
 
 from hub_api import models as hub_models
-from hub_api.models import ModelOverride, ModelsConfig, build_agents
+from hub_api.models import (
+    ModelOverride,
+    ModelsConfig,
+    SearchSummaryModel,
+    build_agents,
+    build_search_summary_model,
+)
 
 
 async def _noop() -> str:
@@ -97,3 +103,44 @@ def test_explicit_provider_overrides_the_default() -> None:
         ModelsConfig(models=[ModelOverride(id="z-ai/glm-5.3-flash", provider="Zhipu AI")]),
     )
     assert agents["z-ai/glm-5.3-flash"].provider == "Zhipu AI"
+
+
+def test_search_summary_model_resolves_through_auto_discovery() -> None:
+    openai_models = {"z-ai/glm-5.3-flash": ("https://openrouter.ai/api/v1", "sk-or-1")}
+    config = ModelsConfig(
+        search_summary_model=SearchSummaryModel(id="z-ai/glm-5.3-flash", system_prompt="Summarize.")
+    )
+
+    model = build_search_summary_model(openai_models, config)
+
+    assert model is not None
+    assert model.model.model_name == "z-ai/glm-5.3-flash"
+    assert model.system_prompt == "Summarize."
+
+
+def test_search_summary_model_absent_or_unresolvable_is_none() -> None:
+    assert build_search_summary_model({}, ModelsConfig()) is None
+    config = ModelsConfig(
+        search_summary_model=SearchSummaryModel(id="nobody/knows", system_prompt="Summarize.")
+    )
+    assert build_search_summary_model({}, config) is None
+
+
+def test_load_models_config_reads_the_search_summary_section(tmp_path: Path) -> None:
+    path = tmp_path / "models.yaml"
+    path.write_text(
+        "models: []\nsearch_summary_model:\n  id: z-ai/glm-5.3-flash\n  system_prompt: Summarize.\n"
+    )
+
+    config = hub_models.load_models_config(path)
+
+    assert config.search_summary_model == SearchSummaryModel(
+        id="z-ai/glm-5.3-flash", system_prompt="Summarize."
+    )
+
+
+def test_search_summary_section_without_a_prompt_is_skipped(tmp_path: Path) -> None:
+    path = tmp_path / "models.yaml"
+    path.write_text("search_summary_model:\n  id: z-ai/glm-5.3-flash\n")
+
+    assert hub_models.load_models_config(path).search_summary_model is None

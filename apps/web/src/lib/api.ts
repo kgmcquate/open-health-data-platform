@@ -291,6 +291,17 @@ export const fetchSearch = (q: string, limit?: number) =>
     `/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ""}`,
   );
 
+/** `GET /api/search/summary` (`hub_api.search_summary`): a short model-written
+ * overview of what a query matched, plus three questions to take to the chat.
+ * Signed-in only — every uncached call is a model call. */
+export interface SearchSummary {
+  summary: string;
+  prompts: string[];
+}
+
+export const fetchSearchSummary = (q: string) =>
+  getJson<SearchSummary>(`/api/search/summary?q=${encodeURIComponent(q)}`);
+
 export interface ChatModel {
   id: string;
   label: string;

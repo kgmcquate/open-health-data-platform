@@ -29,6 +29,9 @@ import openai
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.toolsets import AbstractToolset
 
 from hub_api import config_dir
@@ -114,8 +117,33 @@ class ModelOverride(BaseModel):
     tools: list[str] = Field(default_factory=list)
 
 
+class SearchSummaryModel(BaseModel):
+    """models.yaml's `search_summary_model:` — the one model behind the search
+    page's AI summary (`hub_api.search_summary`). Kept out of `models:` because
+    it is not a chat model: it is never in the picker, gets no tools and none
+    of the chat's prompt, and only needs to be small and fast. `base_url`/
+    `api_key_env` mean the same as on `ModelOverride`.
+
+    `system_prompt` is required, unlike `ModelOverride`'s: there is no built-in
+    summary prompt to fall back to — models.yaml is the only copy."""
+
+    id: str
+    base_url: str = ""
+    api_key_env: str = ""
+    system_prompt: str = Field(min_length=1)
+
+
+@dataclass
+class SearchSummaryConfig:
+    """`SearchSummaryModel` resolved to a callable model, built once at startup."""
+
+    model: Model
+    system_prompt: str
+
+
 class ModelsConfig(BaseModel):
     models: list[ModelOverride] = Field(default_factory=list)
+    search_summary_model: SearchSummaryModel | None = None
 
 
 # Model-id prefixes (an OpenRouter-style "vendor/model" id) -> the vendor's
@@ -174,7 +202,25 @@ def load_models_config(path: Path = CONFIG_PATH) -> ModelsConfig:
                 id=item.get("id") if isinstance(item, dict) else None,
                 error=str(exc),
             )
-    return ModelsConfig(models=overrides)
+
+    search_summary_model: SearchSummaryModel | None = None
+    if raw.get("search_summary_model"):
+        try:
+            search_summary_model = SearchSummaryModel.model_validate(raw["search_summary_model"])
+        except ValidationError as exc:
+            log.error("search_summary_model_invalid", error=str(exc))
+    return ModelsConfig(models=overrides, search_summary_model=search_summary_model)
+
+
+def _resolve_backend(
+    model_id: str, base_url: str, api_key_env: str, openai_models: dict[str, tuple[str, str]]
+) -> tuple[str, str] | None:
+    """`(base_url, api_key)` for a models.yaml entry: its own `base_url` plus
+    the key named by `api_key_env` when given, else whatever auto-discovery
+    found for `model_id`, else `None`."""
+    if base_url:
+        return base_url, env_file_values().get(api_key_env, "") if api_key_env else ""
+    return openai_models.get(model_id)
 
 
 async def discover_openai_models() -> dict[str, tuple[str, str]]:
@@ -218,16 +264,13 @@ def build_agents(
         )
 
     for override in (overrides or load_models_config()).models:
-        base_url, api_key = override.base_url, ""
-        if base_url:
-            api_key = (
-                env_file_values().get(override.api_key_env, "") if override.api_key_env else ""
-            )
-        elif override.id in openai_models:
-            base_url, api_key = openai_models[override.id]
-        else:
+        backend = _resolve_backend(
+            override.id, override.base_url, override.api_key_env, openai_models
+        )
+        if backend is None:
             log.warning("model_override_unresolvable", id=override.id)
             continue
+        base_url, api_key = backend
 
         # "catalog" cannot be resolved to a static toolset here (see
         # `_CATALOG_TOOLS_ID`'s comment) — pulled out before resolving the rest
@@ -260,3 +303,25 @@ def build_agents(
         )
 
     return agents
+
+
+def build_search_summary_model(
+    openai_models: dict[str, tuple[str, str]], config: ModelsConfig | None = None
+) -> SearchSummaryConfig | None:
+    """The model behind `hub_api.search_summary`, from models.yaml's
+    `search_summary_model:` — `None` when that section is absent or its id
+    resolves to no backend, which the route reports as a 503."""
+    entry = (config or load_models_config()).search_summary_model
+    if entry is None:
+        return None
+    backend = _resolve_backend(entry.id, entry.base_url, entry.api_key_env, openai_models)
+    if backend is None:
+        log.warning("search_summary_model_unresolvable", id=entry.id)
+        return None
+    base_url, api_key = backend
+    # Same empty-key workaround as `ohdp_agent.loop.build_agent`.
+    provider = OpenAIProvider(base_url=base_url, api_key=api_key or "not-required")
+    return SearchSummaryConfig(
+        model=OpenAIChatModel(entry.id, provider=provider),
+        system_prompt=entry.system_prompt,
+    )
