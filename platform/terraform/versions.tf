@@ -12,9 +12,13 @@ terraform {
       source  = "digitalocean/digitalocean"
       version = "~> 2.40"
     }
+    # >= 5.26: earlier 5.x builds of cloudflare_email_routing_settings
+    # (email.tf) fail every apply with "Struct defines fields not found in
+    # object: support_subaddress" — the field was in the model but missing
+    # from the schema until 5.26.0.
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 5.0"
+      version = "~> 5.26"
     }
     # Note the source: the provider moved from Snowflake-Labs to snowflakedb at
     # v1. `Snowflake-Labs/snowflake` is the old, unmaintained address.
@@ -70,7 +74,6 @@ provider "snowflake" {
   # external volume is the one lakehouse object the provider still ships as
   # preview.
   preview_features_enabled = [
-    "snowflake_external_volume_resource",
     "snowflake_network_policy_attachment_resource",
   ]
 }
