@@ -193,6 +193,36 @@ def is_stale(last_rendered: datetime | None) -> bool:
     return (datetime.now(UTC) - last_rendered).total_seconds() > STALE_AFTER_SECONDS
 
 
+# Marks that draw the same kind of chart, folded together so the Dashboards
+# page's filter offers "scatter" once rather than three times.
+_SAME_CHART_AS = {"circle": "point", "square": "point"}
+
+
+def chart_types(vega_lite: Any) -> list[str]:
+    """The Vega-Lite mark types a spec draws — `["bar"]`, or `["line", "point"]`
+    for a layered chart — in first-seen order. What the Dashboards page filters
+    on; it walks `layer`/`concat`/`facet`/`repeat` children rather than reading
+    only the top-level `mark`, since a composed chart has none there."""
+    found: dict[str, None] = {}
+
+    def walk(node: Any) -> None:
+        if isinstance(node, list):
+            for child in node:
+                walk(child)
+            return
+        if not isinstance(node, dict):
+            return
+        mark = node.get("mark")
+        kind = mark.get("type") if isinstance(mark, dict) else mark
+        if isinstance(kind, str):
+            found[_SAME_CHART_AS.get(kind, kind)] = None
+        for key in ("layer", "concat", "hconcat", "vconcat", "spec"):
+            walk(node.get(key))
+
+    walk(vega_lite)
+    return list(found)
+
+
 def _summary(row: Any) -> dict[str, Any]:
     """The shape every route returns — **not** the table's columns.
 
@@ -221,6 +251,11 @@ def _summary(row: Any) -> dict[str, Any]:
         # spec saved a month ago and re-rendered an hour ago shows both.
         "last_rendered": row.last_rendered.isoformat() if row.last_rendered else None,
         "stale": is_stale(row.last_rendered),
+        # `vega` is the key rows seeded before `DashboardSpec` settled on
+        # `vega_lite` still carry.
+        "chart_types": chart_types(
+            dict(row.spec or {}).get("vega_lite") or dict(row.spec or {}).get("vega")
+        ),
     }
 
 
@@ -272,6 +307,56 @@ def public_rows(
         entry["my_vote"] = votes.get(int(row.id), 0)
         listed.append(entry)
     return listed
+
+
+def _matches_search(entry: dict[str, Any], terms: list[str]) -> bool:
+    haystack = " ".join(
+        [
+            entry["title"],
+            entry["name"],
+            entry["description"],
+            entry["caption"] or "",
+            *entry["topics"],
+        ]
+    ).lower()
+    return all(term in haystack for term in terms)
+
+
+def public_page(
+    engine: Engine,
+    *,
+    q: str = "",
+    chart_type: str | None = None,
+    limit: int = 10,
+    offset: int = 0,
+    viewer_email: str | None = None,
+) -> dict[str, Any]:
+    """One page of `public_rows`, searched and filtered by chart type.
+
+    `chart_types` counts the dashboards of each type among those the search
+    matched — ignoring `chart_type` itself, so the filter can show what picking
+    any other type would give. `search_total` is that same pool's size (the
+    "all types" count), `total` what survives both filters and gets paged.
+    """
+    terms = q.lower().split()
+    searched = [
+        entry
+        for entry in public_rows(engine, viewer_email=viewer_email)
+        if _matches_search(entry, terms)
+    ]
+    counts: dict[str, int] = {}
+    for entry in searched:
+        for kind in entry["chart_types"]:
+            counts[kind] = counts.get(kind, 0) + 1
+    filtered = [
+        entry for entry in searched if chart_type is None or chart_type in entry["chart_types"]
+    ]
+    return {
+        "dashboards": filtered[offset : offset + limit],
+        "total": len(filtered),
+        "search_total": len(searched),
+        "chart_types": counts,
+    }
 
 
 def public_row_by_name(

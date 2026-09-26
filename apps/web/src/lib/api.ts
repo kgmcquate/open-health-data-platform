@@ -72,6 +72,9 @@ export interface Dashboard {
    * that viewing it schedules a fresh render server-side. */
   last_rendered: string | null;
   stale: boolean;
+  /** The Vega-Lite mark types the chart draws (`["bar"]`, or several for a
+   * layered chart) — what the Dashboards page's chart-type filter reads. */
+  chart_types: string[];
   /** This viewer's own vote: 1, -1, or 0 when they have not voted (or are
    * signed out, who cannot vote at all). */
   my_vote: number;
@@ -237,6 +240,29 @@ export const fetchTopic = (name: string) =>
 
 export const fetchDashboards = (topic?: string) =>
   getJson<Dashboard[]>(topic ? `/api/dashboards?topic=${encodeURIComponent(topic)}` : "/api/dashboards");
+
+/** One page of the Dashboards page's list (`GET /api/dashboards/page`).
+ * `chart_types` counts each Vega-Lite mark among the dashboards the search
+ * matched, ignoring the chart-type filter; `search_total` is that pool's size
+ * and `total` what both filters leave, which is what gets paged. */
+export interface DashboardPage {
+  dashboards: Dashboard[];
+  total: number;
+  search_total: number;
+  chart_types: Record<string, number>;
+}
+
+export const fetchDashboardPage = (params: {
+  q?: string;
+  chartType?: string | null;
+  limit: number;
+  offset: number;
+}) => {
+  const query = new URLSearchParams({ limit: String(params.limit), offset: String(params.offset) });
+  if (params.q) query.set("q", params.q);
+  if (params.chartType) query.set("chart_type", params.chartType);
+  return getJson<DashboardPage>(`/api/dashboards/page?${query}`);
+};
 export const fetchDashboard = (name: string) =>
   getJson<Dashboard>(`/api/dashboards/${encodeURIComponent(name)}`);
 export const fetchLiterature = (topic?: string) =>

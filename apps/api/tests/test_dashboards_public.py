@@ -198,6 +198,86 @@ def test_the_listing_carries_no_chart_only_its_query(client: TestClient, cube: N
     assert "spec" not in entry
 
 
+def test_the_listing_names_its_chart_types(client: TestClient, cube: None) -> None:
+    """The page filters by mark type, which is all of the spec a listing carries."""
+    _save(client)
+
+    assert client.get("/api/dashboards").json()[0]["chart_types"] == ["line"]
+
+
+def test_chart_types_walk_composed_specs() -> None:
+    spec = {
+        "layer": [
+            {"mark": {"type": "line", "point": True}},
+            {"mark": "rule"},
+            {"hconcat": [{"mark": "bar"}, {"facet": {}, "spec": {"mark": "line"}}]},
+        ]
+    }
+
+    assert library.chart_types(spec) == ["line", "rule", "bar"]
+    assert library.chart_types(None) == []
+
+
+def test_scatter_marks_fold_into_one_chart_type() -> None:
+    assert library.chart_types({"layer": [{"mark": "circle"}, {"mark": "point"}]}) == ["point"]
+
+
+def test_rows_seeded_with_the_old_vega_key_still_name_their_type(
+    client: TestClient, engine: Engine
+) -> None:
+    _publish(engine, "legacy", spec={"name": "legacy", "query": {}, "vega": {"mark": "bar"}})
+
+    assert client.get("/api/dashboards").json()[0]["chart_types"] == ["bar"]
+
+
+def _bar(name: str) -> dict[str, Any]:
+    return {**SPEC, "name": name, "vega_lite": {**SPEC["vega_lite"], "mark": "bar"}}
+
+
+def test_the_dashboards_page_is_paged_in_listing_order(client: TestClient, engine: Engine) -> None:
+    for score in range(5):
+        _publish(engine, f"d{score}", upvotes=score)
+
+    page = client.get("/api/dashboards/page", params={"limit": 2, "offset": 2}).json()
+
+    assert [entry["name"] for entry in page["dashboards"]] == ["d2", "d1"]
+    assert page["total"] == 5
+
+
+def test_the_page_filters_by_chart_type_and_counts_every_type(
+    client: TestClient, engine: Engine
+) -> None:
+    """The counts ignore the chosen type — they are what picking each type would show."""
+    _publish(engine, "flu-line")
+    _publish(engine, "flu-bar", spec=_bar("flu-bar"))
+    _publish(engine, "aqi-bar", spec=_bar("aqi-bar"))
+
+    page = client.get("/api/dashboards/page", params={"chart_type": "line"}).json()
+
+    assert [entry["name"] for entry in page["dashboards"]] == ["flu-line"]
+    assert page["total"] == 1
+    assert page["search_total"] == 3
+    assert page["chart_types"] == {"line": 1, "bar": 2}
+
+
+def test_the_page_searches_titles_and_topics(client: TestClient, engine: Engine) -> None:
+    _publish(engine, "flu-bar", title="Flu visits", spec=_bar("flu-bar"))
+    _publish(engine, "aqi-line", title="Air quality", topics=["Environment"])
+    _publish(engine, "aqi-bar", title="AQI by state", topics=["Environment"], spec=_bar("aqi-bar"))
+
+    page = client.get("/api/dashboards/page", params={"q": "environment"}).json()
+
+    assert {entry["name"] for entry in page["dashboards"]} == {"aqi-line", "aqi-bar"}
+    assert page["chart_types"] == {"line": 1, "bar": 1}
+
+
+def test_the_page_route_is_not_read_as_a_dashboard_name(client: TestClient) -> None:
+    response = client.get("/api/dashboards/page")
+
+    assert response.status_code == 200
+    assert response.json() == {"dashboards": [], "total": 0, "search_total": 0, "chart_types": {}}
+
+
 def test_dashboards_are_filtered_by_topic(client: TestClient, engine: Engine) -> None:
     _publish(engine, "respiratory-one", topics=["Respiratory"])
     _publish(engine, "chronic-one", topics=["Chronic Disease"])

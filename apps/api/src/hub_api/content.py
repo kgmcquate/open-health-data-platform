@@ -200,6 +200,28 @@ def list_dashboards(
     return library.public_rows(engine, topic=topic, viewer_email=viewer_email)
 
 
+# Declared before `/dashboards/{name}`, which would otherwise claim "page".
+@router.get("/dashboards/page")
+def list_dashboards_page(
+    request: Request,
+    viewer_email: Annotated[str | None, Depends(get_optional_user_email)] = None,
+    q: str = Query(default="", max_length=200),
+    chart_type: str | None = Query(default=None, max_length=40),
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    """The Dashboards page's paged read: `list_dashboards` in the same order,
+    searched, filtered to one chart type, and cut to `limit` — see
+    `library.public_page` for the counts alongside it. Degrades to an empty
+    page without a database, like `list_dashboards`."""
+    engine: Engine | None = getattr(request.app.state, "engine", None)
+    if engine is None:
+        return {"dashboards": [], "total": 0, "search_total": 0, "chart_types": {}}
+    return library.public_page(
+        engine, q=q, chart_type=chart_type, limit=limit, offset=offset, viewer_email=viewer_email
+    )
+
+
 @router.get("/dashboards/{name}")
 def get_dashboard(
     request: Request,

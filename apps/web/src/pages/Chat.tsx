@@ -98,7 +98,7 @@ function RotatingSuggestions() {
   return (
     <div
       key={offset}
-      className="suggestion-fade-in flex flex-wrap items-center justify-center gap-2"
+      className="suggestion-fade-in flex flex-col items-center gap-2"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -820,7 +820,7 @@ function ChatThread({
                 (the `done` event's `suggestions`). Hidden while a turn runs so
                 they never dangle under a streaming draft. */}
             {!isRunning && suggestions.length > 0 && (
-              <div className="flex flex-wrap items-center justify-center gap-2 pb-2">
+              <div className="flex flex-col items-center gap-2 pb-2">
                 {suggestions.map((s) => (
                   <ThreadPrimitive.Suggestion
                     key={s}
