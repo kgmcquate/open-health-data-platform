@@ -597,3 +597,13 @@ def test_the_field_reference_is_cached(
     author.get("/api/semantic/cubes")
 
     assert len(calls) == 1
+
+
+def test_a_dashboard_with_an_obscenity_is_never_published(author: TestClient, cube: None) -> None:
+    response = author.post(
+        "/api/builder/publish", json={"spec_yaml": _yaml(caption="What a load of shit.")}
+    )
+
+    assert response.status_code == 422
+    assert "caption" in response.json()["detail"]
+    assert author.get("/api/dashboards").json() == []

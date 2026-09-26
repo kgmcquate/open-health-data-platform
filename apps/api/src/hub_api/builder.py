@@ -66,7 +66,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.engine import Engine
 
-from hub_api import dashboards, drafts, library
+from hub_api import dashboards, drafts, library, wording
 from hub_api.chat import get_user_email
 from ohdp_agent.cube import CubeClient, CubeError
 from ohdp_agent.dashboard import NAME_RE, DashboardSpec
@@ -377,6 +377,12 @@ async def publish(
         raise HTTPException(
             409,
             f"The name {exc!s} was just published by someone else. Pick a different name.",
+        ) from exc
+    except wording.BlockedWording as exc:
+        raise HTTPException(
+            422,
+            f"The {exc.field} contains {exc.word!r}, which is not allowed on the "
+            "public Dashboards page. Reword it and publish again.",
         ) from exc
 
     log.info(

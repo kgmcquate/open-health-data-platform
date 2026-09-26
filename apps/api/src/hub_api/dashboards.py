@@ -72,7 +72,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.engine import Engine
 
-from hub_api import library
+from hub_api import library, wording
 from hub_api.issues import Reporter, get_reporter
 from ohdp_agent.cube import CubeClient, CubeError
 from ohdp_agent.dashboard import NAME_RE, ChartData, DashboardSpec, render_html
@@ -512,6 +512,12 @@ async def save_dashboard_tool(
             409,
             f"{exc} is a dashboard a user published themselves, so it cannot be "
             "saved over from here. Pick a different name.",
+        ) from exc
+    except wording.BlockedWording as exc:
+        raise HTTPException(
+            422,
+            f"The dashboard's {exc.field} contains {exc.word!r}, which is not allowed "
+            "on the public Dashboards page. Reword it and save again.",
         ) from exc
 
     log.info(

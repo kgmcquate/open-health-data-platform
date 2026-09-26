@@ -74,7 +74,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection, Engine
 
-from hub_api import db
+from hub_api import db, wording
 from ohdp_agent.dashboard import DashboardSpec
 from ohdp_agent.models import CubeQuery
 from ohdp_shared import get_logger
@@ -461,11 +461,16 @@ def save(
     Anything else raises `LibraryOwned`. The caller turns it into "pick a
     different name", which is the only fix.
 
+    Every save is also held to `hub_api.wording`: text with an obscenity or
+    slur in it raises `wording.BlockedWording` before anything is read or
+    written, whoever is saving.
+
     `html` is the page the caller has just rendered from this exact spec — a
     save cannot happen without one, because `save_dashboard` renders to
     validate anyway and throwing that render away only to redo it on the first
     view would be work for nothing.
     """
+    wording.check(spec)
     now = datetime.now(UTC)
     # `exclude_defaults`, like `DashboardSpec.to_yaml`: what comes back out
     # should read as what someone chose, not as every field with its default

@@ -317,3 +317,12 @@ async def test_a_refresh_that_fails_leaves_the_old_page_in_place(
     stored = library.rendered_page(engine, "ed-visits")
     assert stored is not None
     assert stored[0] == "<html>older but fine</html>"
+
+
+def test_a_dashboard_with_an_obscenity_is_not_saved(client: TestClient, cube: None) -> None:
+    """The agent is told which field and word, so it can reword and retry."""
+    response = client.post("/tools/save_dashboard", json={**SPEC, "title": "Shitty ED visits"})
+
+    assert response.status_code == 422
+    assert "title" in response.json()["detail"]
+    assert client.get("/tools/get_dashboard").json()["count"] == 0
