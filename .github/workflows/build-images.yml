@@ -1,14 +1,24 @@
 name: Build images
 
-# Every image builds on every merge to main, regardless of which paths
-# changed — images are tagged sha-<12> per commit (see
-# .github/actions/build-and-push-image), so there's no collision risk and no
-# need to diff paths. A merge to main always auto-deploys all three helm
-# releases — dagster for ohdp-pipeline, cube for ohdp-cube, hub-api + mcp-cube
-# (same image, ADR: platform/helm/charts/mcp-cube/values.yaml) for
-# ohdp-hub-api.
+# On a merge to main, only what changed is rebuilt and redeployed. The
+# `changes` job diffs HEAD against the last commit this workflow *successfully*
+# ran for on main — not just the previous commit, since cancel-in-progress
+# below can cancel a run and its changes would otherwise never be picked up.
 #
-# workflow_dispatch builds every image too, but never auto-deploys — use
+# Every image still gets a sha-<12> tag for every commit (see
+# .github/actions/build-and-push-image): an unchanged image is re-tagged from
+# the last successful build instead of rebuilt, which takes seconds. So
+# deploy-platform.yml's default image_tag, `helm rollback`, and the Makefile's
+# TAG default all keep working no matter which images actually changed.
+#
+# A chart deploys when its image changed or its chart/values did — dagster for
+# ohdp-pipeline, cube (+ cubestore) for ohdp-cube, hub-api + mcp-cube (same
+# image, ADR: platform/helm/charts/mcp-cube/values.yaml) for ohdp-hub-api.
+# Anything shared (this file, the build/kube actions, the helm Makefile, which
+# holds the chart pins) counts as a change to everything it feeds. With no
+# usable base (first run, force-push), everything builds and deploys.
+#
+# workflow_dispatch always builds every image, but never auto-deploys — use
 # deploy-platform.yml for a manual rollout, e.g. to redeploy an unrelated
 # chart at a specific image_tag.
 
@@ -27,8 +37,103 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      base_tag: ${{ steps.base.outputs.tag }}
+      image_hub_api: ${{ steps.diff.outputs.image_hub_api }}
+      image_pipeline: ${{ steps.diff.outputs.image_pipeline }}
+      image_cube: ${{ steps.diff.outputs.image_cube }}
+      deploy_hub_api: ${{ steps.diff.outputs.deploy_hub_api }}
+      deploy_dagster: ${{ steps.diff.outputs.deploy_dagster }}
+      deploy_cube: ${{ steps.diff.outputs.deploy_cube }}
+      sync_secrets: ${{ steps.diff.outputs.sync_secrets }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The last successful push run built or re-tagged every image at its
+      # commit, so each sha-<12> of that commit is guaranteed to exist.
+      - name: Find the last successfully built commit
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "workflow_dispatch — treating everything as changed"
+            exit 0
+          fi
+          sha=$(gh run list --workflow build-images.yml --branch main --event push \
+                  --status success --limit 1 --json headSha --jq '.[0].headSha // empty' || true)
+          if [ -z "${sha}" ] || ! git merge-base --is-ancestor "${sha}" HEAD 2>/dev/null; then
+            echo "No usable base commit (got '${sha}') — treating everything as changed"
+            exit 0
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${sha::12}" >> "$GITHUB_OUTPUT"
+          echo "Diffing against ${sha}"
+
+      # Path lists mirror each Dockerfile's COPY lines and each Makefile
+      # target's chart/values — keep them in sync when either changes.
+      - name: Diff against it
+        id: diff
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "${BASE}" ]; then
+            git diff --name-only --no-renames "${BASE}" HEAD > "${RUNNER_TEMP}/changed.txt"
+          fi
+
+          # changed <regex> — true if any changed path matches, or if there is no base.
+          changed() {
+            [ -z "${BASE}" ] && return 0
+            grep -qE "$1" "${RUNNER_TEMP}/changed.txt"
+          }
+          out() { echo "$1=$2" >> "$GITHUB_OUTPUT"; printf '| %s | %s |\n' "$1" "$2" >> "$GITHUB_STEP_SUMMARY"; }
+          flag() { changed "$1" && echo true || echo false; }
+          either() { [ "$1" = true ] || [ "$2" = true ] && echo true || echo false; }
+
+          all_images='^(\.dockerignore$|\.github/actions/build-and-push-image/|\.github/workflows/build-images\.yml$)'
+          all_deploys='^(platform/helm/Makefile$|\.github/actions/setup-kube/|\.github/workflows/build-images\.yml$)'
+
+          image_hub_api=$(flag  "${all_images}|^(apps/api/|apps/web/|packages/shared/)")
+          image_pipeline=$(flag "${all_images}|^(data/|packages/shared/)")
+          image_cube=$(flag     "${all_images}|^(semantic/cube/|data/dbt/|data/scripts/install_dbt_fusion\.sh$)")
+
+          deploy_hub_api=$(either "${image_hub_api}"  "$(flag "${all_deploys}|^platform/helm/charts/(hub-api|mcp-cube)/")")
+          deploy_dagster=$(either "${image_pipeline}" "$(flag "${all_deploys}|^platform/helm/values/dagster\.yaml$")")
+          deploy_cube=$(either    "${image_cube}"     "$(flag "${all_deploys}|^platform/helm/charts/(cube|cubestore)/")")
+
+          # Every deploy depends on sync-secrets, so it must run whenever any does.
+          sync_secrets=$(flag '^\.github/actions/sync-secrets/')
+          for d in "${deploy_hub_api}" "${deploy_dagster}" "${deploy_cube}"; do
+            sync_secrets=$(either "${sync_secrets}" "${d}")
+          done
+
+          {
+            echo "### Changes since ${BASE:-<none — everything>}"
+            echo ""
+            echo "| output | changed |"
+            echo "|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          out image_hub_api  "${image_hub_api}"
+          out image_pipeline "${image_pipeline}"
+          out image_cube     "${image_cube}"
+          out deploy_hub_api "${deploy_hub_api}"
+          out deploy_dagster "${deploy_dagster}"
+          out deploy_cube    "${deploy_cube}"
+          out sync_secrets   "${sync_secrets}"
+
   build-hub-api:
     name: Build ohdp-hub-api
+    needs: changes
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,6 +158,7 @@ jobs:
           name: ohdp-hub-api
           dockerfile: apps/api/Dockerfile
           push: ${{ steps.push.outputs.enabled }}
+          reuse_tag: ${{ needs.changes.outputs.image_hub_api != 'true' && needs.changes.outputs.base_tag || '' }}
           # Vite bakes VITE_* into the client bundle during the image build, so
           # the Stripe *publishable* key is passed as a build arg (from the
           # STRIPE_PUBLISHABLE_KEY repo secret), not set at runtime. Omitted for
@@ -61,6 +167,7 @@ jobs:
 
   build-pipeline:
     name: Build ohdp-pipeline
+    needs: changes
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -85,9 +192,11 @@ jobs:
           name: ohdp-pipeline
           dockerfile: data/Dockerfile
           push: ${{ steps.push.outputs.enabled }}
+          reuse_tag: ${{ needs.changes.outputs.image_pipeline != 'true' && needs.changes.outputs.base_tag || '' }}
 
   build-cube:
     name: Build ohdp-cube
+    needs: changes
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -112,9 +221,11 @@ jobs:
           name: ohdp-cube
           dockerfile: semantic/cube/Dockerfile
           push: ${{ steps.push.outputs.enabled }}
+          reuse_tag: ${{ needs.changes.outputs.image_cube != 'true' && needs.changes.outputs.base_tag || '' }}
 
   # Auto-deploy only on a real merge to main — never under workflow_dispatch,
-  # which is also used to build without a cluster (e.g. under act).
+  # which is also used to build without a cluster (e.g. under act) — and only
+  # the charts `changes` flagged.
   #
   # Secrets sync once, alongside the builds (seconds vs. minutes), so it never
   # delays a deploy. Each chart then deploys as soon as its own image is built;
@@ -126,7 +237,8 @@ jobs:
   # Per-release groups still keep two merges from racing on one release.
   sync-secrets:
     name: Sync secrets
-    if: github.event_name == 'push'
+    needs: changes
+    if: github.event_name == 'push' && needs.changes.outputs.sync_secrets == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -141,7 +253,8 @@ jobs:
 
   deploy-hub-api:
     name: Deploy hub-api + mcp-cube
-    needs: [build-hub-api, sync-secrets]
+    needs: [changes, build-hub-api, sync-secrets]
+    if: github.event_name == 'push' && needs.changes.outputs.deploy_hub_api == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-hub-api
@@ -161,7 +274,8 @@ jobs:
 
   deploy-pipeline:
     name: Deploy dagster
-    needs: [build-pipeline, sync-secrets]
+    needs: [changes, build-pipeline, sync-secrets]
+    if: github.event_name == 'push' && needs.changes.outputs.deploy_dagster == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-dagster
@@ -183,7 +297,8 @@ jobs:
 
   deploy-cube:
     name: Deploy cube
-    needs: [build-cube, sync-secrets]
+    needs: [changes, build-cube, sync-secrets]
+    if: github.event_name == 'push' && needs.changes.outputs.deploy_cube == 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-cube

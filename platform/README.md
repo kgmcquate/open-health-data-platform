@@ -38,7 +38,8 @@ make hub-api                             # deployed on its own for now
 
 `dagster` and `hub-api` deploy `ghcr.io/kgmcquate/ohdp-{pipeline,hub-api}` at
 the `sha-<12>` tag of the current commit (`TAG` defaults to `git rev-parse
-HEAD`). `build-images.yml` pushes that tag on every merge to `main`. Override
+HEAD`). `build-images.yml` pushes that tag for every image on every merge to `main` —
+rebuilt if its inputs changed, otherwise re-tagged from the last build. Override
 with `make dagster TAG=sha-…` to roll back.
 
 ## Non-negotiables

@@ -1,5 +1,5 @@
 name: Build and push image
-description: Build one Docker image from the repo root, push it to GHCR under sha-<12> + latest tags, and record a step summary.
+description: Build one Docker image from the repo root, push it to GHCR under sha-<12> + latest tags (or re-tag an unchanged earlier build as sha-<12>), and record a step summary.
 
 inputs:
   name:
@@ -14,6 +14,15 @@ inputs:
     default: "true"
   build_args:
     description: Optional space/newline-separated KEY=VALUE build args to pass to Docker build.
+    required: false
+    default: ""
+  reuse_tag:
+    description: >-
+      Tag of an earlier build whose inputs haven't changed since (e.g. sha-<12>
+      of the last successfully built commit). If set and that image exists, the
+      build is skipped and this commit's sha-<12> tag is pointed at it instead,
+      so every commit on main still has a tag for every image. Falls back to a
+      normal build if the image is missing or push is off.
     required: false
     default: ""
 
@@ -54,7 +63,27 @@ runs:
         username: ${{ github.actor }}
         password: ${{ github.token }}
 
+    # A manifest-only copy inside GHCR — seconds, no layers pulled. `latest` is
+    # deliberately left alone: it already points at the newest real build.
+    - name: Reuse unchanged image
+      id: reuse
+      if: inputs.reuse_tag != '' && inputs.push == 'true'
+      shell: bash
+      env:
+        SRC: ${{ steps.meta.outputs.image }}:${{ inputs.reuse_tag }}
+        DST: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+      run: |
+        set -euo pipefail
+        if docker buildx imagetools inspect "${SRC}" >/dev/null 2>&1; then
+          docker buildx imagetools create --tag "${DST}" "${SRC}"
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+          echo "Unchanged — tagged ${SRC} as ${DST}"
+        else
+          echo "::warning::${SRC} not found in the registry — building instead"
+        fi
+
     - name: Build and push
+      if: steps.reuse.outputs.reused != 'true'
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -77,4 +106,8 @@ runs:
           echo "    ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}"
           echo ""
           echo "pushed: ${{ inputs.push }}"
+          if [ "${{ steps.reuse.outputs.reused }}" = "true" ]; then
+            echo ""
+            echo "unchanged — re-tagged from \`${{ inputs.reuse_tag }}\`, not rebuilt"
+          fi
         } >> "$GITHUB_STEP_SUMMARY"

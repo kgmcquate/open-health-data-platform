@@ -4,12 +4,14 @@ name: Deploy platform
 # the useful target under `act`. Tick `deploy` to actually apply.
 #
 # This is the manual/full-fleet path. Ordinary rollouts happen automatically
-# from build-images.yml, which builds every image on a merge to main and
-# deploys each one's chart as soon as it's built. Both paths sync secrets
+# from build-images.yml, which on a merge to main rebuilds only the images
+# whose inputs changed and deploys only the charts affected. Both paths sync secrets
 # through the same action (.github/actions/sync-secrets). image_tag defaults
 # to the current commit's sha-<12>; pass one explicitly (e.g. from
 # `gh run list -w build-images.yml`) to roll back to an earlier build, or if
-# this commit's build-images run failed.
+# this commit's build-images run failed. build-images.yml re-tags unchanged
+# images rather than skipping them, so every commit's sha-<12> exists for all
+# four charts' images.
 
 on:
   workflow_dispatch:
@@ -19,7 +21,7 @@ on:
         type: boolean
         default: true
       image_tag:
-        description: Override the dagster + hub-api + mcp-cube + cube image tag (blank = the sha-<12> of the deployed commit — only valid if build-images.yml actually built that image for this commit).
+        description: Override the dagster + hub-api + mcp-cube + cube image tag (blank = the sha-<12> of the deployed commit — build-images.yml builds or re-tags every image for each commit on main, so this exists once its run succeeded).
         type: string
         default: ""
       deploy_all:

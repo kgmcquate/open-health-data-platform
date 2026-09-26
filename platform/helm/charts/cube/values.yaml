@@ -126,6 +126,15 @@ env:
   # reads it from `motherduck_token` in secretEnv below instead.
   CUBEJS_DB_TYPE: duckdb
   CUBEJS_DB_DUCKDB_DATABASE_PATH: "md:cache"
+  # The DuckDB driver runs every query() on ONE shared connection
+  # (DuckDBDriver.query -> defaultConnection.all), and node-duckdb executes
+  # each call on the libuv threadpool — so with Cube's default queue
+  # concurrency, refresh-key and pre-aggregation queries run on that
+  # connection at the same time. Against the attached Iceberg catalog that
+  # corrupts binding: "Referenced column "ingest_ts" not found ... Candidate
+  # bindings: "__"" and "INTERNAL Error: Attempted to dereference unique_ptr
+  # that is NULL", for queries that succeed when run alone. One at a time.
+  CUBEJS_CONCURRENCY: "1"
   # DuckDB downloads the motherduck extension into $HOME/.duckdb on first
   # connect. The base image leaves HOME=/, which uid 10001 can't write, so
   # the driver's init fails ("Failed to create directory //.duckdb") and
