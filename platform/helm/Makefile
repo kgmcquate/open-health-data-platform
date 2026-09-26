@@ -26,7 +26,7 @@ OAUTH2_PROXY_VERSION    ?= 10.7.0
 # cubejs/cubestore — same pin discipline as the upstream charts above, just
 # via image.tag instead of --version). Same v1.7 train as the cubejs/cube
 # base image pinned in semantic/cube/Dockerfile.
-CUBESTORE_VERSION       ?= v1.7.39
+CUBESTORE_VERSION       ?= v1.7.46
 
 .PHONY: help repos lint template base cluster-issuer traefik cert-manager infra \
         install opensearch openmetadata dagster proxy oauth2-proxy dagster-monitoring \

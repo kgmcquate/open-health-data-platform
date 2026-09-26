@@ -134,6 +134,12 @@ env:
   # corrupts binding: "Referenced column "ingest_ts" not found ... Candidate
   # bindings: "__"" and "INTERNAL Error: Attempted to dereference unique_ptr
   # that is NULL", for queries that succeed when run alone. One at a time.
+  #
+  # Not sufficient on its own: this is applied per queue, and the query and
+  # pre-aggregation queues each get their own 1, so they still overlapped on
+  # the shared connection. The actual guarantee is the mutex around
+  # DuckDBDriver.query() in semantic/cube/cube.js; this just keeps the queues
+  # from stacking work up behind it.
   CUBEJS_CONCURRENCY: "1"
   # DuckDB downloads the motherduck extension into $HOME/.duckdb on first
   # connect. The base image leaves HOME=/, which uid 10001 can't write, so

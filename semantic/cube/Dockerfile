@@ -30,7 +30,7 @@ RUN dbt deps && dbt parse
 # --- Stage 2: Cube Core --------------------------------------------------
 # Pin an immutable tag here too — see platform/helm/charts/cube's fail-fast
 # check on image.tag for the same rule applied to the image this produces.
-FROM cubejs/cube:v1.7.37
+FROM cubejs/cube:v1.7.46
 
 COPY --from=dbt-manifest /dbt/target/manifest.json /cube/conf/dbt/manifest.json
 COPY semantic/cube/cube.js /cube/conf/cube.js

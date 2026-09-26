@@ -12,10 +12,10 @@ replicaCount: 1
 
 image:
   repository: cubejs/cubestore
-  # Same v1.7 train as the pinned cubejs/cube:v1.7.37 base image
+  # Same v1.7 train as the pinned cubejs/cube:v1.7.46 base image
   # (semantic/cube/Dockerfile) — never "latest" (see _helpers.tpl's
   # cubestore.image fail-fast).
-  tag: "v1.7.39"
+  tag: "v1.7.46"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

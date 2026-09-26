@@ -14,6 +14,7 @@ Endpoints used (all under `{cube_api_url}/cubejs-api/v1`):
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -32,6 +33,19 @@ _CONTINUE_WAIT = "Continue wait"
 _MAX_CONTINUE_WAITS = 30
 
 TOKEN_TTL_SECONDS = 300
+
+# `/meta` only changes when the Cube model is redeployed, but every
+# `list_metrics`/`describe_metric` call used to re-fetch and re-parse all of it —
+# and the MCP server builds a fresh client per call, so nothing was reused.
+# Cached per Cube URL for this long; a redeployed model shows up within it.
+META_TTL_SECONDS = 300
+_meta_cache: dict[str, tuple[float, tuple[CubeInfo, ...]]] = {}
+_meta_locks: dict[str, asyncio.Lock] = {}
+
+
+def clear_meta_cache() -> None:
+    """Forget every cached `/meta`. For tests, and anything that knows the model changed."""
+    _meta_cache.clear()
 
 
 class CubeError(RuntimeError):
@@ -134,8 +148,19 @@ class CubeClient:
         in here, the agent cannot ask for it, and the honest answer is that we
         do not have the data.
         """
-        payload = await self._request("GET", "/meta")
-        return tuple(_parse_cube(c) for c in payload.get("cubes", []))
+        cached = _meta_cache.get(self._base)
+        if cached is not None and time.monotonic() - cached[0] < META_TTL_SECONDS:
+            return cached[1]
+        # One fetch per URL at a time: concurrent calls on a cold cache wait for
+        # the first instead of all hitting Cube.
+        async with _meta_locks.setdefault(self._base, asyncio.Lock()):
+            cached = _meta_cache.get(self._base)
+            if cached is not None and time.monotonic() - cached[0] < META_TTL_SECONDS:
+                return cached[1]
+            payload = await self._request("GET", "/meta")
+            cubes = tuple(_parse_cube(c) for c in payload.get("cubes", []))
+            _meta_cache[self._base] = (time.monotonic(), cubes)
+            return cubes
 
     async def describe_metric(self, cube_name: str) -> CubeInfo:
         """One cube in detail. Call after `list_metrics` narrows the field."""

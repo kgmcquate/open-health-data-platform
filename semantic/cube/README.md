@@ -86,7 +86,7 @@ docker run -p 4000:4000 \
   -e CUBEJS_DB_TYPE=duckdb \
   -e CUBEJS_DB_DUCKDB_DATABASE_PATH=md:cache \
   -e motherduck_token=$MOTHERDUCK_TOKEN \
-  cubejs/cube:v1.7.37
+  cubejs/cube:v1.7.46
 ```
 
 `OHDP_CUBE_API_SECRET` must be exported in your shell before either form —

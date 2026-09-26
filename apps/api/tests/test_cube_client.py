@@ -59,6 +59,20 @@ async def test_list_metrics_parses_meta() -> None:
 
 
 @pytest.mark.asyncio
+async def test_meta_is_fetched_once_across_clients() -> None:
+    """The MCP server builds a client per call, so the cache must outlive one."""
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=META)
+
+    await _client(handler).list_metrics()
+    await _client(handler).describe_metric("air_quality")
+    assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
 async def test_describe_metric_rejects_an_unknown_cube() -> None:
     client = _client(lambda r: httpx.Response(200, json=META))
     with pytest.raises(CubeError, match="No cube named"):
