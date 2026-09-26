@@ -1,4 +1,4 @@
-const LAST_UPDATED = "September 23, 2026";
+const LAST_UPDATED = "September 26, 2026";
 
 export default function Privacy() {
   return (
@@ -8,7 +8,9 @@ export default function Privacy() {
 
       <p className="opacity-80 mb-6">
         Open Health Data Platform ("OHDP", "we") publishes population-level
-        public health data and an assistant for exploring it. This page
+        public health data and an assistant for exploring it. OHDP is operated
+        by Kevin McQuate, an individual based in Maryland, United States, who
+        is responsible for the personal data described here. This page
         describes the personal data the platform itself collects when you
         create an account, chat, or file feedback — not the health datasets
         shown in dashboards, which are aggregate, publicly sourced statistics
@@ -37,6 +39,19 @@ export default function Privacy() {
           diagnose problems.
         </li>
         <li>
+          <span className="font-semibold">Subscription and payment info.</span>{" "}
+          If you subscribe to Plus, payment is handled by Stripe. You enter
+          your card details directly into Stripe's checkout form; they go to
+          Stripe, not to us, and we never see or store your full card number.
+          Stripe tells us your Stripe customer and subscription IDs and the
+          subscription's status, plan, and renewal or cancellation dates,
+          which we store alongside your account email to grant Plus limits.
+          Stripe also collects your name, email, billing country or postal
+          code, and card details to process payments, send receipts, and
+          prevent fraud, and it sets its own cookies on the billing page for
+          fraud prevention.
+        </li>
+        <li>
           <span className="font-semibold">Issue reports.</span> If you submit
           a report through the Support page, or ask the assistant to file
           feedback or a bug report, that content is filed as a public issue in
@@ -55,6 +70,10 @@ export default function Privacy() {
       <ul className="list-disc pl-6 space-y-2 opacity-80">
         <li>To authenticate you and keep you signed in.</li>
         <li>To enforce per-tier daily usage quotas.</li>
+        <li>
+          To process your Plus subscription payments, grant Plus limits, and
+          handle cancellations, refunds, and billing questions.
+        </li>
         <li>To answer the questions you ask the assistant.</li>
         <li>
           To file issues or feedback you explicitly ask us to submit on your
@@ -76,6 +95,21 @@ export default function Privacy() {
           , to generate answers to your chat messages.
         </li>
         <li>
+          <span className="font-semibold">Stripe</span>, our payment
+          processor, if you subscribe to Plus — to take subscription
+          payments, manage renewals and cancellations, and prevent fraud.
+          Stripe handles that data under its own{" "}
+          <a
+            className="link"
+            href="https://stripe.com/privacy"
+            target="_blank"
+            rel="noreferrer"
+          >
+            privacy policy
+          </a>
+          .
+        </li>
+        <li>
           <span className="font-semibold">GitHub</span>, only for the specific
           content of an issue you ask the assistant to file — it becomes
           public in our repository.
@@ -87,8 +121,14 @@ export default function Privacy() {
 
       <h2 className="text-2xl font-bold mt-8 mb-2">How long we keep it</h2>
       <p className="opacity-80">
-        Your account record and chat logs are kept until you ask us to delete
-        them. The session cookie itself expires automatically after 14 days.
+        Chat messages and conversation history are deleted automatically 90
+        days after they were created (a conversation goes once its most
+        recent message is 90 days old). Your account record is kept until you
+        ask us to delete it. Subscription and payment records are kept as
+        long as needed to meet tax and accounting obligations, even after you
+        cancel or delete your account — Stripe keeps its own records on the
+        same basis. The session cookie itself expires automatically after 14
+        days.
       </p>
 
       <h2 className="text-2xl font-bold mt-8 mb-2">Your choices</h2>

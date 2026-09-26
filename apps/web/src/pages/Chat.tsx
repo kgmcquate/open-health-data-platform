@@ -585,9 +585,13 @@ function ModelPicker({ models, model, onModelChange }: ModelPickerProps) {
       <button
         tabIndex={0}
         aria-label="Choose model"
+        title={current ? `${current.id} · ${current.provider}` : undefined}
         className="flex h-8 items-center gap-1 rounded-field px-2 text-sm whitespace-nowrap text-base-content/70 transition hover:bg-base-300"
       >
         <span>{current?.label ?? "Model"}</span>
+        {current?.provider && (
+          <span className="hidden text-xs text-base-content/45 sm:inline">· {current.provider}</span>
+        )}
         <ChevronDownIcon className="size-3.5 opacity-60" />
       </button>
       <ul className="dropdown-content menu bg-base-100 rounded-box z-50 max-h-80 w-72 flex-nowrap overflow-y-auto p-1 shadow border border-base-300 text-sm">
@@ -600,7 +604,13 @@ function ModelPicker({ models, model, onModelChange }: ModelPickerProps) {
               <span className="flex size-4 items-center justify-center text-primary">
                 {m.id === model ? <CheckIcon className="size-3.5" /> : null}
               </span>
-              <span className="flex-1 truncate text-left">{m.label}</span>
+              <span className="flex min-w-0 flex-1 flex-col text-left">
+                <span className="truncate">{m.label}</span>
+                <span className="truncate text-xs text-base-content/50">
+                  {m.id}
+                  {m.provider && ` · ${m.provider}`}
+                </span>
+              </span>
             </button>
           </li>
         ))}
@@ -662,6 +672,9 @@ function Composer({
           </AuiIf>
         </div>
       </div>
+      <p className="text-center text-[11px] text-base-content/45">
+        Don&apos;t enter personal or health information about yourself or anyone else.
+      </p>
     </ComposerPrimitive.Root>
   );
 }

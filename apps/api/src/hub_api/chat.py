@@ -135,7 +135,12 @@ def models(agents: Annotated[AgentRegistry, Depends(get_agents)]) -> list[dict[s
     thread, or a direct API call) but are not listed in the picker.
     """
     return [
-        {"id": model_id, "label": agents[model_id].label, "default": False}
+        {
+            "id": model_id,
+            "label": agents[model_id].label,
+            "provider": agents[model_id].provider,
+            "default": False,
+        }
         for model_id in sorted(agents)
         if agents[model_id].configured
     ]

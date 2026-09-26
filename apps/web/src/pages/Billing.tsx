@@ -2,6 +2,23 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { createBillingPortalSession, createCheckoutSession } from "../lib/api";
 
+// Auto-renewal disclosure (California's ARL and similar state laws): the
+// price, that it renews until cancelled, and how to cancel, shown right at
+// the point of purchase — next to the Subscribe button and again above the
+// embedded Checkout form — with a link to the full terms.
+function RenewalNotice() {
+  return (
+    <p className="text-sm opacity-70">
+      $5/month, billed monthly. Renews automatically until you cancel. Cancel anytime from this
+      page; you keep Plus until the end of the period you&apos;ve paid for. See the{" "}
+      <a className="link" href="/terms#plus-subscription">
+        terms
+      </a>{" "}
+      for the cancellation and refund policy.
+    </p>
+  );
+}
+
 const FEATURES = [
   "50 questions a day (free: 10)",
   "2 million tokens a day (free: 200k)",
@@ -240,9 +257,12 @@ export default function Billing() {
               {error && <p className="text-error text-sm">{error}</p>}
             </div>
           ) : (
-            <button className="btn btn-primary" onClick={openCheckout}>
-              Subscribe to Plus
-            </button>
+            <div className="flex flex-col gap-2">
+              <button className="btn btn-primary" onClick={openCheckout}>
+                Subscribe to Plus
+              </button>
+              <RenewalNotice />
+            </div>
           )}
         </div>
       </section>
@@ -265,6 +285,7 @@ export default function Billing() {
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <h3 className="text-lg font-bold">Subscribe to Plus</h3>
+                {!submitted && <RenewalNotice />}
               </div>
               <form method="dialog">
                 <button

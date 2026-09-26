@@ -16,6 +16,9 @@ export default function Footer() {
       <nav>
         <h6 className="footer-title">Support</h6>
         <a className="link link-hover" href="/support">Report a bug, request a feature</a>
+        <a className="link link-hover" href="mailto:support@open-health-data-platform.org">
+          support@open-health-data-platform.org
+        </a>
       </nav>
       <nav>
         <h6 className="footer-title">Built in the open</h6>

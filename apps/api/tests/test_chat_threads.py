@@ -51,7 +51,9 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         "openrouter/llama-3": ModelConfig(
             agent=_minimal_agent(), label="Llama 3", configured=False
         ),
-        "openai/gpt-4o-mini": ModelConfig(agent=_minimal_agent(), label="GPT 4", configured=True),
+        "openai/gpt-4o-mini": ModelConfig(
+            agent=_minimal_agent(), label="GPT 4", provider="OpenAI", configured=True
+        ),
         "openai/gpt-4o": ModelConfig(agent=_minimal_agent(), label="GPT-4o", configured=False),
     }
     try:
@@ -154,7 +156,12 @@ def test_models_lists_only_configured_models_from_models_yaml(client: TestClient
     assert response.status_code == 200
     body = response.json()
     assert [m["id"] for m in body] == ["openai/gpt-4o-mini"]
-    assert body[0] == {"id": "openai/gpt-4o-mini", "label": "GPT 4", "default": False}
+    assert body[0] == {
+        "id": "openai/gpt-4o-mini",
+        "label": "GPT 4",
+        "provider": "OpenAI",
+        "default": False,
+    }
 
 
 def test_models_returns_empty_when_no_models_are_configured(client: TestClient) -> None:

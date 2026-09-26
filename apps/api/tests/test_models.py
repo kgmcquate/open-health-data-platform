@@ -74,3 +74,26 @@ def test_unknown_tool_id_is_dropped_not_fatal() -> None:
 
 def test_load_models_config_missing_file_is_empty() -> None:
     assert hub_models.load_models_config(Path("/does/not/exist.yaml")).models == []
+
+
+def test_default_provider_names_vendor_and_router() -> None:
+    assert (
+        hub_models.default_provider("z-ai/glm-5.3-flash", "https://openrouter.ai/api/v1")
+        == "Z.ai via OpenRouter"
+    )
+    # An unlisted vendor prefix is shown as-is, not dropped.
+    assert (
+        hub_models.default_provider("acme/model-1", "https://openrouter.ai/api/v1")
+        == "acme via OpenRouter"
+    )
+    # No vendor prefix and no known router: fall back to the backend host.
+    assert hub_models.default_provider("llama3", "http://localhost:11434/v1") == "localhost"
+
+
+def test_explicit_provider_overrides_the_default() -> None:
+    agents = build_agents(
+        {"z-ai/glm-5.3-flash": ("https://openrouter.ai/api/v1", "k")},
+        {},
+        ModelsConfig(models=[ModelOverride(id="z-ai/glm-5.3-flash", provider="Zhipu AI")]),
+    )
+    assert agents["z-ai/glm-5.3-flash"].provider == "Zhipu AI"

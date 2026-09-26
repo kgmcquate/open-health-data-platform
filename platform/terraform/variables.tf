@@ -53,6 +53,18 @@ variable "dns_base" {
   default     = "open-health-data-platform.org"
 }
 
+variable "email_forward_to" {
+  description = "Inbox that Cloudflare Email Routing forwards the published addresses to (email.tf). Must be verified once via the email Cloudflare sends it."
+  type        = string
+  default     = "kgmcquate@gmail.com"
+}
+
+variable "email_routed_local_parts" {
+  description = "Local parts under dns_base forwarded to email_forward_to, e.g. privacy -> privacy@open-health-data-platform.org."
+  type        = list(string)
+  default     = ["privacy", "support"]
+}
+
 variable "dns_hostnames" {
   description = "Service hostnames (left-most label) fronted by the Traefik ingress."
   type        = list(string)

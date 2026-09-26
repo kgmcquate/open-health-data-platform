@@ -1,4 +1,4 @@
-const LAST_UPDATED = "September 25, 2026";
+const LAST_UPDATED = "September 26, 2026";
 
 export default function Terms() {
   return (
@@ -8,7 +8,9 @@ export default function Terms() {
 
       <p className="opacity-80 mb-6">
         These terms cover your use of Open Health Data Platform ("OHDP",
-        "we"), including its dashboards, topics, search, and assistant. By
+        "we"), including its dashboards, topics, search, and assistant. OHDP
+        is operated by Kevin McQuate, an individual based in Maryland, United
+        States. By
         using the site you agree to them. How we handle personal data is
         described separately in our{" "}
         <a className="link" href="/privacy">
@@ -69,31 +71,87 @@ export default function Terms() {
         We may limit, suspend, or close accounts that break these rules.
       </p>
 
-      <h2 className="text-2xl font-bold mt-8 mb-2">Plus subscription</h2>
+      <h2 id="plus-subscription" className="text-2xl font-bold mt-8 mb-2">
+        Plus subscription
+      </h2>
       <ul className="list-disc pl-6 space-y-2 opacity-80">
         <li>
-          Plus is a paid monthly subscription that raises your usage limits,
-          at the price shown on the{" "}
+          Plus is a paid subscription that raises your usage limits, billed
+          monthly at the price shown on the{" "}
           <a className="link" href="/billing">
             billing page
           </a>{" "}
-          when you subscribe. Payments are processed by Stripe; we never see
-          or store your full card number.
+          when you subscribe (currently $5/month, plus any applicable tax).
+          Payments are processed by Stripe; we never see or store your full
+          card number.
         </li>
         <li>
-          Your subscription renews automatically each month until you cancel.
-          You can cancel at any time from the billing page. Cancellation
-          takes effect at the end of the current billing period, and you keep
-          Plus limits until then.
+          <span className="font-semibold">
+            Your subscription renews automatically
+          </span>{" "}
+          each month, and your payment method is charged at the start of each
+          billing period, until you cancel.
         </li>
         <li>
-          Payments are non-refundable, except where the law requires
-          otherwise. If you were charged in error, contact us and we'll sort
-          it out.
+          If the price changes, we'll email you at least 30 days before the
+          new price applies to your subscription, and you can cancel before
+          then.
+        </li>
+      </ul>
+
+      <h2 id="cancellation" className="text-2xl font-bold mt-8 mb-2">
+        Cancellation
+      </h2>
+      <ul className="list-disc pl-6 space-y-2 opacity-80">
+        <li>
+          You can cancel at any time, online, by choosing "Manage
+          subscription" on the{" "}
+          <a className="link" href="/billing">
+            billing page
+          </a>
+          . You don't need to contact us, and there's no cancellation fee. If
+          you'd rather, email{" "}
+          <a className="link" href="mailto:support@open-health-data-platform.org">
+            support@open-health-data-platform.org
+          </a>{" "}
+          and we'll cancel it for you.
         </li>
         <li>
-          If the price changes, we'll tell you before it applies to your
-          subscription, and you can cancel before then.
+          Cancellation stops the next renewal. You keep Plus limits until the
+          end of the billing period you've already paid for, then your account
+          returns to the free tier. Your account and saved content aren't
+          deleted when you cancel.
+        </li>
+        <li>
+          We may cancel a subscription if the account is suspended for
+          breaking these terms, or if we discontinue Plus. If we discontinue
+          Plus for reasons other than a breach of these terms, we'll refund
+          the unused portion of the current billing period.
+        </li>
+      </ul>
+
+      <h2 id="refunds" className="text-2xl font-bold mt-8 mb-2">
+        Refunds
+      </h2>
+      <ul className="list-disc pl-6 space-y-2 opacity-80">
+        <li>
+          Payments are generally non-refundable, and we don't give prorated
+          refunds for a partial month when you cancel mid-period.
+        </li>
+        <li>
+          We will refund a charge in full if you were charged in error — for
+          example, a duplicate charge, a charge after you'd cancelled, or a
+          renewal you didn't authorize — or if Plus was substantially
+          unavailable for most of a billing period. Email{" "}
+          <a className="link" href="mailto:support@open-health-data-platform.org">
+            support@open-health-data-platform.org
+          </a>{" "}
+          within 30 days of the charge. Approved refunds go back to the
+          original payment method, usually within 5–10 business days.
+        </li>
+        <li>
+          Nothing in this section limits any refund or withdrawal right the
+          law where you live gives you and doesn't allow to be waived.
         </li>
       </ul>
 
@@ -136,6 +194,19 @@ export default function Terms() {
         claim.
       </p>
 
+      <h2 className="text-2xl font-bold mt-8 mb-2">Governing law and disputes</h2>
+      <p className="opacity-80">
+        These terms are governed by the laws of the State of Maryland, United
+        States, without regard to its conflict-of-laws rules. Any dispute
+        arising from these terms or your use of OHDP will be resolved in the
+        state or federal courts located in Maryland, and you and we consent to
+        their jurisdiction. If you're a consumer, this doesn't take away any
+        protection the law of the place you live gives you that can't be
+        waived by contract, including the right to bring a claim in your local
+        courts where that law allows it. Before filing a claim, please email
+        us first — most problems can be sorted out that way.
+      </p>
+
       <h2 className="text-2xl font-bold mt-8 mb-2">Changes to these terms</h2>
       <p className="opacity-80">
         If these terms change, we'll update the date at the top of this page.
@@ -146,7 +217,12 @@ export default function Terms() {
 
       <h2 className="text-2xl font-bold mt-8 mb-2">Contact</h2>
       <p className="opacity-80">
-        Questions about these terms can be sent to{" "}
+        Questions about these terms, billing, or your subscription can be
+        sent to{" "}
+        <a className="link" href="mailto:support@open-health-data-platform.org">
+          support@open-health-data-platform.org
+        </a>
+        . For questions about your personal data, use{" "}
         <a className="link" href="mailto:privacy@open-health-data-platform.org">
           privacy@open-health-data-platform.org
         </a>

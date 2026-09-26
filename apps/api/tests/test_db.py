@@ -368,3 +368,28 @@ def test_ensure_schema_adds_cancel_at_to_a_pre_existing_subscriptions_table(
         )
         row = connection.execute(billing.subscriptions.select()).one()
     assert row.cancel_at is not None
+
+
+def test_purge_expired_drops_only_rows_past_the_retention_window(engine: Engine) -> None:
+    old_thread = db.create_thread(engine, user_email=USER, title="old")
+    old_turn = _turn(engine, thread_id=old_thread, question="old q", answer="old a")
+    new_thread = db.create_thread(engine, user_email=USER, title="new")
+    _turn(engine, thread_id=new_thread, question="new q", answer="new a")
+    db.record_filed_issue(engine, user_email=USER, github_number=1)
+
+    long_ago = datetime.now(UTC) - timedelta(days=91)
+    with engine.begin() as connection:
+        connection.execute(
+            db.chat_turns.update().where(db.chat_turns.c.id == old_turn).values(created_at=long_ago)
+        )
+        connection.execute(
+            db.threads.update().where(db.threads.c.id == old_thread).values(updated_at=long_ago)
+        )
+        connection.execute(db.filed_issues.update().values(created_at=long_ago))
+
+    db.purge_expired(engine, retention_days=90)
+
+    assert [t["id"] for t in db.list_threads(engine, user_email=USER)] == [new_thread]
+    assert db.thread_turns(engine, thread_id=old_thread, user_email=USER) == []
+    assert len(db.thread_turns(engine, thread_id=new_thread, user_email=USER)) == 1
+    assert db.issues_today(engine, USER) == 0

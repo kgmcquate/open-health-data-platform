@@ -20,6 +20,7 @@ image and one Deployment.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -28,6 +29,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.engine import Engine
 from starlette.middleware.sessions import SessionMiddleware
 
 from hub_api import db
@@ -71,6 +73,26 @@ class _HealthzAccessFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_HealthzAccessFilter())
 
 
+# How often the chat-log retention purge runs. Far shorter than the retention
+# window itself, so a row outlives it by hours at most; the purge is a few
+# indexed DELETEs, so running it this often costs nothing.
+_PURGE_INTERVAL_SECONDS = 6 * 60 * 60
+
+
+async def _purge_expired_forever(engine: Engine) -> None:
+    """`db.purge_expired` at startup and every `_PURGE_INTERVAL_SECONDS` after.
+    A failed run is logged and retried next interval, never allowed to end
+    the loop — or, since this is a bare task, to take anything else down."""
+    while True:
+        try:
+            await asyncio.to_thread(
+                db.purge_expired, engine, retention_days=settings.chat_retention_days
+            )
+        except Exception as exc:  # noqa: BLE001 — see docstring
+            log.error("chat_retention_purge_failed", error=str(exc))
+        await asyncio.sleep(_PURGE_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Open the pool and create the chat-log table.
@@ -103,6 +125,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             log.error("database_unavailable", error=str(exc))
     else:
         log.warning("database_not_configured")
+    purge_task = (
+        asyncio.create_task(_purge_expired_forever(app.state.engine))
+        if app.state.engine is not None
+        else None
+    )
 
     openai_models = await discover_openai_models() if settings.openai_backends else {}
     tool_connections = await load_tool_connections()
@@ -121,6 +148,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     )
     app.state.agents = build_agents(openai_models, tool_connections)
     yield
+    if purge_task is not None:
+        purge_task.cancel()
 
 
 app = FastAPI(title="Open Health Data Platform — Hub API", version="0.0.0", lifespan=lifespan)

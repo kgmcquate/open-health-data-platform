@@ -25,7 +25,7 @@ stops being honest and needs Alembic instead).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -175,6 +175,33 @@ def ensure_schema(engine: Engine) -> None:
     metadata.create_all(engine)
     _add_missing_columns(engine)
     log.info("chat_schema_ready")
+
+
+def purge_expired(engine: Engine, *, retention_days: int) -> None:
+    """Delete chat turns, threads, and filed-issue rows older than
+    `retention_days` — the retention window the privacy policy states.
+
+    Postgres has no built-in row TTL (and the stock image has no pg_cron), so
+    this runs from hub-api itself (`hub_api.main`'s lifespan, on a timer).
+    Plain DELETEs keyed on indexed timestamps, so running it twice — or from
+    two pods during a rolling deploy — is harmless.
+
+    A thread goes once its `updated_at` is past the cutoff: every turn bumps
+    it, so no turn in such a thread is newer than the cutoff either, and the
+    turn delete above it has already removed them all.
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    with engine.begin() as connection:
+        turns = connection.execute(delete(chat_turns).where(chat_turns.c.created_at < cutoff))
+        stale_threads = connection.execute(delete(threads).where(threads.c.updated_at < cutoff))
+        issues = connection.execute(delete(filed_issues).where(filed_issues.c.created_at < cutoff))
+    log.info(
+        "chat_retention_purged",
+        retention_days=retention_days,
+        turns=turns.rowcount,
+        threads=stale_threads.rowcount,
+        filed_issues=issues.rowcount,
+    )
 
 
 def _start_of_today_la() -> datetime:

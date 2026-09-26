@@ -191,6 +191,10 @@ class Settings(BaseSettings):
     # ceiling's shared "chatbot" bucket.
     free_daily_issues: int = 1
     plus_daily_issues: int = 3
+    # How long chat turns, threads, and filed-issue rows are kept before
+    # hub_api.db.purge_expired deletes them — the window the privacy policy
+    # promises (apps/web/src/pages/Privacy.tsx), so change both together.
+    chat_retention_days: int = 90
 
     # Issue reporting (hub_api.issues). The token is a fine-grained PAT with
     # issues:write on `github_issues_repo` and nothing else — it is handed to a

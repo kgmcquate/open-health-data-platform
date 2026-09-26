@@ -81,9 +81,20 @@ export default function Support() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
       <h1 className="text-4xl font-bold mb-2">Support</h1>
-      <p className="opacity-70 mb-8">
+      <p className="opacity-70 mb-3">
         Report a bug, flag a data quality issue, or request a feature. Reports
         are filed publicly, so please don't include credentials or personal health information.
+      </p>
+      <p className="opacity-70 mb-8 text-sm">
+        For anything private — billing, your subscription, or your account — email{" "}
+        <a className="link" href="mailto:support@open-health-data-platform.org">
+          support@open-health-data-platform.org
+        </a>
+        . For requests about your personal data, email{" "}
+        <a className="link" href="mailto:privacy@open-health-data-platform.org">
+          privacy@open-health-data-platform.org
+        </a>
+        .
       </p>
 
       {user === null && (

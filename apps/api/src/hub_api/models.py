@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import openai
 import yaml
@@ -65,6 +66,10 @@ CONFIG_PATH = config_dir() / "models.yaml"
 class ModelConfig:
     agent: Agent[Deps, str]
     label: str
+    # Who serves this model, shown under its label in the picker — e.g.
+    # "Z.ai via OpenRouter". models.yaml's `provider:` if given, otherwise
+    # `default_provider`'s guess from the id and backend URL.
+    provider: str = ""
     system_prompt: str = SYSTEM_PROMPT
     # True only for an id explicitly listed in models.yaml. The chat page's
     # model picker (hub_api.chat.models) shows only these — auto-discovered
@@ -88,6 +93,9 @@ AgentRegistry = dict[str, ModelConfig]
 class ModelOverride(BaseModel):
     id: str
     label: str = ""
+    # Empty means `default_provider`'s guess — set it when that guess is wrong
+    # or too terse for the picker.
+    provider: str = ""
     # Empty means: reuse whatever (1) or (2) above already resolved for this
     # id — the override only customizes label/system_prompt/tools. Given,
     # this id is registered fresh, independent of auto-discovery.
@@ -108,6 +116,38 @@ class ModelOverride(BaseModel):
 
 class ModelsConfig(BaseModel):
     models: list[ModelOverride] = Field(default_factory=list)
+
+
+# Model-id prefixes (an OpenRouter-style "vendor/model" id) -> the vendor's
+# display name. An unlisted prefix is shown as-is rather than guessed at.
+_VENDOR_NAMES = {
+    "anthropic": "Anthropic",
+    "deepseek": "DeepSeek",
+    "google": "Google",
+    "meta-llama": "Meta",
+    "mistralai": "Mistral AI",
+    "moonshotai": "Moonshot AI",
+    "openai": "OpenAI",
+    "qwen": "Qwen",
+    "x-ai": "xAI",
+    "z-ai": "Z.ai",
+}
+
+# Backend hosts that route to other vendors' models -> their display name.
+_ROUTER_NAMES = {"openrouter.ai": "OpenRouter"}
+
+
+def default_provider(model_id: str, base_url: str) -> str:
+    """E.g. "Z.ai via OpenRouter": the vendor named by the id's prefix and the
+    router the backend URL points at, whichever of the two is known, or else
+    the backend's host."""
+    host = urlparse(base_url).hostname or ""
+    router = _ROUTER_NAMES.get(host.removeprefix("api."), "")
+    prefix = model_id.split("/", 1)[0] if "/" in model_id else ""
+    vendor = _VENDOR_NAMES.get(prefix, prefix)
+    if vendor and router:
+        return f"{vendor} via {router}"
+    return vendor or router or host
 
 
 def load_models_config(path: Path = CONFIG_PATH) -> ModelsConfig:
@@ -174,6 +214,7 @@ def build_agents(
         agents[model_id] = ModelConfig(
             agent=build_agent(model_id=model_id, base_url=base_url, api_key=api_key),
             label=model_id,
+            provider=default_provider(model_id, base_url),
         )
 
     for override in (overrides or load_models_config()).models:
@@ -212,6 +253,7 @@ def build_agents(
                 extra_toolsets=extra_toolsets,
             ),
             label=override.label or override.id,
+            provider=override.provider or default_provider(override.id, base_url),
             system_prompt=override.system_prompt or SYSTEM_PROMPT,
             configured=True,
             include_catalog_tools=include_catalog_tools,

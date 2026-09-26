@@ -268,6 +268,8 @@ export const fetchSearch = (q: string, limit?: number) =>
 export interface ChatModel {
   id: string;
   label: string;
+  /** Who serves it, e.g. "Z.ai via OpenRouter" (`hub_api.models.default_provider`). */
+  provider: string;
   default: boolean;
 }
 
