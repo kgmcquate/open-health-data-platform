@@ -52,11 +52,71 @@ function MarkdownText() {
   return <MarkdownTextPrimitive className="prose-chat" remarkPlugins={[remarkGfm]} />;
 }
 
+// Starter questions for an empty thread, grounded in the curated marts
+// (data/dbt/models/curated). Shown SUGGESTIONS_PER_PAGE at a time, starting
+// from a random offset and rotating every SUGGESTION_ROTATE_MS.
 const SUGGESTIONS = [
   "What data is available on diabetes?",
   "Can you chart flu vaccination rates across the US?",
   "Which chronic diseases are most prevalent in the US?",
+  "Which states have the highest overdose death rates?",
+  "Chart COVID-19 wastewater viral activity by region over time",
+  "Which pathogens are being detected in wastewater right now?",
+  "How full are hospitals with respiratory patients this season?",
+  "Compare RSV hospitalization rates by age group",
+  "What share of ED visits are for flu, COVID, and RSV?",
+  "How have mental health ED visits trended among young people?",
+  "Which counties have the highest obesity prevalence?",
+  "Which notifiable diseases are seeing the most cases this year?",
+  "How does air quality vary across states by month?",
+  "Which states spend the most per Medicare beneficiary?",
+  "What are the fastest-growing drugs by Medicare spending?",
+  "Show recent drug recalls and their reasons",
+  "How has childhood vaccination coverage changed over time?",
+  "Which states have the highest child maltreatment rates?",
 ];
+const SUGGESTIONS_PER_PAGE = 3;
+const SUGGESTION_ROTATE_MS = 8000;
+function RotatingSuggestions() {
+  // Offset into SUGGESTIONS; each rotation advances a full page and wraps, so
+  // every view shows SUGGESTIONS_PER_PAGE even when the count doesn't divide.
+  const [offset, setOffset] = useState(() => Math.floor(Math.random() * SUGGESTIONS.length));
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused) return;
+    const id = window.setInterval(() => setOffset((o) => (o + SUGGESTIONS_PER_PAGE) % SUGGESTIONS.length), SUGGESTION_ROTATE_MS);
+    return () => window.clearInterval(id);
+  }, [paused]);
+
+  const visible = Array.from(
+    { length: SUGGESTIONS_PER_PAGE },
+    (_, i) => SUGGESTIONS[(offset + i) % SUGGESTIONS.length],
+  );
+
+  return (
+    <div
+      key={offset}
+      className="suggestion-fade-in flex flex-wrap items-center justify-center gap-2"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
+      {visible.map((s) => (
+        <ThreadPrimitive.Suggestion
+          key={s}
+          prompt={s}
+          method="replace"
+          autoSend
+          className="btn btn-outline btn-sm normal-case"
+        >
+          {s}
+        </ThreadPrimitive.Suggestion>
+      ))}
+    </div>
+  );
+}
 
 const actionButtonClassName =
   "flex size-7 items-center justify-center rounded-field text-base-content/60 transition-colors hover:bg-base-300 hover:text-base-content";
@@ -713,19 +773,7 @@ function ChatThread({
                   />
                 </div>
               )}
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                {SUGGESTIONS.map((s) => (
-                  <ThreadPrimitive.Suggestion
-                    key={s}
-                    prompt={s}
-                    method="replace"
-                    autoSend
-                    className="btn btn-outline btn-sm normal-case"
-                  >
-                    {s}
-                  </ThreadPrimitive.Suggestion>
-                ))}
-              </div>
+              <RotatingSuggestions />
             </div>
           </div>
         </AuiIf>

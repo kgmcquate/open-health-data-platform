@@ -184,3 +184,22 @@
 .thinking-dots span:nth-child(3) {
   animation-delay: 0.4s;
 }
+
+@keyframes suggestion-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.suggestion-fade-in {
+  animation: suggestion-fade-in 0.4s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggestion-fade-in {
+    animation: none;
+  }
+}
