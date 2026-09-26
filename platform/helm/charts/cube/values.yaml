@@ -126,6 +126,11 @@ env:
   # reads it from `motherduck_token` in secretEnv below instead.
   CUBEJS_DB_TYPE: duckdb
   CUBEJS_DB_DUCKDB_DATABASE_PATH: "md:cache"
+  # DuckDB downloads the motherduck extension into $HOME/.duckdb on first
+  # connect. The base image leaves HOME=/, which uid 10001 can't write, so
+  # the driver's init fails ("Failed to create directory //.duckdb") and
+  # every later /livez and /readyz just reports "Database was already closed".
+  HOME: /tmp
 
 # Explicit secretKeyRef mappings, not envFrom: the Secret keys use this
 # project's OHDP_* naming convention, but Cube itself only recognizes its own
