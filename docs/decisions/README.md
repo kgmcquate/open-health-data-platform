@@ -34,3 +34,4 @@ Format: Context → Decision → Consequences. Keep them to a page.
 | [0026](0026-cms-rest-api-ingestion.md) | CMS ingestion over its own REST API, not Socrata; Iceberg landing side shared | Accepted |
 | [0027](0027-chat-agent-memory-write-back.md) | Chat agent writes OpenMetadata memories unreviewed | Accepted; amends [0016](0016-chat-agent-tool-surface.md) |
 | [0028](0028-agent-published-dashboards-ranked-by-votes.md) | The chat agent publishes dashboards; readers vote them down | Accepted; amends [0025](0025-dashboards-as-code-in-chat.md) |
+| [0029](0029-motherduck-serves-cube.md) | MotherDuck serves Cube; Snowflake stays the Iceberg catalog | Accepted; amends [0019](0019-iceberg-on-s3-duckdb-dbt.md)'s "Snowflake serves" |

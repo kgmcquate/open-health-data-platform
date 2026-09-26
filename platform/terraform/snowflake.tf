@@ -111,9 +111,9 @@ resource "tls_private_key" "pipeline" {
 }
 
 # ---------------------------------------------------------------------------
-# Compute for Cube's queries. XS, suspended after a minute, and
-# created suspended: idle costs nothing. dbt builds no longer run here — that
-# is DuckDB in the pipeline pod — so this is sized for serving only.
+# Compute for Cube's queries — formerly. Cube runs on MotherDuck since
+# ADR-0029, so nothing we deploy uses this warehouse; it's kept (suspended,
+# costing nothing) as the rollback target until that has proven out.
 # ---------------------------------------------------------------------------
 resource "snowflake_warehouse" "ohdp" {
   name                = var.snowflake_warehouse

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt types test dbt-parse dbt-build dagster-dev api-dev cube-dev \
+.PHONY: help setup lint fmt types test dbt-parse dbt-build dagster-dev api-dev cube-dev motherduck-bootstrap \
         act-list act-preflight act-build act-plan images web-setup web-dev web-build
 
 help: ## List targets
@@ -41,21 +41,19 @@ web-dev: ## Run the hub UI dev server (proxies /api and /auth to :8000)
 web-build: ## Type-check and build the hub UI into apps/web/dist
 	cd apps/web && npm run build
 
-cube-dev: dbt-parse ## Run Cube Core locally, wired to the dbt manifest + Snowflake
+cube-dev: dbt-parse ## Run Cube Core locally, wired to the dbt manifest + MotherDuck
 	cd semantic/cube && docker run -p 4000:4000 \
 	  -v "$$PWD:/cube/conf" \
 	  -v "$$PWD/../../data/dbt/target:/cube/conf/dbt:ro" \
 	  -e CUBEJS_DEV_MODE=true \
 	  -e CUBEJS_API_SECRET=$$OHDP_CUBE_API_SECRET \
-	  -e CUBEJS_DB_TYPE=snowflake \
-	  -e CUBEJS_DB_NAME=CURATED \
-	  -e CUBEJS_DB_SNOWFLAKE_ACCOUNT=$$OHDP_SNOWFLAKE_ACCOUNT \
-	  -e CUBEJS_DB_USER=$$OHDP_SNOWFLAKE_USER \
-	  -e CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY=$$OHDP_SNOWFLAKE_PRIVATE_KEY \
-	  -e CUBEJS_DB_SNOWFLAKE_ROLE=$$OHDP_SNOWFLAKE_ROLE \
-	  -e CUBEJS_DB_SNOWFLAKE_WAREHOUSE=$$OHDP_SNOWFLAKE_WAREHOUSE \
-	  -e CUBEJS_DB_SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT \
-	  cubejs/cube:latest
+	  -e CUBEJS_DB_TYPE=duckdb \
+	  -e CUBEJS_DB_DUCKDB_DATABASE_PATH=md:cache \
+	  -e motherduck_token=$$MOTHERDUCK_TOKEN \
+	  cubejs/cube:v1.7.37
+
+motherduck-bootstrap: ## Attach Horizon's CURATED Iceberg catalog to MotherDuck (ADR-0029)
+	uv run platform/scripts/motherduck_bootstrap.py
 
 # --- Deploy (see docs/deploying.md) ----------------------------------------
 

@@ -55,7 +55,7 @@ resources:
     cpu: "1"
     memory: 512Mi
 
-# /livez tests the actual Snowflake connection; /readyz is deployment state
+# /livez tests the actual MotherDuck connection; /readyz is deployment state
 # only (docs.cube.dev/product/deployment/core).
 livenessProbe:
   httpGet:
@@ -106,42 +106,26 @@ env:
   # Release name of charts/cubestore must be "cubestore" for this to resolve.
   CUBEJS_CUBESTORE_HOST: "cubestore.data.svc.cluster.local"
   CUBEJS_CUBESTORE_PORT: "3030"
-  CUBEJS_DB_TYPE: snowflake
-  # Must be set now that Cube Store builds pre-aggregations (ADR-0024). The
-  # cube models' sql_table is fully qualified (`CURATED.<SCHEMA>.<TABLE>`), so
-  # Cube's own query path never needed a default database — but Cube Store's
-  # originalSql pre-aggregation build stages the cube's SQL through a
-  # temporary table in the source database, referenced unqualified. Without a
-  # current database Snowflake rejects that build with "This session does not
-  # have a current database. Call 'USE DATABASE', or use a qualified name."
-  CUBEJS_DB_NAME: "CURATED"
-  # Non-secret Snowflake connection config — mirrors
-  # platform-base's pipelineConfig. Update both together if the account/
-  # warehouse ever changes.
+  # MotherDuck, not Snowflake, runs Cube's queries (ADR-0029). Snowflake is
+  # still the Iceberg catalog (ADR-0019): MotherDuck has Horizon's CURATED
+  # catalog attached server-side as a read-only database named CURATED
+  # (platform/scripts/motherduck_bootstrap.py), so the cube models'
+  # `"CURATED"."<SCHEMA>"."<TABLE>"` from the dbt manifest resolves unchanged
+  # and the scan runs on MotherDuck, not in this pod.
   #
-  # Since ADR-0019 the tables Cube queries are Iceberg tables in S3 — still
-  # ordinary Snowflake tables to this driver, still addressed as
-  # `CURATED.<SCHEMA>.<TABLE>`, which is what the cube models get from the dbt
-  # manifest. Nothing about this connection changed with the format.
+  # originalSql pre-aggregations (ADR-0024) live in the source database, not
+  # Cube Store, and Cube creates them as `prod_pre_aggregations.<table>` with
+  # no database qualifier — so they land in the connection's default
+  # database. `md:cache` makes that the `cache` database
+  # (motherduck_bootstrap.py creates it), i.e. cache.prod_pre_aggregations;
+  # every other workspace database, CURATED included, stays attached. CURATED
+  # couldn't hold them anyway: it's attached read_only.
   #
-  # Username is CUBEJS_DB_USER, not CUBEJS_DB_SNOWFLAKE_USER — the Snowflake
-  # driver only reads username/password through the generic CUBEJS_DB_USER /
-  # CUBEJS_DB_PASS vars (shared across every driver); everything
-  # Snowflake-specific (account/role/warehouse/private key) is prefixed
-  # CUBEJS_DB_SNOWFLAKE_*. Confirmed against
-  # @cubejs-backend/snowflake-driver/dist/src/SnowflakeDriver.js in the
-  # cubejs/cube:v1.7.37 image — a CUBEJS_DB_SNOWFLAKE_USER var is silently
-  # ignored and the driver throws "A user name must be specified."
-  CUBEJS_DB_USER: "OHDP_PIPELINE"
-  CUBEJS_DB_SNOWFLAKE_ACCOUNT: "IRCMTCN-EKB34223"
-  CUBEJS_DB_SNOWFLAKE_ROLE: "OHDP_PIPELINE"
-  CUBEJS_DB_SNOWFLAKE_WAREHOUSE: "OHDP_WH"
-  # Without this, snowflake-sdk's ConnectionConfig defaults to its DEFAULT_AUTHENTICATOR
-  # ("SNOWFLAKE") and requires a password even when a private key is set —
-  # SNOWFLAKE_JWT is snowflake-sdk's KEY_PAIR_AUTHENTICATOR value, the one
-  # that actually skips the password requirement for key-pair auth (the
-  # pipeline role has no password — SERVICE users don't accept one, ADR-0012).
-  CUBEJS_DB_SNOWFLAKE_AUTHENTICATOR: "SNOWFLAKE_JWT"
+  # Setting a path means the driver no longer appends the token to the URL
+  # (DuckDBDriver.init uses the path verbatim), so the MotherDuck extension
+  # reads it from `motherduck_token` in secretEnv below instead.
+  CUBEJS_DB_TYPE: duckdb
+  CUBEJS_DB_DUCKDB_DATABASE_PATH: "md:cache"
 
 # Explicit secretKeyRef mappings, not envFrom: the Secret keys use this
 # project's OHDP_* naming convention, but Cube itself only recognizes its own
@@ -153,13 +137,14 @@ secretEnv:
   - name: CUBEJS_API_SECRET
     secretName: cube-secret
     secretKey: OHDP_CUBE_API_SECRET
-  # Mirrored by deploy-platform.yml's `secrets` step from the
-  # SNOWFLAKE_PIPELINE_PRIVATE_KEY repo secret. Cube
-  # only ever SELECTs; the pipeline writes with a PAT over a different
-  # protocol entirely.
-  - name: CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY
-    secretName: cube-snowflake
-    secretKey: OHDP_SNOWFLAKE_PRIVATE_KEY
+  # Mirrored by deploy-platform.yml's `secrets` step from the MOTHERDUCK_TOKEN
+  # repo secret (ADR-0029). Cube holds no Snowflake credential any more — the
+  # Horizon PAT lives in MotherDuck's own stored secret.
+  # Read by the MotherDuck extension itself; this is what authenticates the
+  # md:cache connection above.
+  - name: motherduck_token
+    secretName: cube-motherduck
+    secretKey: OHDP_MOTHERDUCK_TOKEN
 
 # Always-on `services` node pool (platform/terraform/main.tf, np_services) —
 # off `heavy`, which gets hand-scaled for Dagster.

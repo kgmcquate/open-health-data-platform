@@ -3,10 +3,18 @@
 One definition per metric. Two consumers (chatbot, alerting) read
 from here and must never disagree (ARCHITECTURE.md §1.5).
 
-Every cube below has a `pre_aggregations:` block (`type: originalSql`) that
-Cube Store (`platform/helm/charts/cubestore`, ADR-0024) keeps a refreshed
-copy of, so most queries — including the chat agent's ad hoc ones over MCP —
-never touch Snowflake. `scheduledRefreshTimer` in `cube.js` keeps them warm
+Cube's data source is **MotherDuck** (ADR-0029), not Snowflake. Snowflake is
+still the Iceberg catalog (ADR-0019): MotherDuck has Horizon's `CURATED`
+catalog attached server-side as a read-only database of the same name
+(`platform/scripts/motherduck_bootstrap.py`), so the cube models'
+`"CURATED"."<SCHEMA>"."<TABLE>"` resolves there unchanged and no Snowflake
+warehouse runs for Cube.
+
+Every cube below has a `pre_aggregations:` block (`type: originalSql`). Cube
+persists those in the **source database**, not in Cube Store: tables in
+MotherDuck's `cache.prod_pre_aggregations`, which queries then read on
+MotherDuck. Cube Store (`platform/helm/charts/cubestore`, ADR-0024) holds
+Cube's result cache and refresh queue, not pre-aggregated data. `scheduledRefreshTimer` in `cube.js` keeps them warm
 hourly; each still inherits its cube's own `refresh_key` for on-demand
 invalidation. Locally, `CUBEJS_DEV_MODE=true` auto-spawns an embedded Cube
 Store, so `make cube-dev` below already exercises this — no separate local
@@ -53,10 +61,14 @@ loudly instead of quietly reading the wrong table.
 
 ## Local
 
-Cube queries Snowflake directly (ADR-0019 — there is no local/offline
-warehouse target to point it at instead). `make cube-dev` runs `dbt parse`
-first (no warehouse needed — it just compiles the manifest cube-dbt reads)
-and mounts `data/dbt/target/` read-only into the container at `dbt/`:
+Cube queries MotherDuck, which reads the lakehouse through the attached
+`CURATED` catalog. Export a `MOTHERDUCK_TOKEN` for a workspace that has it
+attached — the deployed one does after any Cube deploy; for a fresh
+workspace, run `make motherduck-bootstrap` once with `OHDP_SNOWFLAKE_PAT`,
+`OHDP_SNOWFLAKE_ACCOUNT` and `OHDP_SNOWFLAKE_ROLE` set too. `make cube-dev`
+runs `dbt parse` first (no warehouse needed — it just compiles the manifest
+cube-dbt reads) and mounts `data/dbt/target/` read-only into the container at
+`dbt/`:
 
 ```bash
 make cube-dev
@@ -71,15 +83,10 @@ docker run -p 4000:4000 \
   -v "$PWD/../../data/dbt/target:/cube/conf/dbt:ro" \
   -e CUBEJS_DEV_MODE=true \
   -e CUBEJS_API_SECRET=$OHDP_CUBE_API_SECRET \
-  -e CUBEJS_DB_TYPE=snowflake \
-  -e CUBEJS_DB_NAME=CURATED \
-  -e CUBEJS_DB_SNOWFLAKE_ACCOUNT=$OHDP_SNOWFLAKE_ACCOUNT \
-  -e CUBEJS_DB_USER=$OHDP_SNOWFLAKE_USER \
-  -e CUBEJS_DB_SNOWFLAKE_PRIVATE_KEY=$OHDP_SNOWFLAKE_PRIVATE_KEY \
-  -e CUBEJS_DB_SNOWFLAKE_ROLE=$OHDP_SNOWFLAKE_ROLE \
-  -e CUBEJS_DB_SNOWFLAKE_WAREHOUSE=$OHDP_SNOWFLAKE_WAREHOUSE \
-  -e CUBEJS_DB_SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT \
-  cubejs/cube:latest
+  -e CUBEJS_DB_TYPE=duckdb \
+  -e CUBEJS_DB_DUCKDB_DATABASE_PATH=md:cache \
+  -e motherduck_token=$MOTHERDUCK_TOKEN \
+  cubejs/cube:v1.7.37
 ```
 
 `OHDP_CUBE_API_SECRET` must be exported in your shell before either form —
