@@ -53,6 +53,7 @@ from collections.abc import Iterator
 from copy import deepcopy
 from typing import Annotated, Any
 
+import vl_convert
 import yaml
 from jsonpath_ng.ext import parse as parse_jsonpath
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
@@ -388,6 +389,47 @@ def _resolve_lookup_field(field: str, columns: list[str]) -> str:
     return resolve_column(field, columns).replace(".", "\\.")
 
 
+def _assert_lookup_shape(step: dict[str, Any], source: dict[str, Any], columns: list[str]) -> None:
+    """Reject the `lookup` mistakes that pass Vega-Lite's compile but not Vega's.
+
+    `step` is the transform, `source` its `from` — a lookup against the Cube
+    rows. All three were made together in one reported choropleth:
+
+      - **No `from.key`.** Vega-Lite compiles it to a Vega lookup with an
+        undefined key, and Vega throws `Cannot read properties of undefined
+        (reading 'signal')` — a message that says nothing about the spec.
+      - **The key listed in `fields`.** The join column is how rows match, not
+        a value to carry onto the map; listed there, it shifts every `as` name
+        one column off, so `coverage_pct` ends up holding the FIPS code.
+      - **`as` and `fields` of different lengths.** The names pair up by
+        position, so the extra ones silently name nothing.
+    """
+    available = f"Available columns: {', '.join(columns)}"
+    key = source.get("key")
+    if not isinstance(key, str) or not key:
+        raise ValueError(
+            "a `lookup` transform must give `from.key` — the query column whose "
+            "values match the transform's `lookup` field on the other side (for a "
+            "US state basemap, `lookup: id` with `from.key` the FIPS column). "
+            f"Without it Vega cannot build the join and the chart does not draw. {available}"
+        )
+    fields = source.get("fields")
+    if isinstance(fields, list) and key in fields:
+        raise ValueError(
+            f"`from.key` {key!r} is also listed in `from.fields`. The key is the "
+            "join column, not a value to carry onto the chart — list only the "
+            "columns `encoding`/`tooltip` read (the measure, a display name), and "
+            "give `as` the same number of names in the same order"
+        )
+    names = step.get("as")
+    if isinstance(fields, list) and isinstance(names, list) and len(names) != len(fields):
+        raise ValueError(
+            f"a `lookup`'s `as` has {len(names)} name(s) for {len(fields)} "
+            "`from.fields` — they pair up by position, one name per field, so "
+            "every name after the mismatch lands on the wrong column"
+        )
+
+
 def _escape_fields(node: Any, columns: list[str]) -> None:
     """Escape every `field` reference in the spec, in place.
 
@@ -447,8 +489,8 @@ def _escape_fields(node: Any, columns: list[str]) -> None:
                 from_data = value.get("data")
                 against_remote_geometry = isinstance(from_data, dict) and "url" in from_data
                 if not against_remote_geometry:
-                    if isinstance(value.get("key"), str):
-                        value["key"] = _resolve_lookup_field(value["key"], columns)
+                    _assert_lookup_shape(node, value, columns)
+                    value["key"] = _resolve_lookup_field(value["key"], columns)
                     fields = value.get("fields")
                     if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
                         raise ValueError(
@@ -723,7 +765,60 @@ def bind_data(
     bound = {**vl_spec, "$schema": _VL_SCHEMA}
     _normalize_size(bound)
     _inject_values(bound, data_path, rows)
+    _assert_drawable(bound)
     return bound
+
+
+def _without_remote_data(node: Any) -> Any:
+    """A copy of `node` with every remote `data` block emptied to `{"values": []}`.
+
+    `_assert_drawable` must not fetch: this module stays free of I/O, and a
+    basemap CDN being slow or down is no reason to refuse a chart. Vega parses
+    the whole dataflow before it loads any data, so the errors worth catching
+    here are still raised against an empty basemap.
+    """
+    if isinstance(node, dict):
+        return {
+            key: (
+                {"values": []}
+                if key == "data" and isinstance(value, dict) and "url" in value
+                else _without_remote_data(value)
+            )
+            for key, value in node.items()
+        }
+    if isinstance(node, list):
+        return [_without_remote_data(item) for item in node]
+    return node
+
+
+def _assert_drawable(bound: dict[str, Any]) -> None:
+    """Draw the bound spec on the server, with the browser's Vega-Lite version.
+
+    Every other check in this module catches one known mistake; this one
+    catches the ones nobody has made yet. A spec Vega cannot draw otherwise
+    fails only inside the viewer's browser — the tool answered 200, and the
+    model, which never sees the page, has no idea anything went wrong.
+    Rendering here with `vl-convert` (Vega-Lite compile *and* Vega parse and
+    run, which is where e.g. a `lookup` without a key throws) turns that into
+    a `ValueError` the model gets back as the tool's reason.
+    """
+    try:
+        vl_convert.vegalite_to_svg(
+            _without_remote_data(bound), vl_version=_VL_CONVERT_VERSION, allowed_base_urls=[]
+        )
+    except ValueError as exc:
+        # vl-convert prefixes its own banner and appends a JS stack of minified
+        # CDN frames; only the error line itself means anything to the model.
+        lines = [ln.strip() for ln in str(exc).splitlines()]
+        reason = next(
+            (
+                ln
+                for ln in lines
+                if ln and not ln.startswith("at ") and "conversion failed" not in ln
+            ),
+            str(exc),
+        )
+        raise ValueError(f"Vega could not draw this spec: {reason}") from exc
 
 
 # Two selected palettes, not one flipped: the dark column is the same eight hues
@@ -836,6 +931,9 @@ _VEGA_SCRIPTS = (
     "https://cdn.jsdelivr.net/npm/vega-lite@5.21.0",
     "https://cdn.jsdelivr.net/npm/vega-embed@6.26.0",
 )
+# The Vega-Lite `_assert_drawable` checks against — the same minor as the
+# vega-lite pin above, so the server refuses what the browser would.
+_VL_CONVERT_VERSION = "5.21"
 
 
 def _json_for_html(value: Any) -> str:

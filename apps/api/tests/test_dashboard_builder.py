@@ -225,6 +225,7 @@ def test_the_builder_is_behind_the_sign_in_wall(anon: TestClient, cube: None) ->
     assert anon.post("/api/builder/drafts", json={"spec_yaml": "name: x"}).status_code == 401
     assert anon.post("/api/builder/publish", json={"spec_yaml": _yaml()}).status_code == 401
     assert anon.get("/api/builder/published").status_code == 401
+    assert anon.delete("/api/builder/published/my-ed-visits").status_code == 401
     assert anon.get("/api/semantic/cubes").status_code == 401
 
 
@@ -531,6 +532,37 @@ def test_an_authors_own_list_carries_the_source_to_edit(author: TestClient, cube
     assert yaml.safe_load(entry["spec_yaml"])["vega_lite"] == SPEC["vega_lite"]
     # And it is still absent from the public listing of the same dashboard.
     assert "spec_yaml" not in author.get("/api/dashboards").json()[0]
+
+
+def test_an_author_can_delete_their_own_dashboard(author: TestClient, cube: None) -> None:
+    """Row and votes both go — the public page, the author's list, and a fresh
+    publish under the same name all see it as never having existed."""
+    author.post("/api/builder/publish", json={"spec_yaml": _yaml()})
+    author.post("/api/dashboards/my-ed-visits/vote", json={"value": 1})
+
+    assert author.delete("/api/builder/published/my-ed-visits").json() == {"ok": True}
+
+    assert author.get("/api/dashboards").json() == []
+    assert author.get("/api/builder/published").json() == []
+    republished = author.post("/api/builder/publish", json={"spec_yaml": _yaml()}).json()
+    assert republished["created"] is True
+    assert author.get("/api/dashboards/my-ed-visits").json()["score"] == 0
+
+
+def test_an_author_cannot_delete_someone_elses_dashboard(author: TestClient, cube: None) -> None:
+    """Someone else's, the agent's and a nonexistent name are the same 404, and
+    nothing is removed."""
+    _as(author, OTHER).post("/api/builder/publish", json={"spec_yaml": _yaml(name="theirs")})
+    author.post("/tools/save_dashboard", json={**SPEC, "name": "agent-chart"})
+
+    author = _as(author, AUTHOR)
+    for name in ("theirs", "agent-chart", "never-published"):
+        assert author.delete(f"/api/builder/published/{name}").status_code == 404
+
+    assert sorted(d["name"] for d in author.get("/api/dashboards").json()) == [
+        "agent-chart",
+        "theirs",
+    ]
 
 
 # --- the field reference ---------------------------------------------------

@@ -531,8 +531,15 @@ def save(
     return existing is None, count
 
 
-def delete(engine: Engine, name: str) -> dict[str, Any] | None:
+def delete(engine: Engine, name: str, *, owned_by: str | None = None) -> dict[str, Any] | None:
     """Remove a dashboard for good. Returns what was deleted, or `None`.
+
+    `owned_by` scopes the delete to one author's own dashboard — the builder's
+    "delete what I published" (`hub_api.builder`). With it, a row whose
+    `saved_by` is anyone else's (or nobody's) is left alone and the answer is
+    `None`, the same as a name that does not exist. The check sits inside the
+    delete's own transaction rather than in a separate `owner_of` read, so it
+    cannot lose a race with a publish that changes hands in between.
 
     The counterpart to hiding, not a stronger version of it. A downvoted
     dashboard is hidden from the public page and stays readable and
@@ -553,7 +560,7 @@ def delete(engine: Engine, name: str) -> dict[str, Any] | None:
     """
     with engine.begin() as connection:
         row = connection.execute(select(dashboards).where(dashboards.c.name == name)).first()
-        if row is None:
+        if row is None or (owned_by is not None and row.saved_by != owned_by):
             return None
         entry = _summary(row)
         connection.execute(

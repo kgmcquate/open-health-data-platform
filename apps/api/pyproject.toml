@@ -25,6 +25,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "jsonpath-ng>=1.8.0",
     "pydantic-ai-slim[mcp,openai]>=1.0",
+    "vl-convert-python>=1.9.0.post1",
 ]
 
 [dependency-groups]

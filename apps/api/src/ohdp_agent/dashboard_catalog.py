@@ -71,10 +71,13 @@ class DashboardCatalogClient:
         *,
         params: dict[str, str] | None = None,
         json_body: dict[str, Any] | None = None,
+        missing_ok: bool = False,
     ) -> dict[str, Any]:
         """One call against OM's REST API. Raises `CatalogWriteError` on any
         non-2xx, so every caller here can use the one catch `dashboard_catalog`
-        callers already need for a best-effort write."""
+        callers already need for a best-effort write — except a 404 when
+        `missing_ok`, which answers `{}` for a delete of something already
+        gone."""
         headers = {"Authorization": f"Bearer {self._jwt}"}
         url = f"{self._base_url}{path}"
         if self._client is not None:
@@ -87,6 +90,8 @@ class DashboardCatalogClient:
                     method, url, params=params, json=json_body, headers=headers
                 )
 
+        if response.status_code == 404 and missing_ok:
+            return {}
         if response.status_code >= 400:
             log.warning("om_write_failed", path=path, status=response.status_code)
             raise CatalogWriteError(f"OpenMetadata returned {response.status_code}")
@@ -193,3 +198,25 @@ class DashboardCatalogClient:
                     }
                 },
             )
+
+    async def delete_dashboard(self, name: str) -> None:
+        """Hard-delete the Dashboard entity `publish_dashboard` created for
+        `name`, lineage edges included.
+
+        Hard, not OpenMetadata's default soft delete: the library row it
+        mirrors is gone for good, and a soft-deleted entity would still hold
+        its FQN and resurface — stale title, old lineage — if the same name is
+        published again. A 404 is success: the dashboard was saved while the
+        catalog was down or unconfigured, so there was never an entity to
+        remove.
+
+        Addressed by FQN rather than id because the library never stored the
+        id. A dashboard name matches `NAME_RE` (kebab-case, no dots), so
+        `service.name` needs none of OpenMetadata's FQN quoting.
+        """
+        await self._request(
+            "DELETE",
+            f"/api/v1/dashboards/name/{_SERVICE_NAME}.{name}",
+            params={"hardDelete": "true", "recursive": "true"},
+            missing_ok=True,
+        )

@@ -407,6 +407,103 @@ def test_a_lookup_without_fields_fails_with_the_reason() -> None:
         bind_data(vega_lite, rows, list(rows[0]), "$.transform[0].from.data.values")
 
 
+_FLU_ROWS = [
+    {
+        "immunization__coverage.geography": "California",
+        "immunization__coverage.fips": "06",
+        "immunization__coverage.avg_coverage_pct": 48.2,
+    }
+]
+_FLU_PATH = "$.transform[0].from.data.values"
+
+
+def _flu_choropleth(from_clause: dict[str, Any], as_: list[str]) -> dict[str, Any]:
+    return {
+        "data": {
+            "url": "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json",
+            "format": {"type": "topojson", "feature": "states"},
+        },
+        "mark": "geoshape",
+        "projection": {"type": "albersUsa"},
+        "transform": [{"lookup": "id", "from": {"data": {"values": []}, **from_clause}, "as": as_}],
+        "encoding": {"color": {"field": "coverage_pct", "type": "quantitative"}},
+    }
+
+
+def test_a_lookup_without_a_key_fails_with_the_reason() -> None:
+    """The reported bug: no `from.key` compiles fine in Vega-Lite and then
+    throws `reading 'signal'` in the browser's Vega parse."""
+    vega_lite = _flu_choropleth(
+        {"fields": ["immunization__coverage.avg_coverage_pct"]}, ["coverage_pct"]
+    )
+    with pytest.raises(ValueError, match="must give `from.key`"):
+        bind_data(vega_lite, _FLU_ROWS, list(_FLU_ROWS[0]), _FLU_PATH)
+
+
+def test_a_lookup_key_listed_in_fields_fails_with_the_reason() -> None:
+    """Same report: the FIPS key in `fields` shifted `as` one column off, so
+    `coverage_pct` would have held the FIPS code."""
+    vega_lite = _flu_choropleth(
+        {
+            "key": "immunization__coverage.fips",
+            "fields": ["immunization__coverage.fips", "immunization__coverage.geography"],
+        },
+        ["coverage_pct", "state_name"],
+    )
+    with pytest.raises(ValueError, match="also listed in `from.fields`"):
+        bind_data(vega_lite, _FLU_ROWS, list(_FLU_ROWS[0]), _FLU_PATH)
+
+
+def test_a_lookup_with_mismatched_as_fails_with_the_reason() -> None:
+    vega_lite = _flu_choropleth(
+        {
+            "key": "immunization__coverage.fips",
+            "fields": ["immunization__coverage.avg_coverage_pct"],
+        },
+        ["coverage_pct", "state_name"],
+    )
+    with pytest.raises(ValueError, match="1 `from.fields`"):
+        bind_data(vega_lite, _FLU_ROWS, list(_FLU_ROWS[0]), _FLU_PATH)
+
+
+def test_the_corrected_flu_choropleth_binds_and_draws() -> None:
+    vega_lite = _flu_choropleth(
+        {
+            "key": "immunization__coverage.fips",
+            "fields": [
+                "immunization__coverage.avg_coverage_pct",
+                "immunization__coverage.geography",
+            ],
+        },
+        ["coverage_pct", "state_name"],
+    )
+    bound = bind_data(vega_lite, _FLU_ROWS, list(_FLU_ROWS[0]), _FLU_PATH)
+    assert bound["transform"][0]["from"]["key"] == "immunization__coverage\\.fips"
+    # The basemap is only blanked for the server-side draw, never in what ships.
+    assert "url" in bound["data"]
+
+
+def test_a_spec_vega_cannot_draw_fails_on_the_server() -> None:
+    """The catch-all: a lookup against the remote basemap is outside the
+    Cube-rows guards, so a missing key there is caught only by drawing it."""
+    vega_lite = {
+        "transform": [
+            {
+                "lookup": "ed_visits.state",
+                "from": {
+                    "data": {"url": "https://example.com/us.json", "format": {"type": "json"}},
+                    "fields": ["geometry"],
+                },
+            }
+        ],
+        "mark": "bar",
+        "encoding": {"y": {"field": "ed_visits.avg_percent", "type": "quantitative"}},
+    }
+    rows = [{"ed_visits.state": "CA", "ed_visits.avg_percent": 3.1}]
+    with pytest.raises(ValueError, match="Vega could not draw this spec: TypeError"):
+        bind_data(vega_lite, rows, list(rows[0]))
+
+
 def test_a_vega_transform_in_a_vega_lite_spec_fails_with_the_reason() -> None:
     """The reported bug: `{"type": "formula", "expr": ...}` is low-level Vega.
     Vega-Lite identifies a step by its own key and has no `type` discriminator,

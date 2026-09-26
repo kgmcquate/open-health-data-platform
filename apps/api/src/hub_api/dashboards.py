@@ -324,6 +324,25 @@ async def file_in_catalog(spec: DashboardSpec) -> list[str]:
     return topics
 
 
+async def unfile_from_catalog(name: str) -> None:
+    """Remove a deleted dashboard's OpenMetadata mirror — the undo of
+    `file_in_catalog`, called once the library row is already gone.
+
+    Best-effort for the same reason: the row is the source of truth, and a
+    catalog outage must not turn a delete that already happened into an
+    error. What an outage costs is a catalog entry whose `sourceUrl` 404s,
+    which the next publish under that name overwrites anyway.
+    """
+    if not settings.openmetadata_jwt:
+        return
+    client = DashboardCatalogClient(settings.openmetadata_url, settings.openmetadata_jwt)
+    try:
+        async with asyncio.timeout(_CATALOG_TIMEOUT_SECONDS):
+            await client.delete_dashboard(name)
+    except (CatalogWriteError, TimeoutError, httpx.HTTPError) as exc:
+        log.warning("dashboard_catalog_not_unfiled", name=name, error=str(exc))
+
+
 @dashboards_router.post(
     "/render_dashboard",
     operation_id="render_dashboard",
@@ -374,7 +393,9 @@ async def render_dashboard_tool(
     into the spec at `data_path` — a JSONPath, `$.data.values` by default; for
     a choropleth, where the top-level `data` is the geometry URL, set
     `data_path` to the lookup source instead, e.g.
-    `$.transform[0].from.data.values`. Use column names exactly as they came
+    `$.transform[0].from.data.values`, and give that `lookup` a `from.key`
+    (the query's FIPS column), `from.fields` (the values to join, not the key)
+    and an `as` with one name per field. Use column names exactly as they came
     back
     in the query result. Give every axis a title that carries its units, and
     title the chart with the filter scope it was run at.

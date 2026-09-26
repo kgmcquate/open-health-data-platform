@@ -46,6 +46,7 @@ pattern as ``OHDP_CUBE_API_SECRET`` — see
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
@@ -287,7 +288,7 @@ def vote_dashboard(
 
 
 @router.delete("/dashboards/{name}")
-def delete_dashboard(
+async def delete_dashboard(
     request: Request,
     name: str,
     # The only admin-gated route on the hub. Voting a dashboard down hides it
@@ -307,14 +308,16 @@ def delete_dashboard(
 
     Nothing recreates the row: the spec exists only here, so the deleted
     entry is logged with what it was rather than just the name that was
-    passed in.
+    passed in. Its OpenMetadata mirror is removed after it, best-effort
+    (`dashboards.unfile_from_catalog`).
     """
     engine: Engine | None = getattr(request.app.state, "engine", None)
     if engine is None:
         raise HTTPException(503, "Database is not available.")
-    entry = library.delete(engine, name)
+    entry = await asyncio.to_thread(library.delete, engine, name)
     if entry is None:
         raise HTTPException(404, "No such dashboard.")
+    await dashboards.unfile_from_catalog(name)
     log.info(
         "dashboard_deleted",
         name=name,

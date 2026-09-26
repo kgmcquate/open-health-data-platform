@@ -69,7 +69,7 @@ from sqlalchemy.engine import Engine
 from hub_api import dashboards, drafts, library
 from hub_api.chat import get_user_email
 from ohdp_agent.cube import CubeClient, CubeError
-from ohdp_agent.dashboard import DashboardSpec
+from ohdp_agent.dashboard import NAME_RE, DashboardSpec
 from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
@@ -420,6 +420,39 @@ def list_published(
         stored = entry.pop("spec", None)
         entry["spec_yaml"] = _yaml_of(stored)
     return entries
+
+
+@router.delete("/builder/published/{name}")
+async def delete_published(
+    author_email: Annotated[str, Depends(get_user_email)],
+    engine: Annotated[Engine, Depends(get_engine)],
+    name: Annotated[str, Path(pattern=NAME_RE.pattern, max_length=64)],
+) -> dict[str, bool]:
+    """Take down a dashboard this author published — row, stored render and
+    votes, for good (`library.delete`).
+
+    The author's counterpart to the admin delete in `hub_api.content`, scoped
+    by address the same way republishing is: a dashboard is theirs to remove
+    exactly when it is theirs to overwrite. 404 for a name that is not theirs —
+    someone else's, ours, the agent's and a nonexistent one are the same answer
+    on purpose, as with drafts.
+
+    The OpenMetadata mirror that publishing created (`dashboards.
+    file_in_catalog`) goes too, after the row and best-effort: a catalog
+    outage leaves a stale entry behind rather than failing a delete that has
+    already happened.
+    """
+    entry = await asyncio.to_thread(library.delete, engine, name, owned_by=author_email)
+    if entry is None:
+        raise HTTPException(404, "No such dashboard of yours.")
+    await dashboards.unfile_from_catalog(name)
+    log.info(
+        "dashboard_deleted_by_author",
+        name=name,
+        title=entry["title"],
+        score=entry["score"],
+    )
+    return {"ok": True}
 
 
 def _yaml_of(stored: Any) -> str | None:

@@ -55,7 +55,7 @@ export default function Navbar() {
         {/* On every width: it is the only search input anywhere now that the
             /search page has none of its own. The wordmark gives up its text
             below `sm` to make the room. */}
-        <div className="flex grow min-w-0">
+        <div className="flex grow min-w-0 mr-2">
           <SearchBar />
         </div>
       </div>
@@ -80,7 +80,7 @@ export default function Navbar() {
         {user === undefined ? (
           <span className="loading loading-spinner loading-sm" />
         ) : user === null ? (
-          <button className="btn btn-primary btn-sm" onClick={signIn}>
+          <button className="btn btn-primary btn-sm mr-2" onClick={signIn}>
             Sign in
           </button>
         ) : null}

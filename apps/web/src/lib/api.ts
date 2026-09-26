@@ -178,6 +178,12 @@ export interface MyDashboard extends Dashboard {
  * who can republish them fixed. */
 export const fetchMyDashboards = () => getJson<MyDashboard[]>("/api/builder/published");
 
+/** Delete one of this session's user's own published dashboards — its stored
+ * render and votes go with it, for good. 404 for any name that is not theirs;
+ * the admin-only `deleteDashboard` is the one that reaches anybody's. */
+export const deleteMyDashboard = (name: string) =>
+  sendJson<{ ok: true }>(`/api/builder/published/${encodeURIComponent(name)}`, "DELETE");
+
 export const fetchCubes = () => getJson<CubeRef[]>("/api/semantic/cubes");
 
 export interface LiteratureItem {

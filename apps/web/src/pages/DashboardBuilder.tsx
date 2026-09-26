@@ -8,6 +8,7 @@ import { ohdpCodeMirrorTheme } from "../lib/codeMirrorTheme";
 import {
   createDraft,
   deleteDraft,
+  deleteMyDashboard,
   fetchCubes,
   fetchDrafts,
   fetchMyDashboards,
@@ -338,10 +339,68 @@ function PublishButton({
   );
 }
 
+/** Taking down one of your own published dashboards, behind the same kind of
+ * inline confirm as publishing. Unlike deleting a draft this cannot be undone:
+ * the stored spec, render and votes all go, and nothing rebuilds them — so
+ * the confirm says so, next to the dashboard it is about. */
+function DeletePublishedButton({
+  dashboard,
+  onDeleted,
+}: {
+  dashboard: MyDashboard;
+  onDeleted: (name: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  async function remove() {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await deleteMyDashboard(dashboard.name);
+      onDeleted(dashboard.name);
+    } catch (exc) {
+      setFailed(exc instanceof Error ? exc.message : "Delete failed");
+      setConfirming(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      {confirming ? (
+        <div className="flex items-center gap-1">
+          <span className="text-xs opacity-70">Delete it and its votes for good?</span>
+          <button className="btn btn-error btn-xs" disabled={busy} onClick={() => void remove()}>
+            {busy ? "Deleting…" : "Yes, delete"}
+          </button>
+          <button className="btn btn-ghost btn-xs" disabled={busy} onClick={() => setConfirming(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          className="btn btn-ghost btn-xs text-error"
+          onClick={() => setConfirming(true)}
+          aria-label={`Delete published dashboard ${dashboard.title}`}
+        >
+          Delete
+        </button>
+      )}
+      {failed && <span className="text-xs text-error">{failed}</span>}
+    </div>
+  );
+}
+
+type Tab = "editor" | "published";
+
 export default function DashboardBuilder() {
   const { user, signIn } = useAuth();
   const signedIn = Boolean(user);
 
+  const [tab, setTab] = useState<Tab>("editor");
   const [specYaml, setSpecYaml] = useState("");
   const [preview, setPreview] = useState<DashboardPreview | null>(null);
   const [rendering, setRendering] = useState(false);
@@ -402,6 +461,7 @@ export default function DashboardBuilder() {
   }, [cubes]);
 
   function loadInto(text: string, id: number | null) {
+    setTab("editor");
     setSpecYaml(text);
     setDraftId(id);
     setDraftSaved(null);
@@ -443,6 +503,14 @@ export default function DashboardBuilder() {
       .catch(() => undefined);
   }
 
+  function onDeletedPublished(name: string) {
+    // Dropped locally rather than re-fetched: the row is gone, so there is no
+    // fresher server state to read. A success banner for it goes too, since
+    // its link now leads nowhere.
+    setMine((current) => current.filter((dashboard) => dashboard.name !== name));
+    setPublished((current) => (current?.name === name ? null : current));
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
       <header className="space-y-2">
@@ -458,176 +526,210 @@ export default function DashboardBuilder() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h2 className="text-lg font-semibold">
-              YAML Spec
-              {draftId !== null && <span className="badge badge-ghost badge-sm ml-2">draft</span>}
-            </h2>
-          </div>
+      {signedIn && (
+        <div role="tablist" className="tabs tabs-border">
+          <button
+            role="tab"
+            className={`tab ${tab === "editor" ? "tab-active" : ""}`}
+            aria-selected={tab === "editor"}
+            onClick={() => setTab("editor")}
+          >
+            Editor
+          </button>
+          <button
+            role="tab"
+            className={`tab gap-2 ${tab === "published" ? "tab-active" : ""}`}
+            aria-selected={tab === "published"}
+            onClick={() => setTab("published")}
+          >
+            Your published dashboards
+            {mine.length > 0 && <span className="badge badge-sm">{mine.length}</span>}
+          </button>
+        </div>
+      )}
 
-          <CodeMirror
-            value={specYaml}
-            height="32rem"
-            theme="none"
-            extensions={[yaml(), ohdpCodeMirrorTheme]}
-            onChange={(value) => setSpecYaml(value)}
-            className="textarea textarea-bordered w-full font-mono text-xs leading-relaxed"
-            spellCheck={false}
-            onKeyDown={(event: any) => {
-              // Draw now, whatever the idle timer thinks — the shortcut every
-              // editor with a preview pane has.
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                event.preventDefault();
-                void render(specYaml);
-              }
-            }}
-            aria-label="Dashboard spec (YAML)"
-          />
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              className="btn btn-sm"
-              disabled={!signedIn || rendering}
-              onClick={() => void render(specYaml)}
-            >
-              {rendering ? "Drawing…" : "Render"}
-            </button>
-            <button
-              className="btn btn-sm btn-ghost"
-              disabled={!signedIn || savingDraft || !specYaml.trim()}
-              onClick={() => void saveDraft()}
-            >
-              {draftId === null ? "Save as draft" : "Update draft"}
-            </button>
-            <button
-              className="btn btn-sm btn-ghost"
-              onClick={() => loadInto(starterSpec(cubes), null)}
-              title="Start a new spec from the template"
-            >
-              New
-            </button>
-            <span className="text-xs opacity-60">
-              {savingDraft ? "Saving…" : draftSaved ? `Draft saved ${when(draftSaved)}` : ""}
-            </span>
-            <div className="ml-auto">
-              <PublishButton
-                specYaml={specYaml}
-                disabled={!signedIn || !specYaml.trim()}
-                onPublished={onPublished}
-              />
-            </div>
-          </div>
-
-          {draftError && <div className="alert alert-warning text-sm">{draftError}</div>}
-
-          {drafts.length > 0 && (
-            <div className="card bg-base-200">
-              <div className="card-body p-4 gap-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide opacity-70">
-                  Your drafts
-                </h3>
-                <p className="text-xs opacity-60">
-                  Private to you, and free to be unfinished — a draft does not have to parse.
-                </p>
-                <ul className="divide-y divide-base-300">
-                  {drafts.map((draft) => (
-                    <li key={draft.id} className="flex items-center gap-2 py-2">
-                      <button
-                        className="text-left flex-1 hover:text-primary"
-                        onClick={() => loadInto(draft.spec_yaml, draft.id)}
-                      >
-                        <span className="text-sm">{draft.title || "Untitled draft"}</span>
-                        <span className="block text-xs opacity-60 font-mono">
-                          {draft.name || "no name yet"} · edited {when(draft.updated_at)}
-                        </span>
-                      </button>
-                      {draft.id === draftId && <span className="badge badge-sm">open</span>}
-                      <button
-                        className="btn btn-ghost btn-xs text-error"
-                        onClick={() => void removeDraft(draft.id)}
-                        aria-label={`Delete draft ${draft.title || draft.id}`}
-                      >
-                        Delete
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide opacity-70 mb-2">
-              Fields you can query
-            </h3>
-            {cubes === null ? (
-              <p className="text-xs opacity-60">
-                The semantic layer's field list is unavailable right now.
-              </p>
-            ) : (
-              <FieldReference cubes={cubes} />
-            )}
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <div className="lg:sticky lg:top-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Preview</h2>
-              {preview && (
-                <span className="text-xs opacity-60">
-                  {preview.row_count} rows
-                  {preview.truncated && " — truncated"}
-                </span>
-              )}
+      {tab === "editor" && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 className="text-lg font-semibold">
+                YAML Spec
+                {draftId !== null && <span className="badge badge-ghost badge-sm ml-2">draft</span>}
+              </h2>
             </div>
 
-            {renderError && (
-              <div className="alert alert-error text-sm">
-                <span className="whitespace-pre-wrap">{renderError}</span>
-              </div>
-            )}
+            <CodeMirror
+              value={specYaml}
+              height="32rem"
+              theme="none"
+              extensions={[yaml(), ohdpCodeMirrorTheme]}
+              onChange={(value) => setSpecYaml(value)}
+              className="textarea textarea-bordered w-full font-mono text-xs leading-relaxed"
+              spellCheck={false}
+              onKeyDown={(event: any) => {
+                // Draw now, whatever the idle timer thinks — the shortcut every
+                // editor with a preview pane has.
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  void render(specYaml);
+                }
+              }}
+              aria-label="Dashboard spec (YAML)"
+            />
 
-            {published && (
-              <div className="alert alert-success text-sm">
-                <span>
-                  {published.created ? "Published" : "Republished"} as{" "}
-                  <Link className="link font-semibold" to={published.url}>
-                    {published.title}
-                  </Link>
-                  {published.topics.length > 0 && <> · filed under {published.topics.join(", ")}</>}
-                </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                className="btn btn-sm"
+                disabled={!signedIn || rendering}
+                onClick={() => void render(specYaml)}
+              >
+                {rendering ? "Drawing…" : "Render"}
+              </button>
+              <button
+                className="btn btn-sm btn-ghost"
+                disabled={!signedIn || savingDraft || !specYaml.trim()}
+                onClick={() => void saveDraft()}
+              >
+                {draftId === null ? "Save as draft" : "Update draft"}
+              </button>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => loadInto(starterSpec(cubes), null)}
+                title="Start a new spec from the template"
+              >
+                New
+              </button>
+              <span className="text-xs opacity-60">
+                {savingDraft ? "Saving…" : draftSaved ? `Draft saved ${when(draftSaved)}` : ""}
+              </span>
+              <div className="ml-auto">
+                <PublishButton
+                  specYaml={specYaml}
+                  disabled={!signedIn || !specYaml.trim()}
+                  onPublished={onPublished}
+                />
               </div>
-            )}
+            </div>
 
-            {preview ? (
-              <DashboardEmbed html={preview.html} title={preview.title} />
-            ) : (
-              <div className="card bg-base-200 border border-dashed border-base-300">
-                <div className="card-body items-center text-center py-16">
-                  <p className="opacity-70">
-                    {rendering
-                      ? "Drawing…"
-                      : signedIn
-                        ? "Press Render to draw your chart."
-                        : "Sign in to render your dashboard."}
+            {draftError && <div className="alert alert-warning text-sm">{draftError}</div>}
+
+            {drafts.length > 0 && (
+              <div className="card bg-base-200">
+                <div className="card-body p-4 gap-2">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide opacity-70">
+                    Your drafts
+                  </h3>
+                  <p className="text-xs opacity-60">
+                    Private to you, and free to be unfinished — a draft does not have to parse.
                   </p>
+                  <ul className="divide-y divide-base-300">
+                    {drafts.map((draft) => (
+                      <li key={draft.id} className="flex items-center gap-2 py-2">
+                        <button
+                          className="text-left flex-1 hover:text-primary"
+                          onClick={() => loadInto(draft.spec_yaml, draft.id)}
+                        >
+                          <span className="text-sm">{draft.title || "Untitled draft"}</span>
+                          <span className="block text-xs opacity-60 font-mono">
+                            {draft.name || "no name yet"} · edited {when(draft.updated_at)}
+                          </span>
+                        </button>
+                        {draft.id === draftId && <span className="badge badge-sm">open</span>}
+                        <button
+                          className="btn btn-ghost btn-xs text-error"
+                          onClick={() => void removeDraft(draft.id)}
+                          aria-label={`Delete draft ${draft.title || draft.id}`}
+                        >
+                          Delete
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             )}
-          </div>
-        </section>
-      </div>
 
-      {mine.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wide opacity-70 mb-2">
+                Fields you can query
+              </h3>
+              {cubes === null ? (
+                <p className="text-xs opacity-60">
+                  The semantic layer's field list is unavailable right now.
+                </p>
+              ) : (
+                <FieldReference cubes={cubes} />
+              )}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div className="lg:sticky lg:top-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Preview</h2>
+                {preview && (
+                  <span className="text-xs opacity-60">
+                    {preview.row_count} rows
+                    {preview.truncated && " — truncated"}
+                  </span>
+                )}
+              </div>
+
+              {renderError && (
+                <div className="alert alert-error text-sm">
+                  <span className="whitespace-pre-wrap">{renderError}</span>
+                </div>
+              )}
+
+              {published && (
+                <div className="alert alert-success text-sm">
+                  <span>
+                    {published.created ? "Published" : "Republished"} as{" "}
+                    <Link className="link font-semibold" to={published.url}>
+                      {published.title}
+                    </Link>
+                    {published.topics.length > 0 && <> · filed under {published.topics.join(", ")}</>}
+                  </span>
+                </div>
+              )}
+
+              {preview ? (
+                <DashboardEmbed html={preview.html} title={preview.title} />
+              ) : (
+                <div className="card bg-base-200 border border-dashed border-base-300">
+                  <div className="card-body items-center text-center py-16">
+                    <p className="opacity-70">
+                      {rendering
+                        ? "Drawing…"
+                        : signedIn
+                          ? "Press Render to draw your chart."
+                          : "Sign in to render your dashboard."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {tab === "published" && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Dashboards you've published</h2>
           <p className="text-sm opacity-70">
             Public, and ranked by readers' votes like every other dashboard. Load one back to
-            correct it — publishing the same name again replaces it and keeps its votes.
+            correct it — publishing the same name again replaces it and keeps its votes. Deleting
+            one removes it and its votes for good.
           </p>
+          {mine.length === 0 && (
+            <div className="card bg-base-200 border border-dashed border-base-300">
+              <div className="card-body items-center text-center py-12">
+                <p className="opacity-70">You haven't published a dashboard yet.</p>
+                <button className="btn btn-sm btn-ghost" onClick={() => setTab("editor")}>
+                  Back to the editor
+                </button>
+              </div>
+            </div>
+          )}
           <ul className="divide-y divide-base-300">
             {mine.map((dashboard) => (
               <li key={dashboard.id} className="flex items-center gap-3 py-3 flex-wrap">
@@ -666,6 +768,7 @@ export default function DashboardBuilder() {
                     Load to edit
                   </button>
                 )}
+                <DeletePublishedButton dashboard={dashboard} onDeleted={onDeletedPublished} />
               </li>
             ))}
           </ul>
