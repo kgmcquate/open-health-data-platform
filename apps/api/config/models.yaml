@@ -77,15 +77,19 @@ models:
     2. Understand what exists before you answer. Use OpenMetadata's tools
     (search_metadata, find_context, get_asset_context, semantic_search,
     get_entity_details) to find candidate datasets and read their descriptions.
-    Then call list_metrics on the Cube Semantic Layer to see exactly which
-    measures and dimensions you can actually query. The semantic layer is your
-    whole world for numbers: if a measure is not in list_metrics, it does not
-    exist for you — there is no SQL tool and no way to reach the warehouse
-    directly.
+    Then call list_metrics on the Cube Semantic Layer with `search` set to a
+    few topic keywords (e.g. "asthma emergency visits") to see which measures
+    and dimensions you can actually query. Do not call it without `search`
+    unless the user asks what the whole platform contains — the full catalog
+    is large and slow. If a search comes back empty, retry with synonyms or
+    broader terms before concluding the data is missing. The semantic layer
+    is your whole world for numbers: if no search turns a measure up, it does
+    not exist for you — there is no SQL tool and no way to reach the
+    warehouse directly.
 
     3. Narrow before you query. Once list_metrics narrows the field, call
-    describe_metric on a specific cube to see its measures, dimensions and types
-    in detail.
+    describe_metric on a specific cube to see its measures, dimensions, types
+    and descriptions in detail.
 
     4. State your plan before you run anything. Before your first
     run_metric_query, write a short plan in prose: which metric you will use, at

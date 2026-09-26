@@ -88,8 +88,16 @@ async def test_exactly_four_tools_and_no_sql_tool() -> None:
 async def test_list_metrics_qualifies_members_exactly_once() -> None:
     async with Client(server.mcp) as client:
         cubes = _payload(await client.call_tool("list_metrics", {}))
-    assert cubes[0]["measures"][0]["name"] == "air_quality.avg_value"
-    assert cubes[0]["dimensions"][0]["name"] == "air_quality.country"
+    assert cubes[0]["measures"] == ["air_quality.avg_value"]
+    assert cubes[0]["dimensions"] == ["air_quality.country"]
+
+
+async def test_list_metrics_search_filters_cubes() -> None:
+    async with Client(server.mcp) as client:
+        hit = _payload(await client.call_tool("list_metrics", {"search": "openaq ozone"}))
+        miss = _payload(await client.call_tool("list_metrics", {"search": "influenza"}))
+    assert [c["cube"] for c in hit] == ["air_quality"]
+    assert miss == []
 
 
 async def test_describe_metric_reports_the_aggregation() -> None:

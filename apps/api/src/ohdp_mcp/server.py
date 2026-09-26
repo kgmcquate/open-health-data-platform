@@ -43,7 +43,7 @@ from starlette.types import ASGIApp
 
 from ohdp_agent.cube import CubeClient, CubeError
 from ohdp_agent.models import CubeQuery
-from ohdp_agent.render import catalog_json, cube_json
+from ohdp_agent.render import cube_json, index_json, search_cubes
 from ohdp_shared import get_logger, settings
 
 log = get_logger(__name__)
@@ -61,9 +61,10 @@ mcp: FastMCP[None] = FastMCP(
     name="ohdp-cube",
     instructions=(
         "The semantic layer over the Open Health Data Platform warehouse. "
-        "Call list_metrics first — it returns the complete set of measures and "
-        "dimensions that exist. If something is not in there, the platform does "
-        "not have that data, and saying so is the correct answer; there is no "
+        "Call list_metrics first, with a few topic keywords as `search` — it "
+        "returns the matching cubes and their measure and dimension names. If "
+        "nothing matches even after trying synonyms, the platform does not have "
+        "that data, and saying so is the correct answer; there is no "
         "SQL tool and no way to reach the warehouse directly. Members are always "
         "'cube_name.field_name' exactly as list_metrics returned them. After "
         "running a query, call explain_query on the same query and show the "
@@ -105,14 +106,19 @@ async def _surfacing_cube_errors() -> AsyncIterator[None]:
 
 
 @mcp.tool
-async def list_metrics() -> list[dict[str, Any]]:
-    """Every cube, measure and dimension in the semantic layer.
+async def list_metrics(search: str | None = None) -> list[dict[str, Any]]:
+    """Cubes in the semantic layer, with their measure and dimension names.
 
-    This is the complete set of things that can be queried. Call it before
-    planning any query. If something is not here, the platform does not have it.
+    Always pass `search`: a few keywords for the topic (e.g. "asthma
+    hospitalization", "air quality pm25"). Any cube whose name, description or
+    members contain any keyword is returned, best match first. Omit it only
+    when you genuinely need the whole catalog. An empty result means no cube
+    mentions those words — try synonyms or broader terms before concluding the
+    platform lacks the data. Call describe_metric on a cube for member
+    descriptions and types.
     """
     async with _surfacing_cube_errors():
-        return catalog_json(await _client().list_metrics())
+        return index_json(search_cubes(await _client().list_metrics(), search))
 
 
 @mcp.tool

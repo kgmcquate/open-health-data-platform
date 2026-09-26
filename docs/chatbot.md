@@ -103,7 +103,7 @@ either way.
 
 | Tool | Backed by | Notes |
 |---|---|---|
-| `list_metrics` | `GET /cubejs-api/v1/meta` | Cubes, measures, dimensions, descriptions — the bounded surface §6 promises |
+| `list_metrics` | `GET /cubejs-api/v1/meta` | Cubes matching an optional `search`, with member names only — the bounded surface §6 promises; `describe_metric` has the detail |
 | `describe_metric` | `/v1/meta` (filtered) | One cube in detail, including its OM Metric FQN |
 | `run_metric_query` | `POST /cubejs-api/v1/load` | Accepts a **Pydantic-validated Cube query object**, never a string |
 | `explain_query` | `POST /cubejs-api/v1/sql` | Returns compiled SQL so the UI can show provenance |

@@ -62,7 +62,7 @@ from ohdp_agent.catalog import CatalogClient, CatalogError, ToolSpec
 from ohdp_agent.cube import CubeClient, CubeError
 from ohdp_agent.literature import LiteratureClient, LiteratureError, unverified_citations
 from ohdp_agent.models import CubeQuery
-from ohdp_agent.render import catalog_json, cube_json
+from ohdp_agent.render import cube_json, index_json, search_cubes
 from ohdp_shared import get_logger
 
 log = get_logger(__name__)
@@ -295,11 +295,25 @@ def cube_tool_specs() -> list[dict[str, Any]]:
         {
             "name": "list_metrics",
             "description": (
-                "Every cube, measure and dimension in the semantic layer. This is the "
-                "complete set of things that can be queried. Call this before planning "
-                "any query. If something is not here, the platform does not have it."
+                "Cubes in the semantic layer, with their measure and dimension names. "
+                "Always pass `search` with a few topic keywords; omit it only when you "
+                "genuinely need the whole catalog. An empty result means no cube "
+                "mentions those words — try synonyms or broader terms before "
+                "concluding the platform lacks the data. Call describe_metric on a "
+                "cube for member descriptions and types."
             ),
-            "input_schema": {"type": "object", "properties": {}},
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "search": {
+                        "type": "string",
+                        "description": (
+                            "Keywords, e.g. 'asthma hospitalization'. A cube matching "
+                            "any of them is returned, best match first."
+                        ),
+                    }
+                },
+            },
         },
         {
             "name": "describe_metric",
@@ -399,8 +413,8 @@ async def _run_tool(ctx: RunContext[Deps], name: str, arguments: dict[str, Any])
     turn = deps.turn
     try:
         if name == "list_metrics":
-            cubes = await deps.cube.list_metrics()
-            return json.dumps(catalog_json(cubes), separators=(",", ":"))
+            cubes = search_cubes(await deps.cube.list_metrics(), str(arguments.get("search") or ""))
+            return json.dumps(index_json(cubes), separators=(",", ":"))
         if name == "describe_metric":
             cube = await deps.cube.describe_metric(str(arguments.get("cube_name", "")))
             return json.dumps(cube_json(cube, with_agg=True), separators=(",", ":"))

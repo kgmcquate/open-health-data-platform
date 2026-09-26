@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ohdp_agent.cube import CubeInfo
+from ohdp_agent.cube import CubeInfo, DimensionInfo, MeasureInfo
 
 
 def _qualify(cube_name: str, member_name: str) -> str:
@@ -59,6 +59,43 @@ def cube_json(cube: CubeInfo, *, with_agg: bool = False) -> dict[str, Any]:
     }
 
 
-def catalog_json(cubes: tuple[CubeInfo, ...], *, with_agg: bool = False) -> list[dict[str, Any]]:
-    """Every cube — what `list_metrics` returns. The agent's whole world."""
-    return [cube_json(c, with_agg=with_agg) for c in cubes]
+def index_json(cubes: tuple[CubeInfo, ...]) -> list[dict[str, Any]]:
+    """What `list_metrics` returns: each cube's description and member *names*.
+
+    Member descriptions and types are most of `/meta`'s bulk, and a model
+    scanning for a candidate cube does not need them — `describe_metric` gives
+    them for the one cube it settles on. Names stay fully qualified so a query
+    can still be written from this alone.
+    """
+    return [
+        {
+            "cube": c.name,
+            "description": c.description,
+            "measures": [_qualify(c.name, m.name) for m in c.measures],
+            "dimensions": [_qualify(c.name, d.name) for d in c.dimensions],
+        }
+        for c in cubes
+    ]
+
+
+def search_cubes(cubes: tuple[CubeInfo, ...], search: str | None) -> tuple[CubeInfo, ...]:
+    """Cubes matching any whitespace-separated term, best match first.
+
+    A term matches as a case-insensitive substring of the cube's name, title or
+    description, or of any member's name, title or description. No `search`
+    (or a blank one) means every cube.
+    """
+    terms = [t for t in (search or "").lower().split() if t]
+    if not terms:
+        return cubes
+
+    def hits(cube: CubeInfo) -> int:
+        members: list[MeasureInfo | DimensionInfo] = [*cube.measures, *cube.dimensions]
+        haystack = " ".join(
+            [cube.name, cube.title, cube.description]
+            + [f"{m.name} {m.title} {m.description}" for m in members]
+        ).lower()
+        return sum(term in haystack for term in terms)
+
+    scored = [(hits(c), i, c) for i, c in enumerate(cubes)]
+    return tuple(c for n, _, c in sorted(scored, key=lambda s: (-s[0], s[1])) if n > 0)
