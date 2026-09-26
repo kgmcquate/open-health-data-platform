@@ -222,7 +222,7 @@ export default function Billing() {
               Sign in to subscribe
             </button>
           ) : user.tier === "plus" ? (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-5">
               <p>
                 <span className="badge badge-accent badge-lg">You&apos;re on Plus</span>
               </p>

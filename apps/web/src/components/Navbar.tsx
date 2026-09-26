@@ -109,17 +109,20 @@ export default function Navbar() {
           </button>
           <div className="dropdown-content menu bg-base-100 rounded-box z-50 w-64 p-4 shadow border border-base-300 gap-2">
             {user && (
-              <div className="flex flex-col gap-1 pb-1">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium truncate">{user.name || user.email}</span>
-                  {user.tier === "plus" && <span className="badge badge-accent badge-sm">plus</span>}
-                  {/* So it is never a surprise that this session can delete things. */}
-                  {user.is_admin && <span className="badge badge-outline badge-sm">admin</span>}
+              <>
+                <div className="flex flex-col gap-1 pb-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium truncate">{user.name || user.email}</span>
+                    {user.tier === "plus" && <span className="badge badge-accent badge-sm">plus</span>}
+                    {/* So it is never a surprise that this session can delete things. */}
+                    {user.is_admin && <span className="badge badge-outline badge-sm">admin</span>}
+                  </div>
+                  {user.name && (
+                    <span className="text-xs opacity-70 truncate">{user.email}</span>
+                  )}
                 </div>
-                {user.name && (
-                  <span className="text-xs opacity-70 truncate">{user.email}</span>
-                )}
-              </div>
+                <div className="divider my-1" />
+              </>
             )}
 
             {user && (
@@ -154,6 +157,7 @@ export default function Navbar() {
 
             {user && allowance && (
               <>
+                <div className="divider my-1" />
                 <div className="flex flex-col gap-1 py-1">
                   <div className="label pb-0">
                     <span className="label-text">Usage today</span>
