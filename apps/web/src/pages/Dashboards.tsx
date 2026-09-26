@@ -218,16 +218,17 @@ export function DashboardCard({
   function ChatAndVotes({ dashboard }: { dashboard: Dashboard }) {
     return (
       <div className="flex items-center">
-        <button
-          className="btn btn-ghost btn-xs"
-          title="Start a chat about this dashboard"
-          aria-label="Chat about dashboard"
-          onClick={() => void startChat()}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-        </button>
+        <div className="tooltip" data-tip="Open in chat">
+          <button
+            className="btn btn-ghost btn-xs"
+            aria-label="Open in chat"
+            onClick={() => void startChat()}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+        </div>
         <div role="separator" aria-hidden="true" className="w-px h-5 bg-gray-300 dark:bg-gray-600 mx-2 self-center" />
         <Votes dashboard={dashboard} />
       </div>
@@ -268,10 +269,10 @@ export function DashboardCard({
                 Data as of {renderedAgo(dashboard.last_rendered)}
                 {dashboard.stale && " — refreshing for the next visitor"}
               </p>
+              <div className="tooltip" data-tip={copied ? "Copied!" : "Copy link"}>
               <button
                 className="btn btn-ghost btn-xs"
-                title="Copy permalink to clipboard"
-                aria-label="Copy permalink"
+                aria-label="Copy link"
                 onClick={() => void copyPermalink()}
               >
                 {copied ? (
@@ -302,6 +303,7 @@ export function DashboardCard({
                   </svg>
                 )}
               </button>
+              </div>
               <div
                 role="separator"
                 aria-hidden="true"
