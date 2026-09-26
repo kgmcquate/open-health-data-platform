@@ -4,13 +4,12 @@ name: Deploy platform
 # the useful target under `act`. Tick `deploy` to actually apply.
 #
 # This is the manual/full-fleet path. Ordinary rollouts happen automatically
-# from build-images.yml, which builds and deploys only the image(s) whose code
-# changed on a merge to main — so a commit doesn't necessarily leave a
-# sha-<12> tag behind for every image. `deploy_all` (or any individual chart
-# checkbox) defaulting to the current commit's tag will fail to pull an image
-# that was never built for it; pass image_tag explicitly (e.g. the tag from a
-# past build-images run, `gh run list -w build-images.yml`) when redeploying a
-# chart whose image didn't change on this commit.
+# from build-images.yml, which builds every image on a merge to main and
+# deploys each one's chart as soon as it's built. Both paths sync secrets
+# through the same action (.github/actions/sync-secrets). image_tag defaults
+# to the current commit's sha-<12>; pass one explicitly (e.g. from
+# `gh run list -w build-images.yml`) to roll back to an earlier build, or if
+# this commit's build-images run failed.
 
 on:
   workflow_dispatch:
@@ -122,128 +121,12 @@ jobs:
         if: inputs.deploy_all || inputs.deploy_foundation
         run: make -C platform/helm base traefik cert-manager cluster-issuer
 
-      # The only externally-issued secrets. Endpoint + bucket are non-secret and
-      # live in data/ohdp-pipeline-config (platform-base).
+      # Needs platform-base (above, or already installed): it owns the
+      # namespaces and oauth2-proxy-secret.
       - name: External secrets
-        env:
-          SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
-          SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
-          # The lakehouse credentials Terraform issues (ADR-0019): a Snowflake
-          # PAT for the Iceberg REST catalog, and an IAM key for the one thing
-          # that can't use it (dlt's Parquet writes into the external volume).
-          #   terraform output -raw snowflake_pipeline_pat         | gh secret set SNOWFLAKE_PIPELINE_PAT
-          #   terraform output -raw aws_pipeline_access_key_id     | gh secret set AWS_PIPELINE_ACCESS_KEY_ID
-          #   terraform output -raw aws_pipeline_secret_access_key | gh secret set AWS_PIPELINE_SECRET_ACCESS_KEY
-          SNOWFLAKE_PIPELINE_PAT: ${{ secrets.SNOWFLAKE_PIPELINE_PAT }}
-          AWS_PIPELINE_ACCESS_KEY_ID: ${{ secrets.AWS_PIPELINE_ACCESS_KEY_ID }}
-          AWS_PIPELINE_SECRET_ACCESS_KEY: ${{ secrets.AWS_PIPELINE_SECRET_ACCESS_KEY }}
-          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
-          # Optional -- openfda_source works unauthenticated too, just at a
-          # lower rate limit (ohdp_orchestration/defs/openfda/README.md).
-          # An unset repo secret resolves to "", which upsert below still
-          # writes fine; ohdp_ingestion.openfda.source treats an empty key
-          # the same as no key at all.
-          OPENFDA_API_KEY: ${{ secrets.OPENFDA_API_KEY }}
-          CDC_APP_TOKEN: ${{ secrets.CDC_APP_TOKEN }}
-          OPENMETADATA_JWT: ${{ secrets.OPENMETADATA_JWT }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          # The Stripe monthly Pro Price ID sold by /api/billing/checkout
-          # (hub_api.billing). Injected into hub-api-secrets as
-          # OHDP_STRIPE_PRICE_ID (settings.stripe_price_id).
-          STRIPE_PRICE_ID: ${{ secrets.STRIPE_PRICE_ID }}
-          # Signs POST /api/billing/webhook/stripe (settings.stripe_webhook_secret).
-          # From the Dashboard's webhook endpoint config, same bare-name
-          # convention as STRIPE_SECRET_KEY above.
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-          DAGSTER_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
-          DAGSTER_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          # hub-api's own OIDC client (hub_api.auth) reuses the same Google
-          # client, which must list
-          # https://app.open-health-data-platform.org/auth/callback among its
-          # authorized redirect URIs.
-          APP_OIDC_CLIENT_ID: ${{ secrets.DAGSTER_OIDC_CLIENT_ID }}
-          APP_OIDC_CLIENT_SECRET: ${{ secrets.DAGSTER_OIDC_CLIENT_SECRET }}
-          # OpenAI-spec backend for the Hub UI model picker (docs/chatbot.md §4a).
-          # Without it the OpenRouter-backed models simply don't appear; the rest
-          # of the app works normally.
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # Fine-grained PAT, issues:write on OHDP_GITHUB_ISSUES_REPO and nothing
-          # else. It backs a tool a chat user can trigger (hub_api.issues), so
-          # its scope is the blast radius — never a classic PAT, never `repo`.
-          # Create at github.com/settings/personal-access-tokens, then:
-          #   gh secret set HUB_GITHUB_ISSUES_TOKEN
-          HUB_GITHUB_ISSUES_TOKEN: ${{ secrets.HUB_GITHUB_ISSUES_TOKEN }}
-          # Shared bearer for hub-api's /tools app. Rotate by re-running this job
-          # after `gh secret set TOOLS_AUTH_TOKEN`.
-          TOOLS_AUTH_TOKEN: ${{ secrets.TOOLS_AUTH_TOKEN }}
-          SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
-          # Cube's compute (ADR-0029). A MotherDuck service-account token, from
-          # app.motherduck.com → Settings → Access Tokens:
-          #   gh secret set MOTHERDUCK_TOKEN
-          MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
-        run: |
-          upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
-            --dry-run=client -o yaml | kubectl apply -f -; }
-          # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are the *Spaces* pair, for
-          # Dagster's S3ComputeLogManager (dagster.yaml) — it takes no
-          # access-key config and reads them off the process environment. The
-          # lakehouse never competes for them: dlt takes its S3 credentials as
-          # explicit config (OHDP_AWS_*), and the catalog is reached with a
-          # Snowflake token rather than an AWS signature (ADR-0019).
-          upsert data ohdp-pipeline-secrets \
-            --from-literal=OHDP_SPACES_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
-            --from-literal=OHDP_SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
-            --from-literal=AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
-            --from-literal=AWS_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
-            --from-literal=OHDP_AWS_ACCESS_KEY_ID="$AWS_PIPELINE_ACCESS_KEY_ID" \
-            --from-literal=OHDP_AWS_SECRET_ACCESS_KEY="$AWS_PIPELINE_SECRET_ACCESS_KEY" \
-            --from-literal=OHDP_OPENAQ_API_KEY="$OPENAQ_API_KEY" \
-            --from-literal=OHDP_OPENFDA_API_KEY="$OPENFDA_API_KEY" \
-            --from-literal=OHDP_CDC_APP_TOKEN="$CDC_APP_TOKEN" \
-            --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
-            --from-literal=OHDP_SNOWFLAKE_PAT="$SNOWFLAKE_PIPELINE_PAT" \
-            --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
-          # Cube queries MotherDuck (ADR-0029), which reads the CURATED
-          # Iceberg catalog itself — Cube holds no Snowflake credential.
-          upsert data cube-motherduck \
-            --from-literal=OHDP_MOTHERDUCK_TOKEN="$MOTHERDUCK_TOKEN"
-          # OHDP_GITHUB_TOKEN/OHDP_TOOLS_AUTH_TOKEN back /tools/report_issue.
-          # Unset, that endpoint answers 503 and nothing else changes.
-          # OHDP_OIDC_CLIENT_ID/_SECRET back hub-api's own sign-in
-          # (hub_api.auth) — without them /auth/login answers 503 rather than
-          # half-working.
-          # OHDP_OPENAI_API_BASE_URLS/_KEYS enable OpenAI-spec backends such as
-          # OpenRouter. They live in their own Secret so the key is rotated
-          # without touching hub-api-secrets.
-          upsert app openrouter-secrets \
-            --from-literal=OHDP_OPENAI_API_BASE_URLS="https://openrouter.ai/api/v1" \
-            --from-literal=OHDP_OPENAI_API_KEYS="$OPENROUTER_API_KEY"
-          upsert app hub-api-secrets \
-            --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
-            --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
-            --from-literal=OHDP_STRIPE_PRICE_ID="$STRIPE_PRICE_ID" \
-            --from-literal=STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" \
-            --from-literal=OHDP_OIDC_CLIENT_ID="$APP_OIDC_CLIENT_ID" \
-            --from-literal=OHDP_OIDC_CLIENT_SECRET="$APP_OIDC_CLIENT_SECRET" \
-            --from-literal=OHDP_GITHUB_TOKEN="$HUB_GITHUB_ISSUES_TOKEN" \
-            --from-literal=OHDP_TOOLS_AUTH_TOKEN="$TOOLS_AUTH_TOKEN"
-          # OHDP_SNOWFLAKE_PRIVATE_KEY is the RSA key pair's private half
-          # (PKCS#8 PEM) — Snowflake SERVICE users don't accept password auth,
-          # so this is what the SQL connector authenticates with. The REST
-          # catalog uses the PAT instead (ADR-0019). Terraform generates both;
-          # publish the key with:
-          #   terraform output -raw snowflake_private_key | gh secret set SNOWFLAKE_PIPELINE_PRIVATE_KEY
-          # To rotate, force-replace the key and re-run the two steps above:
-          #   terraform apply -replace=tls_private_key.pipeline
-
-          # oauth2-proxy (ADR-0007). platform-base owns this Secret and generates
-          # `cookie-secret`; we merge the Google client creds into it. --type merge
-          # preserves cookie-secret, and Helm's 3-way merge leaves these keys alone
-          # on later `helm upgrade platform-base` runs.
-          patch=$(printf '{"data":{"client-id":"%s","client-secret":"%s"}}' \
-            "$(printf %s "$DAGSTER_OIDC_CLIENT_ID" | base64 -w0)" \
-            "$(printf %s "$DAGSTER_OIDC_CLIENT_SECRET" | base64 -w0)")
-          kubectl -n data patch secret oauth2-proxy-secret --type merge -p "$patch"
+        uses: ./.github/actions/sync-secrets
+        with:
+          secrets: ${{ toJSON(secrets) }}
 
       - name: OpenSearch
         if: inputs.deploy_all || inputs.deploy_opensearch
@@ -268,25 +151,6 @@ jobs:
       - name: Dagster
         if: inputs.deploy_all || inputs.deploy_dagster
         run: make -C platform/helm dagster TAG="$TAG"
-
-      - uses: astral-sh/setup-uv@v3
-        if: inputs.deploy_all || inputs.deploy_cube
-
-      # Attach Horizon's CURATED catalog to MotherDuck server-side, and create
-      # the `cache` database Cube's pre-aggregations live in, before Cube
-      # starts (ADR-0029). Idempotent; re-running also pushes a rotated PAT
-      # into MotherDuck's stored secret. Account/role come from platform-base's
-      # ohdp-pipeline-config, the same values the pipeline uses.
-      - name: MotherDuck — attach the CURATED Iceberg catalog
-        if: inputs.deploy_all || inputs.deploy_cube
-        env:
-          MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
-          OHDP_SNOWFLAKE_PAT: ${{ secrets.SNOWFLAKE_PIPELINE_PAT }}
-        run: |
-          cfg() { kubectl -n data get configmap ohdp-pipeline-config -o "jsonpath={.data.$1}"; }
-          export OHDP_SNOWFLAKE_ACCOUNT="$(cfg OHDP_SNOWFLAKE_ACCOUNT)"
-          export OHDP_SNOWFLAKE_ROLE="$(cfg OHDP_SNOWFLAKE_ROLE)"
-          uv run platform/scripts/motherduck_bootstrap.py
 
       - name: Cube (+ Cube Store, ADR-0024 — the `cube` make target depends on `cubestore`)
         if: inputs.deploy_all || inputs.deploy_cube

@@ -114,16 +114,37 @@ jobs:
           push: ${{ steps.push.outputs.enabled }}
 
   # Auto-deploy only on a real merge to main — never under workflow_dispatch,
-  # which is also used to build without a cluster (e.g. under act). Shares
-  # deploy-platform.yml's concurrency group so a manual full deploy and an
-  # auto partial deploy can never touch the cluster at the same time.
-  deploy-hub-api:
-    name: Deploy hub-api + mcp-cube
-    needs: build-hub-api
+  # which is also used to build without a cluster (e.g. under act).
+  #
+  # Secrets sync once, alongside the builds (seconds vs. minutes), so it never
+  # delays a deploy. Each chart then deploys as soon as its own image is built;
+  # the three deploys don't wait on each other.
+  #
+  # Each deploy locks per release, not on one shared group: a single shared
+  # group would serialize them, and GitHub cancels a *pending* job when a newer
+  # one queues in the same group, so the third deploy could cancel the second.
+  # Per-release groups still keep two merges from racing on one release.
+  sync-secrets:
+    name: Sync secrets
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-kube
+        with:
+          kubeconfig: ${{ secrets.KUBECONFIG_B64 }}
+
+      - uses: ./.github/actions/sync-secrets
+        with:
+          secrets: ${{ toJSON(secrets) }}
+
+  deploy-hub-api:
+    name: Deploy hub-api + mcp-cube
+    needs: [build-hub-api, sync-secrets]
+    runs-on: ubuntu-latest
     concurrency:
-      group: deploy-platform
+      group: deploy-hub-api
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -140,11 +161,10 @@ jobs:
 
   deploy-pipeline:
     name: Deploy dagster
-    needs: build-pipeline
-    if: github.event_name == 'push'
+    needs: [build-pipeline, sync-secrets]
     runs-on: ubuntu-latest
     concurrency:
-      group: deploy-platform
+      group: deploy-dagster
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -163,11 +183,10 @@ jobs:
 
   deploy-cube:
     name: Deploy cube
-    needs: build-cube
-    if: github.event_name == 'push'
+    needs: [build-cube, sync-secrets]
     runs-on: ubuntu-latest
     concurrency:
-      group: deploy-platform
+      group: deploy-cube
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4

@@ -20,8 +20,9 @@ Terraform stops at the cluster boundary. It does not manage Helm releases — a 
   upgrade. Never entered anywhere.
 - **External** (DigitalOcean Spaces keys, source API keys, OpenMetadata
   ingestion JWT, Stripe, OIDC client secret): held as GitHub Actions repo
-  secrets and injected by the `secrets` step of `deploy-platform.yml`
-  (`kubectl create secret`). For a manual deploy, see [`helm/README.md`](helm/README.md).
+  secrets and injected by [`.github/actions/sync-secrets`](../.github/actions/sync-secrets/action.yml)
+  (`kubectl create secret`), which both `build-images.yml` and
+  `deploy-platform.yml` run before deploying. For a manual deploy, see [`helm/README.md`](helm/README.md).
 
 ## Order of operations
 
