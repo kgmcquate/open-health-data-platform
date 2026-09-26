@@ -59,9 +59,9 @@ resource "digitalocean_kubernetes_node_pool" "np_services" {
 #   }
 # }
 
-resource "digitalocean_kubernetes_node_pool" "np_4_cpu_8gb" {
+resource "digitalocean_kubernetes_node_pool" "np_heavy" {
   cluster_id = digitalocean_kubernetes_cluster.cluster.id
-  name       = "${var.name}-4-cpu-8gb"
+  name       = "${var.name}-heavy"
   size       = "s-4vcpu-8gb"
   node_count = 0
   auto_scale = false
