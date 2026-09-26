@@ -177,6 +177,10 @@ jobs:
           # after `gh secret set TOOLS_AUTH_TOKEN`.
           TOOLS_AUTH_TOKEN: ${{ secrets.TOOLS_AUTH_TOKEN }}
           SNOWFLAKE_PIPELINE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PIPELINE_PRIVATE_KEY }}
+          # Cube's compute (ADR-0029). A MotherDuck service-account token, from
+          # app.motherduck.com → Settings → Access Tokens:
+          #   gh secret set MOTHERDUCK_TOKEN
+          MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
         run: |
           upsert() { kubectl -n "$1" create secret generic "$2" "${@:3}" \
             --dry-run=client -o yaml | kubectl apply -f -; }
@@ -199,10 +203,10 @@ jobs:
             --from-literal=OHDP_OPENMETADATA_JWT="$OPENMETADATA_JWT" \
             --from-literal=OHDP_SNOWFLAKE_PAT="$SNOWFLAKE_PIPELINE_PAT" \
             --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
-          # Cube queries Snowflake directly with the OHDP_PIPELINE
-          # role/key — the same identity the pipeline writes with (ADR-0019).
-          upsert data cube-snowflake \
-            --from-literal=OHDP_SNOWFLAKE_PRIVATE_KEY="$SNOWFLAKE_PIPELINE_PRIVATE_KEY"
+          # Cube queries MotherDuck (ADR-0029), which reads the CURATED
+          # Iceberg catalog itself — Cube holds no Snowflake credential.
+          upsert data cube-motherduck \
+            --from-literal=OHDP_MOTHERDUCK_TOKEN="$MOTHERDUCK_TOKEN"
           # OHDP_GITHUB_TOKEN/OHDP_TOOLS_AUTH_TOKEN back /tools/report_issue.
           # Unset, that endpoint answers 503 and nothing else changes.
           # OHDP_OIDC_CLIENT_ID/_SECRET back hub-api's own sign-in
@@ -264,6 +268,25 @@ jobs:
       - name: Dagster
         if: inputs.deploy_all || inputs.deploy_dagster
         run: make -C platform/helm dagster TAG="$TAG"
+
+      - uses: astral-sh/setup-uv@v3
+        if: inputs.deploy_all || inputs.deploy_cube
+
+      # Attach Horizon's CURATED catalog to MotherDuck server-side, and create
+      # the `cache` database Cube's pre-aggregations live in, before Cube
+      # starts (ADR-0029). Idempotent; re-running also pushes a rotated PAT
+      # into MotherDuck's stored secret. Account/role come from platform-base's
+      # ohdp-pipeline-config, the same values the pipeline uses.
+      - name: MotherDuck — attach the CURATED Iceberg catalog
+        if: inputs.deploy_all || inputs.deploy_cube
+        env:
+          MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
+          OHDP_SNOWFLAKE_PAT: ${{ secrets.SNOWFLAKE_PIPELINE_PAT }}
+        run: |
+          cfg() { kubectl -n data get configmap ohdp-pipeline-config -o "jsonpath={.data.$1}"; }
+          export OHDP_SNOWFLAKE_ACCOUNT="$(cfg OHDP_SNOWFLAKE_ACCOUNT)"
+          export OHDP_SNOWFLAKE_ROLE="$(cfg OHDP_SNOWFLAKE_ROLE)"
+          uv run platform/scripts/motherduck_bootstrap.py
 
       - name: Cube (+ Cube Store, ADR-0024 — the `cube` make target depends on `cubestore`)
         if: inputs.deploy_all || inputs.deploy_cube
