@@ -152,6 +152,9 @@ export default function Navbar() {
                 <Link to="/billing" className="btn btn-outline btn-sm justify-start">
                   Manage subscription
                 </Link>
+                <Link to="/developer" className="btn btn-ghost btn-sm justify-start">
+                  API keys
+                </Link>
               </div>
             )}
 

@@ -4,7 +4,14 @@
       "type": "http",
       "url": "https://catalog.open-health-data-platform.org/mcp",
       "headers": {
-        "Authorization": "Bearer eyJraWQiOiJHYjM4OWEtOWY3Ni1nZGpzLWE5MmotMDI0MmJrOTQzNTYiLCJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJvcGVuLW1ldGFkYXRhLm9yZyIsInN1YiI6ImtnbWNxdWF0ZSIsInJvbGVzIjpbIkFkbWluIl0sImVtYWlsIjoia2dtY3F1YXRlQGdtYWlsLmNvbSIsImlzQm90IjpmYWxzZSwidG9rZW5UeXBlIjoiUEVSU09OQUxfQUNDRVNTIiwidXNlcm5hbWUiOiJrZ21jcXVhdGUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJrZ21jcXVhdGUiLCJpYXQiOjE3ODkyNTU5MTgsImV4cCI6MTc5NzAzMTkxOH0.ySR4192bjpmg8bK7awWwSIP7-pnvZikeko5M5xed7bb9a8RaK5IVxU_fFP1FtLMSr1-jlmTw7IoKNZVu4KbR_jRDviph_6xWLm1kWFEv8MZBHDJbd7vAvbXOwKZb3_6r1WQQeY_6VP5BJJBEjFhin1S6OLW4vXhJDSTWVOD7qMzbkX_SMQEkQZiZbYbuwGVaMLDI0gEJvgJxwEAEJVoDq1w_Iqux9gywKhEq2jNs9n4ojPabsI2hb6RQIMlaCBBLOPRP15TjU8rcK3Ogfz7eggpSmZ2rBM1Ng2VqysA98WgyHTRam-8mNCDKdKNxw1wmzphx_sCQnFeJFxKHI0Hxcw"
+        "Authorization": "Bearer ${OHDP_API_KEY}"
+      }
+    },
+    "ohdp-cube": {
+      "type": "http",
+      "url": "https://app.open-health-data-platform.org/v1/mcp/cube",
+      "headers": {
+        "Authorization": "Bearer ${OHDP_API_KEY}"
       }
     }
   }

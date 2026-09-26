@@ -17,6 +17,11 @@ with no Ingress: staying off the internet is the access control, and this
 server trusts its caller (hub-api's own chat agent, over the `mcp-cube`
 connection in apps/api/config/tools.yaml).
 
+Outside callers reach the same tools a different way: hub-api mounts this
+module's `mcp` at `/v1/mcp/cube` (hub_api.gateway, ADR-0030), behind per-user
+API keys, a Plus check and a monthly allowance. That path never touches this
+standalone server.
+
 `OHDP_MCP_AUTH_TOKEN` adds a static bearer check on top of that, so a pod that
 wanders into the namespace still cannot mint Cube queries. It is defence in
 depth, not the primary control, and the server refuses to start without it
@@ -37,6 +42,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_request
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
@@ -56,6 +62,23 @@ MCP_PATH = "/mcp"
 # is what Cube's `queryRewrite` reads to apply the row ceiling, so it must never
 # come from the caller.
 TIER = os.environ.get("OHDP_MCP_TIER", "free")
+
+# hub-api's paid gateway (hub_api.gateway, ADR-0030) serves these same tools to
+# outside callers and stamps each request's ASGI scope with the tier it read
+# for that caller's API key. The standalone `mcp-cube` server never sets it, so
+# there TIER above still applies. A scope key rather than a header, because
+# a client can set a header and can't set a scope key.
+TIER_SCOPE_KEY = "ohdp.tier"
+
+
+def _tier() -> str:
+    try:
+        request = get_http_request()
+    except RuntimeError:
+        # No HTTP request at all: an in-memory client, as in the tests.
+        return TIER
+    return str(request.scope.get(TIER_SCOPE_KEY, TIER))
+
 
 mcp: FastMCP[None] = FastMCP(
     name="ohdp-cube",
@@ -78,7 +101,7 @@ mcp: FastMCP[None] = FastMCP(
 def _client() -> CubeClient:
     """One client per call. It holds no query state, and the token it mints is
     short-lived by design (`cube.TOKEN_TTL_SECONDS`)."""
-    return CubeClient(settings.cube_api_url, settings.cube_api_secret, tier=TIER)
+    return CubeClient(settings.cube_api_url, settings.cube_api_secret, tier=_tier())
 
 
 @asynccontextmanager

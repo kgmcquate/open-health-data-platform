@@ -25,6 +25,7 @@ const FEATURES = [
   "300 dashboard renders a day (free: 30)",
   "20 dashboard publishes a day (free: 2)",
   "3 issue reports a day (free: 1)",
+  "Data API: 5,000 Cube queries and 2,000 MCP tool calls a month (free: none)",
 ];
 
 // --- Stripe.js (the v3 build, loaded from index.html) ----------------------

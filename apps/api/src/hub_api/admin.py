@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 
-from hub_api import auth, db
+from hub_api import api_usage, auth, db
 from hub_api.chat import (
     issue_allowance,
     question_allowance,
@@ -47,6 +47,11 @@ class AdminUser(BaseModel):
     saves_allowed_per_day: int
     issues_used_today: int
     issues_allowed_per_day: int
+    # The paid data API (hub_api.gateway): this calendar month, not today.
+    api_cube_used_this_month: int
+    api_cube_allowed_per_month: int
+    api_mcp_used_this_month: int
+    api_mcp_allowed_per_month: int
 
 
 def get_engine(request: Request) -> Engine:
@@ -86,6 +91,10 @@ def list_users(
             saves_allowed_per_day=save_allowance(tier),
             issues_used_today=db.issues_today(engine, str(row["email"])),
             issues_allowed_per_day=issue_allowance(tier),
+            api_cube_used_this_month=api_usage.used_this_month(engine, str(row["email"]), "cube"),
+            api_cube_allowed_per_month=api_usage.api_allowance(tier, "cube"),
+            api_mcp_used_this_month=api_usage.used_this_month(engine, str(row["email"]), "mcp"),
+            api_mcp_allowed_per_month=api_usage.api_allowance(tier, "mcp"),
         )
         for row in auth.list_users(engine)
     ]

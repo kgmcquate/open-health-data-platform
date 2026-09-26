@@ -1,0 +1,52 @@
+{{- /*
+Routes OpenMetadata's public MCP path to hub-api's paid gateway (ADR-0030).
+
+OpenMetadata's own Ingress (values/openmetadata.yaml) owns catalog.<domain>/.
+This one claims only /mcp on the same host. Traefik ranks a router by the
+length of its rule, so Host && PathPrefix(`/mcp`) wins over PathPrefix(`/`).
+The Middleware rewrites the path to /v1/mcp/catalog, where hub_api.gateway
+checks the API key, the Plus tier and the monthly allowance before proxying
+to OpenMetadata in-cluster with a read-only bot token. The catalog UI and its
+REST API are untouched and stay free.
+*/ -}}
+{{- if .Values.catalogMcpIngress.enabled }}
+{{- $name := printf "%s-catalog-mcp" (include "hub-api.fullname" .) }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hub-api.labels" . | nindent 4 }}
+spec:
+  replacePath:
+    path: /v1/mcp/catalog
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hub-api.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: {{ printf "%s-%s@kubernetescrd" .Release.Namespace $name }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  # Its own certificate for the same host, because a TLS secret has to live
+  # in this Ingress's namespace and OpenMetadata's is in `meta`.
+  tls:
+    - hosts:
+        - {{ .Values.catalogMcpIngress.host | quote }}
+      secretName: {{ .Values.catalogMcpIngress.tlsSecretName }}
+  rules:
+    - host: {{ .Values.catalogMcpIngress.host | quote }}
+      http:
+        paths:
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "hub-api.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

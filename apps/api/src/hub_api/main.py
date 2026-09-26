@@ -5,6 +5,7 @@ Responsibilities (ARCHITECTURE.md §2, §5, §6):
   - entitlement + daily quota checks BEFORE the chat agent is invoked
   - mint short-lived Cube service tokens (chat agent + dashboards)
   - Stripe webhook handling for tier changes
+  - the paid data API at /v1 (API keys, Plus check, monthly allowances)
   - log every chat question/plan/result to Postgres (eval set)
 
 The chat agent itself gets only two MCP connections (Cube, OpenMetadata) and no
@@ -32,8 +33,9 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.engine import Engine
 from starlette.middleware.sessions import SessionMiddleware
 
-from hub_api import db
+from hub_api import api_usage, db, gateway
 from hub_api.admin import router as admin_router
+from hub_api.api_keys import router as api_keys_router
 from hub_api.auth import router as auth_router
 from hub_api.billing import router as billing_router
 from hub_api.builder import router as builder_router
@@ -87,6 +89,9 @@ async def _purge_expired_forever(engine: Engine) -> None:
         try:
             await asyncio.to_thread(
                 db.purge_expired, engine, retention_days=settings.chat_retention_days
+            )
+            await asyncio.to_thread(
+                api_usage.purge_expired, engine, retention_days=settings.chat_retention_days
             )
         except Exception as exc:  # noqa: BLE001 — see docstring
             log.error("chat_retention_purge_failed", error=str(exc))
@@ -147,7 +152,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         headers={"Authorization": f"Bearer {settings.tools_auth_token}"},
     )
     app.state.agents = build_agents(openai_models, tool_connections)
-    yield
+    # The paid Cube MCP endpoint's session manager (hub_api.gateway). A mounted
+    # app never receives lifespan events, so its lifespan runs inside this one.
+    async with gateway.cube_mcp_app.router.lifespan_context(gateway.cube_mcp_app):
+        yield
     if purge_task is not None:
         purge_task.cancel()
 
@@ -190,6 +198,12 @@ app.include_router(admin_router)
 # below calls for the chat surface.
 app.include_router(issues_router)
 app.include_router(billing_router)
+# The paid data API (`hub_api.gateway`, ADR-0030): API keys managed with the
+# session cookie, and `/v1`, which takes only an API key.
+app.include_router(api_keys_router)
+app.include_router(api_usage.router)
+app.include_router(gateway.router)
+app.mount("/v1/mcp", gateway.McpGateway(lambda: getattr(app.state, "engine", None)))
 
 # Mounted, not included: a sub-app carries its own `/openapi.json`, listing only
 # its own routes. That narrow spec is what the chat model's "ohdp-tools"
@@ -235,7 +249,7 @@ if _web_dist.is_dir():
 
         Except under the API prefixes: a typo'd or removed endpoint there
         should 404, not silently return the HTML shell with a 200."""
-        if full_path.startswith(("api/", "auth/", "tools/")):
+        if full_path.startswith(("api/", "auth/", "tools/", "v1/")):
             raise HTTPException(404)
         return FileResponse(_web_dist / "index.html")
 

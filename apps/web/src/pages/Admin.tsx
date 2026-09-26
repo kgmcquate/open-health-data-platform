@@ -45,6 +45,8 @@ export default function Admin() {
                 <th>Renders</th>
                 <th>Saves</th>
                 <th>Issues</th>
+                <th title="Data API, this month">API: Cube</th>
+                <th title="Data API, this month">API: MCP</th>
                 <th>Joined</th>
                 <th>Last login</th>
               </tr>
@@ -79,6 +81,12 @@ export default function Admin() {
                   </td>
                   <td>
                     <UsageCell used={user.issues_used_today} allowed={user.issues_allowed_per_day} />
+                  </td>
+                  <td>
+                    <UsageCell used={user.api_cube_used_this_month} allowed={user.api_cube_allowed_per_month} />
+                  </td>
+                  <td>
+                    <UsageCell used={user.api_mcp_used_this_month} allowed={user.api_mcp_allowed_per_month} />
                   </td>
                   <td className="whitespace-nowrap opacity-70">{formatDate(user.created_at)}</td>
                   <td className="whitespace-nowrap opacity-70">{formatDate(user.last_login_at)}</td>

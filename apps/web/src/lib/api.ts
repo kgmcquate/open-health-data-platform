@@ -443,6 +443,10 @@ export interface AdminUser {
   saves_allowed_per_day: number;
   issues_used_today: number;
   issues_allowed_per_day: number;
+  api_cube_used_this_month: number;
+  api_cube_allowed_per_month: number;
+  api_mcp_used_this_month: number;
+  api_mcp_allowed_per_month: number;
 }
 
 export const fetchAdminUsers = () => getJson<AdminUser[]>("/api/admin/users");
@@ -461,3 +465,35 @@ export interface IssueResponse {
 
 export const submitIssue = (title: string, body: string, kind: IssueKind) =>
   sendJson<IssueResponse>("/api/support/issue", "POST", { title, body, kind });
+
+/** A personal key for the paid data API (`hub_api.api_keys`). The key itself
+ * is only ever in `CreatedApiKey`, the response to creating one. */
+export interface ApiKey {
+  id: number;
+  name: string;
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface CreatedApiKey extends ApiKey {
+  key: string;
+}
+
+/** This month's data API usage per pool (`hub_api.api_usage`). */
+export interface ApiUsage {
+  tier: string;
+  pools: Record<"cube" | "mcp", { used: number; allowance: number }>;
+  resets_at: string;
+}
+
+export const fetchApiKeys = () => getJson<ApiKey[]>("/api/keys");
+export const fetchApiUsage = () => getJson<ApiUsage>("/api/keys/usage");
+export const createApiKey = (name: string) => sendJson<CreatedApiKey>("/api/keys", "POST", { name });
+
+/** 204 with no body, so not `sendJson`, which parses one. */
+export async function revokeApiKey(id: number): Promise<void> {
+  const path = `/api/keys/${id}`;
+  const response = await fetch(path, { method: "DELETE", credentials: "same-origin" });
+  if (!response.ok) throw await failure(`DELETE ${path}`, response);
+}

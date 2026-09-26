@@ -12,6 +12,9 @@ To use it from another MCP client instead, the bearer token is:
   kubectl -n {{ .Release.Namespace }} get secret mcp-cube-secret \
     -o jsonpath='{.data.OHDP_MCP_AUTH_TOKEN}' | base64 -d
 
+Outside callers don't use this server. hub-api serves the same tools at
+/v1/mcp/cube behind per-user API keys and Plus allowances (ADR-0030).
+
 Four tools should appear: list_metrics, describe_metric, run_metric_query,
 explain_query. There is no SQL tool and no way to express one (ADR-0016) — if a
 fifth tool ever shows up here, something changed that should not have.

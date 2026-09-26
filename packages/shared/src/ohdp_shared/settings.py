@@ -111,6 +111,12 @@ class Settings(BaseSettings):
     # calls and is not reachable from a browser.
     openmetadata_public_url: str = "https://catalog.open-health-data-platform.org"
     openmetadata_jwt: str = ""
+    # A second, read-only OpenMetadata bot token (DataConsumer role) for the
+    # paid catalog MCP endpoint (hub_api.gateway). Not `openmetadata_jwt`:
+    # that one belongs to the chat agent, which writes memories back to the
+    # catalog (ADR-0027), and outside callers must not inherit its writes.
+    # Empty means the catalog endpoint answers 503.
+    openmetadata_gateway_jwt: str = ""
     # Curated literature ingestion (ohdp_ingestion.literature) — both OpenAlex
     # (its "mailto" param) and Europe PMC (its User-Agent) use this same
     # address to self-identify the client, which is what gets a request into
@@ -191,6 +197,15 @@ class Settings(BaseSettings):
     # ceiling's shared "chatbot" bucket.
     free_daily_issues: int = 1
     plus_daily_issues: int = 3
+    # The paid data API (hub_api.gateway, ADR-0030): monthly allowances per
+    # Plus user, counted from `api_usage` since the start of the calendar
+    # month in UTC. There is no free-tier number because free callers are
+    # refused before anything is counted, and no overage: a call over the
+    # allowance is refused, not billed. Provisional, like the chat quotas.
+    # `/v1/cube/load` and `/v1/cube/sql` draw from the first; a `tools/call`
+    # on either MCP endpoint (Cube or catalog) draws from the second.
+    plus_monthly_cube_queries: int = 5_000
+    plus_monthly_mcp_calls: int = 2_000
     # How long chat turns, threads, and filed-issue rows are kept before
     # hub_api.db.purge_expired deletes them — the window the privacy policy
     # promises (apps/web/src/pages/Privacy.tsx), so change both together.

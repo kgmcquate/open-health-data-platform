@@ -275,7 +275,8 @@ Tokens carry a `tier` claim (`free` | `plus`).
 | Dagster | oauth2-proxy gates the hostname | GraphQL allowlist proxy enforces read-only |
 | dagster-monitoring | oauth2-proxy gates the hostname (same wall as Dagster, path-routed) | Reads Dagster GraphQL through graphql-authz-proxy, not the raw webserver |
 
-| Cube | Service token from hub-api | `queryRewrite` applies tier limits |
+| Cube | Service token from hub-api (ClusterIP only, no Ingress) | `queryRewrite` applies tier limits |
+| Data API (`/v1`: Cube REST, Cube MCP, catalog MCP) | Personal API key (`hub_api.api_keys`) | Plus only, tier read live from `users`; monthly allowances ([ADR-0030](decisions/0030-plus-data-api-gateway.md)) |
 
 ### Dagster hardening — non-negotiable
 

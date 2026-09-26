@@ -5,8 +5,10 @@
 # image with a ConfigMap, the way graphql-authz-proxy is.
 #
 # Auth is Cube's own JWT security context, not an oauth2-proxy wall
-# (ARCHITECTURE.md §5: "Cube | Service token from hub-api"). Ingress is
-# enabled by default here, unlike the hub-api chart.
+# (ARCHITECTURE.md §5: "Cube | Service token from hub-api"). There is no
+# Ingress: outside callers reach Cube only through hub-api's paid gateway,
+# /v1/cube/* (hub_api.gateway, ADR-0030), which checks an API key, the Plus
+# tier and a monthly allowance before minting the service token.
 #
 # Release name must be "cube" — hub-api reaches this Service at
 # cube.data.svc.cluster.local (hub-api/values.yaml OHDP_CUBE_API_URL), and
@@ -33,8 +35,10 @@ service:
   type: ClusterIP
   port: 4000
 
+# Off: see the header. Turning it back on exposes Cube's REST API to anyone
+# who can mint a token, bypassing the gateway's quotas.
 ingress:
-  enabled: true
+  enabled: false
   className: traefik
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod

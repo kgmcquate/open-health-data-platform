@@ -49,6 +49,12 @@ runs:
     #       gh secret set HUB_GITHUB_ISSUES_TOKEN
     #   TOOLS_AUTH_TOKEN -- shared bearer for hub-api's /tools app. Rotate by
     #     re-running a deploy after `gh secret set TOOLS_AUTH_TOKEN`.
+    #   OPENMETADATA_GATEWAY_JWT -- a second OpenMetadata bot token, for a bot
+    #     with only the DataConsumer role. hub-api's paid catalog MCP endpoint
+    #     (hub_api.gateway, ADR-0030) calls OpenMetadata with it. Not
+    #     OPENMETADATA_JWT, which can write. Mint it in Settings → Bots, then:
+    #       gh secret set OPENMETADATA_GATEWAY_JWT
+    #     Unset, /v1/mcp/catalog answers 503 and nothing else changes.
     #   SNOWFLAKE_PIPELINE_PRIVATE_KEY -- see the note at the end of the script.
     #   MOTHERDUCK_TOKEN -- Cube's compute (ADR-0029). A MotherDuck
     #     service-account token, from app.motherduck.com → Settings → Access
@@ -103,6 +109,7 @@ runs:
           --from-literal=OHDP_OPENAI_API_KEYS="$(s OPENROUTER_API_KEY)"
         upsert app hub-api-secrets \
           --from-literal=OHDP_OPENMETADATA_JWT="$(s OPENMETADATA_JWT)" \
+          --from-literal=OHDP_OPENMETADATA_GATEWAY_JWT="$(s OPENMETADATA_GATEWAY_JWT)" \
           --from-literal=STRIPE_SECRET_KEY="$(s STRIPE_SECRET_KEY)" \
           --from-literal=OHDP_STRIPE_PRICE_ID="$(s STRIPE_PRICE_ID)" \
           --from-literal=STRIPE_WEBHOOK_SECRET="$(s STRIPE_WEBHOOK_SECRET)" \

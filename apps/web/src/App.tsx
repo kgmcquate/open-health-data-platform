@@ -17,6 +17,7 @@ const Support = lazy(() => import("./pages/Support"));
 const Billing = lazy(() => import("./pages/Billing"));
 const Search = lazy(() => import("./pages/Search"));
 const Admin = lazy(() => import("./pages/Admin"));
+const Developer = lazy(() => import("./pages/Developer"));
 
 export default function App() {
   const location = useLocation();
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/support" element={<Support />} />
             <Route path="/billing" element={<Billing />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/developer" element={<Developer />} />
             <Route
               path="*"
               element={
